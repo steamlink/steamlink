@@ -15,11 +15,11 @@ DOWNLOAD_URL = ('{}/archive/'
 PACKAGES = find_packages(exclude=['tests', 'tests.*'])
 REQUIRES = [
 	'PyYAML>=3.11,<4',
-	'aiohttp=>2.3.6',
-	'aiomqtt=>0.1.0',
-	'python-socketio=>1.8.4',
-	'paho-mqtt=>1.3.1,>2',
-	'hbmqtt=>-0.9.1',
+	'aiohttp>=2.3.6',
+	'aiomqtt>=0.1.0',
+	'python-socketio>=1.8.4',
+	'paho-mqtt>=1.3.1,<2',
+	'hbmqtt>=0.9.1',
 ]
 
 setup(
