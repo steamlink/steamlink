@@ -20,11 +20,8 @@ from aiohttp import web
 
 
 # SteamLink project imports
-from  steamlink import *
-try:
-	from  steamlink.const import * 
-except:
-	from  const import * 
+import steamlink 
+import steamlink.const
 
 
 class SLConsoleNamespace(socketio.AsyncNamespace):
@@ -44,10 +41,10 @@ class SLConsoleNamespace(socketio.AsyncNamespace):
 		logging.debug("SLConsoleNamespace need_log %s" % data)
 #		await self.emit('my_response', {'data': data['data']} ) #, room=sid, namespace=steam.ns)
 		node = data.get('id',None)
-		if  not node in Node.name_idx:
+		if  not node in steamlink.Node.name_idx:
 			return "NAK"
 		try:
-			r = Node.name_idx[node].console_pkt_log(data['key'], int(data['count']))
+			r = steamlink.Node.name_idx[node].console_pkt_log(data['key'], int(data['count']))
 		except:
 			return "NAK"
 		return "ACK"
@@ -56,15 +53,15 @@ class SLConsoleNamespace(socketio.AsyncNamespace):
 	async def on_join(self, sid, message):
 		logging.debug("SLConsoleNamespace on_join %s" % message)
 		self.enter_room(sid, message['room'], namespace=steam.ns)
-		room = Room(sroom=message['room'])
+		room = steamlink.Room(sroom=message['room'])
 		if room.lvl == 'Steam':
 			await Steam.console_update_full(room)
 		elif room.lvl == 'Mesh':
-			Mesh.console_update_full(room)
+			steamlink.Mesh.console_update_full(room)
 		elif room.lvl == 'Node':
-			Node.console_update_full(room)
+			steamlink.Node.console_update_full(room)
 		elif room.lvl == 'Pkt':
-			Node.console_update_tail(room)
+			steamlink.Node.console_update_tail(room)
 		else:
 			return "NAK"
 		return "ACK"
@@ -216,14 +213,14 @@ class TestData:
 
 	def create_node(self, i):
 		logging.debug("sending an ON pkt")
-		self.nodes[i] = Node(i, nodecfg = None)
-		p = SteamLinkPacket(self.nodes[i], sl_op = SL_OP.ON, payload = None, pkt = None)
+		self.nodes[i] = steamlink.Node(i, nodecfg = None)
+		p = steamlink.SteamLinkPacket(self.nodes[i], sl_op = steamlink.SL_OP.ON, payload = None, pkt = None)
 
 		self.nodes[i].publish_pkt(p, "data")
 		
 
 	def create_data(self, i, data):
-		p = SteamLinkPacket(self.nodes[i], sl_op = SL_OP.DS, payload = "Hello", pkt = None)
+		p = steamlink.SteamLinkPacket(self.nodes[i], sl_op = steamlink.SL_OP.DS, payload = "Hello", pkt = None)
 		self.nodes[i].publish_pkt(p, data)
 
 
@@ -250,9 +247,16 @@ else:
 		print("invalid logging level, use debug, info, warning, error or critical")
 		sys.exit(1)
 
+FORMAT = '%(asctime)-15s: %(message)s'
+logging.basicConfig(format=FORMAT)
+logger = logging.getLogger()
+
 logger.setLevel(loglevel)
 DBG = cl_args.debug 
 logger.DBG = DBG
+
+logger.info("%s version %s" % (steamlink.const.PROJECT_PACKAGE_NAME, steamlink.const.__version__))
+
 
 # load config 
 conff = cl_args.config if cl_args.config else "steamlink.yaml"
@@ -262,13 +266,13 @@ if DBG > 1: print(conf)
 conf_general = conf.get('general',{})
 conf_console = conf.get('console',{})
 
-#sl_log = LogData(conf['logdata'])
+#sl_log = steamlink.LogData(conf['logdata'])
 sl_log = None
 
 aioloop = asyncio.get_event_loop()
 #
 try:
-	sl_mqtt = SteamLinkMqtt(conf['steamlink_mqtt'], sl_log, aioloop)
+	sl_mqtt = steamlink.SteamLinkMqtt(conf['steamlink_mqtt'], sl_log, aioloop)
 except KeyError as e:
 	logging.error("Gps config key missing: %s", e)
 	sys.exit(1)
@@ -282,7 +286,7 @@ except Exception as e:
 	print("setup exception %s" % e)
 	sys.exit(2)
 
-Node.sl_broker = sl_mqtt
+steamlink.Node.sl_broker = sl_mqtt
 
 logging.debug("starting socketio")
 ping_timeout = conf_general.get('ping_timeout','10')
@@ -297,7 +301,7 @@ app.on_cleanup.append(web_on_cleanup)
 app.on_shutdown.append(web_on_shutdown)
 
 # create top level
-steam = Steam(conf.get('Steam',{}))
+steam = steamlink.Steam(conf.get('Steam',{}))
 
 sio.attach(app)
 sio.register_namespace(SLConsoleNamespace(steam.ns))
