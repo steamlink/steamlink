@@ -1,0 +1,27 @@
+# Hide some OS X stuff
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+
+# Logs
+*.log
+
+# Thumbnails
+._*
+
+# configs
+*.yaml
+
+# GITHUB Proposed Python stuff:
+*.py[cod]
+
+
+# Packages
+*.egg
+*.egg-info
+dist
+build
+eggs
+.eggs
+

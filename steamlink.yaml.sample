@@ -1,0 +1,33 @@
+general:
+    ping_timeout: 30                # websocket ping timeout
+Steam:
+    id: 0
+    name: "sample1"
+    namespace: "/sample"
+    description: "SteamLink Sample"
+
+testdata:
+    startwait: 2
+    nodes: 1
+    meshes: 1
+    packets: 1
+
+steamlink_mqtt:
+    clientid: "CLIENTID"
+    username: "USERNAME"
+    password: "PASSWORD"
+    server: "mqtt.steamlink.net"
+    cert: "ca.crt"
+    port: 8883
+
+    prefix: "SteamLink"
+    data: "data"
+    control: "control"
+
+console:
+    host: '0.0.0.0'
+    port: 5050
+    shutdown_timeout: 10        # seconds to wait for web server shutdown
+    namespace: "/sl"
+    prefix: "SteamLinkWeb"
+    index: "steam.html"         # root page 

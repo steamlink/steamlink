@@ -1,0 +1,2 @@
+
+- in c++ code, change ON opcode to transmit a SL_NodeCfgStruct packet

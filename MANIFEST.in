@@ -1,0 +1,3 @@
+include README.md LICENSE steamlink.yaml.sample
+include steamlin/html/*
+recursive-exclude * *.py[co] __pycache__ *.swp *.yaml
