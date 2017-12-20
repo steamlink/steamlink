@@ -207,6 +207,7 @@ class WebApp(object):
 		#self.app.router.add_static('/static', 'static')
 		self.app.router.add_get('/', self.index)
 		self.app.router.add_get('/config.js', self.config_js)
+		self.app.router.add_get('/main.js', self.main_js)
 		self.app.on_cleanup.append(self.web_on_cleanup)
 		self.app.on_shutdown.append(self.web_on_shutdown)
 
@@ -237,6 +238,12 @@ class WebApp(object):
 		index_html = self.conf.get('index',INDEX_HTML)
 		with open(index_html) as f:
 			return web.Response(text=f.read(), content_type='text/html')
+
+
+	async def main_js(self, request):
+		fname = LIB_DIR + "/html/main.js"
+		with open(fname) as f:
+			return web.Response(text=f.read(), content_type='application/javascript')
 
 
 	async def config_js(self, request):
