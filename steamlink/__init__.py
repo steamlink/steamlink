@@ -12,12 +12,18 @@ import json
 import time
 import yaml
 import argparse
+import random
 
-import aiomqtt
+from threading import Thread, Event
+
+import paho.mqtt.client as mqtt
 import asyncio
 import socketio
 from aiohttp import web
 
+from steamlink.timelog import TimeLog
+
+logger = logging.getLogger(__name__)
 
 TODO = """
 - track routing table from received packets
@@ -59,6 +65,9 @@ Pkt_1_*					XXX nothing below pkt
 """
 
 
+#
+# Room
+#
 class Room:
 	Lvls = ['Steam', 'Mesh', 'Node', 'Pkt']
 	def __init__(self, lvl = None, key = None, detail = None, sroom = None):
@@ -94,6 +103,9 @@ class Room:
 		
 
 		
+#
+# SL_CodeCfgStruct
+#
 class SL_NodeCfgStruct:
 	""" 
 	Node configuration data, as stored in flash
@@ -115,7 +127,7 @@ class SL_NodeCfgStruct:
 	sfmt = '<L10s32sffhhBBBB'
 
 	def __init__(self, slid = None, name = "*UNK*", description = "*UNK*", gps_lat = 0.0, gps_lon = 0.0, altitude = 0, max_silence = 60, sleeps = False, pingable = True, battery_powered = False, radio_params = 0, pkt = None):
-		if pkt == None:	 # construct
+		if pkt is None:	 # construct
 			self.slid = slid						# L
 			self.name = name						# 10s
 			self.description = description			# 32s
@@ -162,7 +174,9 @@ class SL_NodeCfgStruct:
 		return json.dumps(d)
 
 
-# op codes
+#
+# SL_OP op codes
+#
 class SL_OP:
 	'''
 	control message types: EVEN, 0 bottom bit 
@@ -193,153 +207,87 @@ class SL_OP:
 			pass
 		return '??'
 
-class Mqtt:
-	"""" run an MQTT connection  """
-	def __init__(self, conf, name, loop):
-		self.name = name
+#
+# Mqtt
+#
+class Mqtt(Thread):
+	def __init__(self, conf, sl_log):
+		super().__init__()
 		self.conf = conf
-		self.loop = loop
-		self.mq_connected = asyncio.Event(loop=self.loop)
-		self.mq_subscribed = asyncio.Event(loop=self.loop)
-		self.mq_disconnected = asyncio.Event(loop=self.loop)
-		for c in ["clientid", "username", "password"]:
-			if not c in conf:
-				logging.error("error: %s mqtt %s not specified", self.name, c)
-				raise KeyError
+		self.name = "mqtt"
+		self.sl_log = sl_log
 
-		self.mq = aiomqtt.Client(client_id=self.conf["clientid"], loop=self.loop)
-		self.mq.loop_start()
-		if "cert" in self.conf:
-			self.mq.tls_set(self.conf["cert"])
+		self.topic_prefix = conf.get('prefix', 'SteamLink')
+		self.topic_control = conf.get('control', 'control')
+		self.topic_data = conf.get('data', 'data')
+		self.server =   conf.get('server', '127.0.0.1')
+		self.port =     int(conf.get('port', 8883))
+		self.clientid = conf.get('clientid', "clie"+"%04i" % int(random.random() * 10000))
+		self.username = conf.get('username', None)
+		self.password = conf.get('password', None)
+		self.ssl_certificate = conf.get('ssl_certificate', None)
+
+		self.control_topic_x = "%s/%%s/%s" % (self.topic_prefix, self.topic_control)
+		self.data_topic_x = "%s/%%s/%s" % (self.topic_prefix, self.topic_data)
+		self.data_topic = "%s/+/%s" % (self.topic_prefix, self.topic_data)
+
+		self.connected = Event()
+		self.mq = mqtt.Client(client_id=self.clientid)
+#		self.mq.enable_logger(logger)
+		if self.ssl_certificate:
+			logger.debug("%s: using cert %s", self.name, self.ssl_certificate)
+			self.mq.tls_set(self.ssl_certificate)
 			self.mq.tls_insecure_set(False)
-		self.mq.username_pw_set(self.conf["username"],self.conf["password"])
+		if self.username and self.password:
+			self.mq.username_pw_set(self.username, self.password)
 		self.mq.on_connect = self.on_connect
-		self.mq.on_subscribe = self.on_subscribe
 		self.mq.on_message = self.on_message
 		self.mq.on_disconnect = self.on_disconnect
 		self.running = True
-		self.subscription_list = []
-
-
-	async def start(self):
-		logging.info("%s starting", self.name)
-		await self.mq.connect(self.conf["server"], self.conf["port"], 60)
-		logger.info("%s mqtt connecting" % self.name)
-		await self.wait_connect()
-
-	async def astop(self):
-		logger.info("%s done running", self.name)
-		await self.mq_disconnected.wait()
-		self.mq.loop_stop()
-
-
-	def stop(self):
-		self.running = False
-		if self.mq_connected.is_set():
-			self.mq.disconnect()
-		logging.debug("%s mqtt signaled to disconnect", self.name)
-
-
-	async def wait_connect(self):
-		logging.debug("%s mqtt waiting for connect", self.name)
-		await self.mq_connected.wait()
-		logging.info("%s mqtt got connected", self.name)
-		for topic in self.subscription_list:
-			logging.debug("%s on_connect subscribe %s", self.name, topic)
-			self.mq.subscribe(topic)
-			await self.mq_subscribed.wait()
-
-
-	def on_subscribe(self, client, userdata, mid, granted_qos):
-		self.mq_subscribed.set()
-
-	def on_connect(self, client, userdata, flags, result):
-		logging.info("%s mqtt connected %s", self.name, result)
-		if result == 0:
-			self.mq_connected.set()
-
-
-	def on_disconnect(self, client, userdata, flags):
-		self.mq_connected.clear()
-		self.mq_disconnected.set()
-
-
-	def on_message(self, client, userdata, msg):
-		logging.info("%s got %s %s", self.name, msg,topic, json.loads(msg.payload.decode('utf-8')))
-
-
-#
-# TimeLog
-#
-class TimeLog:
-	def __init__(self, maxitems):
-		self.maxitems = maxitems
-		self.items = collections.OrderedDict()
-
-	def add(self, item):
-		while len(self.items) >= self.maxitems:
-			self.items.popitem(last=False)
-		self.items[time.time()] = item
-
-
-	def get(self, where, count):
-		keys = list(self.items.keys())
-		if where in [None, '', 'last']:
-			pos = len(keys) 
-		else:
-			try:
-				pos = keys.index(where)
-			except:
-				pos = 0		# return oldest entry if key not found
-				count = abs(count)
-		if count < 0:
-			start = max(0, (pos + count))
-			end = max(0, pos)
-		else:
-			start = min(pos+1, len(keys))
-			end = min(pos+1+count, len(keys))
-		print("DBG: pos %s start %s end %s len %s" % (pos, start, end, len(keys)))
-		r = {}
-		for i in range(start, end):
-			r[keys[i]] =  str(self.items[keys[i]])
-		return r
-
-if __name__ == '__main__':
-	l = TimeLog(10)
-
-	for i in range(20):
-		l.add("I-%s" % i)
-
-	r = l.get('', -2)
-	print(r)
-	r = l.get(list(r.keys())[0], -2)
-	print(r)
-	r = l.get(list(r.keys())[-1], 2)
-	print(r)
-	r = l.get(list(r.keys())[-1], 2)
-	print(r)
-
-
-class SteamLinkMqtt(Mqtt):
-	def __init__(self, conf, sl_log, loop):
-		self.conf = conf
-		self.sl_log = sl_log
-
-		for c in ["prefix", "data", "control"]: # , "data", "control"]:
-			if not c in conf:
-				logging.error("error: %s steamlink_mqtt %s not specified", self.name, c)
-				raise KeyError
-
-		self.prefix = conf['prefix']
-		self.control_topic_x = "%s/%%s/%s" % (self.prefix, conf['control'])
-		self.data_topic_x = "%s/%%s/%s" % (self.prefix, conf['data'])
-		self.data_topic = "%s/+/%s" % (self.prefix, conf['data'])
-
-#		super(SteamLinkMqtt, self).__init__(conf, "SteamLink", loop)
-		super().__init__(conf, "SteamLink", loop)
+		self.task = Thread(target=self.run)
+		self.task.daemon = True
 
 		self.subscription_list = [self.data_topic]
 		self.mq.message_callback_add(self.data_topic, self.on_data_msg)
+
+
+	def run(self):
+		logging.info("%s: task start" % self.name)
+		while self.running:
+			logger.info("%s connecting to %s:%s", self.name, self.server, self.port)
+			self.mq.connect(self.server, self.port, 60)
+			logger.info("%s connecting" % self.name)
+			self.mq.loop_forever()
+
+
+	def stop(self):
+		logger.info("%s done running", self.name)
+		self.running = False
+		if self.connected.is_set():
+			self.mq.disconnect()
+
+	def wait_connect(self):
+		logger.debug("%s waiting for connect", self.name)
+		self.connected.wait()
+		logger.info("%s got connected", self.name)
+
+
+	def on_connect(self, client, userdata, flags, result):
+		logger.info("%s connected %s", self.name, result)
+		if result == 0:
+			self.connected.set()
+	
+			for topic in self.subscription_list:
+				logger.debug("%s on_connect subscribe %s", self.name, topic)
+				self.mq.subscribe(topic)
+
+
+	def on_disconnect(self, client, userdata, flags):
+		self.connected.clear()
+
+
+	def on_message(self, client, userdata, msg):
+		logger.info("%s got %s %s", self.name, msg,topic, json.loads(msg.payload.decode('utf-8')))
 
 
 	def mk_json_msg(self, msg):
@@ -349,33 +297,36 @@ class SteamLinkMqtt(Mqtt):
 		except:
 			jmsg = {'topic': msg.topic, 'raw': msg.payload }
 
-		logging.debug("steamlink msg %s", str(jmsg))
+		logger.debug("steamlink msg %s", str(jmsg))
 		return jmsg
 
 
 	def on_data_msg(self, client, userdata, msg):
 		topic_parts = msg.topic.split('/', 2)
 		try:
-			sl_pkt = SteamLinkPacket(pkt=msg.payload)
+			sl_pkt = Packet(pkt=msg.payload)
 		except:
 			return
 
 		sl_id = sl_pkt.slid
 		if not sl_id in Node.slid_idx:
-			logging.warning("SteamLinkMqtt new node with sl_id 0x%0x", sl_id)
-			Node(sl_id)
+			logger.warning("Mqtt new node with sl_id 0x%0x", sl_id)
+			Node(sl_id, steam)
 		Node.slid_idx[sl_id].post_data(sl_pkt)
 				
 	
 	def publish(self, firsthop, pkt, qos=0, retain=False, sub="control"):
 		s = self.control_topic_x if sub == "control" else self.data_topic_x
 		topic = s % firsthop
-		logging.info("%s publish %s %s", self.name, topic, pkt)
+		logger.info("%s publish %s %s", self.name, topic, pkt)
 		self.mq.publish(topic, payload=pkt.pkt, qos=qos, retain=retain)
 #		time.sleep(0.1)
 
 
-class SteamLinkPacket:
+#
+# Packet
+#
+class Packet:
 
 	def __init__(self, slnode = None, sl_op = None, rssi = 0, payload = None, pkt = None):
 		self.sl_op = None
@@ -386,12 +337,12 @@ class SteamLinkPacket:
 		self.via = []
 		self.payload = None
 
-		if pkt == None:						# construct pkt
+		if pkt is None:						# construct pkt
 			self.slid = slnode.sl_id
 			self.sl_op = sl_op
 			self.rssi = rssi + 256
 			self.payload = payload
-#			logging.debug("SteamLinkPaktet payload = %s", payload);
+#			logger.debug("SteamLinkPaktet payload = %s", payload);
 			if self.payload:
 				if type(self.payload) == type(b''):
 					self.bpayload = self.payload
@@ -434,7 +385,7 @@ class SteamLinkPacket:
 				self.pkt = struct.pack(sfmt, self.sl_op, self.bpayload)
 
 			else:
-				logging.error("SteamLinkPacket unknown sl_op in pkt %s", self.pkt)
+				logger.error("Packet unknown sl_op in pkt %s", self.pkt)
 
 			self.via = [0] #N.B. node_routes[self.slid].via
 			if len(self.via) > 0:
@@ -446,7 +397,7 @@ class SteamLinkPacket:
 
 		else:								# deconstruct pkt
 			self.pkt = pkt
-			logging.debug("pkt\n%s", "\n".join(phex(pkt, 4)))
+			logger.debug("pkt\n%s", "\n".join(phex(pkt, 4)))
 
 			if pkt[0] == SL_OP.BS:		# un-ecap all
 				while pkt[0] == SL_OP.BS:
@@ -454,7 +405,7 @@ class SteamLinkPacket:
 					self.sl_op, slid, self.rssi, self.qos, self.bpayload = struct.unpack(sfmt, pkt)
 					self.via.append(slid)
 					pkt = self.bpayload
-					logging.debug("pkg encap BS, len %s\n%s", len(pkt), "\n".join(phex(pkt, 4)))
+					logger.debug("pkg encap BS, len %s\n%s", len(pkt), "\n".join(phex(pkt, 4)))
 				self.rssi = self.rssi - 256
 #				self.payload = self.bpayload.decode('utf8')
 
@@ -477,7 +428,7 @@ class SteamLinkPacket:
 				try:
 					self.payload = self.bpayload.decode('utf8')
 				except Exception as e:
-					logging.error("cannot decode paket: %s %s", e, pkt);
+					logger.error("cannot decode paket: %s %s", e, pkt);
 					raise
 			elif pkt[0] == SL_OP.SS:
 				sfmt = '<BL%is' % (len(pkt) - 5)
@@ -505,7 +456,7 @@ class SteamLinkPacket:
 				self.sl_op, self.bpayload = struct.unpack(sfmt, pkt)
 				self.payload = self.bpayload.decode('utf8')
 			else:
-				logging.error("SteamLinkPacket unknown sl_op in pkt %s", pkt)
+				logger.error("Packet unknown sl_op in pkt %s", pkt)
 
 			if (pkt[0] & 0x01) == 1: 	# Data
 				self.via.append(self.slid)
@@ -525,6 +476,9 @@ class SteamLinkPacket:
 		return s
 
 
+#
+# TestPkt
+#
 class TestPkt:
 	packet_counter = 1
 	def __init__(self, gps=None, text=None, from_slid=None, pkt=None):
@@ -573,6 +527,9 @@ class TestPkt:
 		return "TESTP(%s)" % str(self.pkt)
 
 
+#
+# NodeRoutes
+#
 class NodeRoutes:
 	def __init__(self, dest, via):
 		self.dest = dest
@@ -586,25 +543,32 @@ class NodeRoutes:
 		return "VIA(0x%0x: %s" % (self.dest, svia)
 
 
+#
+# Steam
+#
 class Steam:
 	console_fields = {
  	 "Name": "self.name",
 	 "Description": "self.desc", 
 	 }
 
-	def __init__(self, conf):
+	def __init__(self, conf, broker,  sio):
 		self.steam_id = conf.get('id',0) 
+		self.sio = sio
 		self.name = Steam.get_steam_name(self.steam_id)
 		self.desc = conf.get('description', 'descr. for %s' % self.name)
 		self.ns = conf.get('namespace', '/steam')
 		self.default_room = Room("Steam",self.steam_id)
 		self.meshes = {}
-		logging.debug("Steam created: %s" % self.name)
+		logger.debug("Steam created: %s", self.name)
+		self.sl_broker = broker
 
 
 	async def start(self):
 		await self.console_update(self.default_room)
 
+	async def stop(self):
+		logging.debug("stopping steam")
 
 	def get_steam_name(steam_id):
 		return "Steam%i" % steam_id
@@ -625,13 +589,16 @@ class Steam:
 
 	async def console_update(self, room):
 		r = self.gen_console_data()
-		await a_emit_to_room(r, room)
+		await a_emit_to_room(r, room, self)
 
 
 	async def console_update_full(room):
 		await steam.console_update(room)
 
 
+#
+# Mesh
+#
 class Mesh:
 	mesh_idx = {}
 	console_fields = {
@@ -652,7 +619,7 @@ class Mesh:
 		self.default_room = Room("Mesh",self.name)
 		self.nodes = {}
 		Mesh.mesh_idx[self.name] = self
-		logging.debug("Mesh created: %s" % self.name)
+		logger.debug("Mesh created: %s", self.name)
 		self.console_update(self.default_room)
 
 
@@ -694,7 +661,7 @@ class Mesh:
 
 
 	def console_update_full(room):
-		logging.debug("Mesh console_update_full for %s", room)
+		logger.debug("Mesh console_update_full for %s", room)
 		if len(Mesh.mesh_idx) == 0:
 			return
 		if room.key == '*':		# all meshes
@@ -717,7 +684,6 @@ class Mesh:
 class Node:
 	slid_idx = {}
 	name_idx = {}
-	sl_broker = {}
 	console_fields = {
  	 "Name": "self.nodecfg.name",
 	 "Description": "self.nodecfg.desc", 
@@ -726,10 +692,11 @@ class Node:
 	 "SL ID": "self.sl_id", 
 	}
 	""" a node in the test set """
-	def __init__(self, sl_id, nodecfg = None):
+	def __init__(self, sl_id, nodecfg = None, steam = None):
 		self.sl_id = sl_id
 		self.nodecfg = nodecfg
 		self.name = self.mkname()
+		self.steam = steam
 		self.response_q = queue.Queue(maxsize=1)
 
 		self.packets_sent = 0
@@ -796,17 +763,17 @@ class Node:
 		self.log_pkt(sl_pkt)
 		self.packets_sent += 1
 		self.console_update(self.default_room)
-		Node.sl_broker.publish(self.get_firsthop(), sl_pkt, sub=sub)
+		self.steam.sl_broker.publish(self.get_firsthop(), sl_pkt, sub=sub)
 
 
 	def send_boot_cold(self):
-		sl_pkt = SteamLinkPacket(slnode=self, sl_op=SL_OP.BC)
+		sl_pkt = Packet(slnode=self, sl_op=SL_OP.BC)
 		self.publish_pkt(sl_pkt)
 		return 
 
 
 	def send_get_status(self):
-		sl_pkt = SteamLinkPacket(slnode=self, sl_op=SL_OP.GS)
+		sl_pkt = Packet(slnode=self, sl_op=SL_OP.GS)
 		self.publish_pkt(sl_pkt)
 #		rc = self.get_response(timeout=SL_RESPONSE_WAIT_SEC)
 		return 
@@ -816,7 +783,7 @@ class Node:
 		if self.state != "UP": return SL_OP.NC
 		lorainit = struct.pack('<BLB', 0, 0, radio)
 		logging.debug("send_set_radio_param: len %s, pkt %s", len(lorainit), lorainit)
-		sl_pkt = SteamLinkPacket(slnode=self, sl_op=SL_OP.SR, payload=lorainit)
+		sl_pkt = Packet(slnode=self, sl_op=SL_OP.SR, payload=lorainit)
 		self.publish_pkt(sl_pkt)
 
 		rc = self.get_response(timeout=SL_RESPONSE_WAIT_SEC)
@@ -825,7 +792,7 @@ class Node:
 
 	def send_testpacket(self, pkt):
 		if self.state != "UP": return SL_OP.NC
-		sl_pkt = SteamLinkPacket(slnode=self, sl_op=SL_OP.TD, payload=pkt)
+		sl_pkt = Packet(slnode=self, sl_op=SL_OP.TD, payload=pkt)
 		self.publish_pkt(sl_pkt)
 		rc = self.get_response(timeout=SL_RESPONSE_WAIT_SEC)
 		logging.debug("send_packet %s got %s", sl_pkt, SL_OP.code(rc))
@@ -1005,22 +972,22 @@ class LogData:
 				return None
 			lwait -= waited
 
-async def aemit(r, room):
+async def aemit(r, room, steam):
 	logging.debug("ROOM %s EMIT %s" % (room, r))
 	try:
-		await sio.emit('data_full', r, namespace=steam.ns, room=room)
+		await steam.sio.emit('data_full', r, namespace=steam.ns, room=room)
 	except Exception as e:
 		logging.warn("emit %s exception: %s", room, e)
 
 
-async def a_emit_to_room(r, room):
+async def a_emit_to_room(r, room, steam):
 	logging.debug("emit_to_room %s: %s",room,r)
 	sroom = str(room)
 	if room.no_key() != sroom:
-		await aemit(r, room.no_key())
+		await aemit(r, room.no_key(), steam)
 	if room.is_header():
 		r['header'] = True
-	await aemit(r, sroom)
+	await aemit(r, sroom, steam)
 
 
 def emit(r, room):

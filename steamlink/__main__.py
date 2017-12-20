@@ -13,79 +13,91 @@ import time
 import yaml
 import argparse
 
-import aiomqtt
 import asyncio
 import socketio
 from aiohttp import web
 
 
 # SteamLink project imports
-import steamlink 
-import steamlink.const
+from steamlink import (
+	Room,
+	Steam,
+	Mesh,
+	Node,
+	SL_OP,
+	Packet,
+	LogData,
+	Mqtt,
+)
+
+from steamlink.testdata import TestData
+
+from steamlink.const import (
+	LIB_DIR,
+	PROJECT_PACKAGE_NAME, 
+    INDEX_HTML, 
+	__version__
+)
 
 
 class SLConsoleNamespace(socketio.AsyncNamespace):
+	def __init__(self, steam):
+		super().__init__()
+		self.steam = steam
+		logger.debug("SLConsoleNamespace registered for ns %s", self.steam.ns)
+
+
 	def on_connect(self, sid, environ):
-		logging.debug("SLConsoleNamespace connect %s" % str(environ['REMOTE_ADDR']))
+		logger.debug("SLConsoleNamespace connect %s",str(environ['REMOTE_ADDR']))
 
 	def on_disconnect(self, sid):
-		logging.debug("SLConsoleNamespace disconnect")
+		logger.debug("SLConsoleNamespace disconnect")
 
 
 	async def on_my_event(self, sid, data):
-		logging.debug("SLConsoleNamespace on_my_event %s" % data)
-#		await self.emit('my_response', {'data': data['data']} ) #, room=sid, namespace=steam.ns)
+		logger.debug("SLConsoleNamespace on_my_event %s", data)
+#		await self.emit('my_response', {'data': data['data']} ) #, room=sid, namespace=self.steam.ns)
 		return "ACK"
 
 	async def on_need_log(self, sid, data):
-		logging.debug("SLConsoleNamespace need_log %s" % data)
-#		await self.emit('my_response', {'data': data['data']} ) #, room=sid, namespace=steam.ns)
+		logger.debug("SLConsoleNamespace need_log %s", data)
+#		await self.emit('my_response', {'data': data['data']} ) #, room=sid, namespace=self.steam.ns)
 		node = data.get('id',None)
-		if  not node in steamlink.Node.name_idx:
+		if  not node in Node.name_idx:
 			return "NAK"
 		try:
-			r = steamlink.Node.name_idx[node].console_pkt_log(data['key'], int(data['count']))
+			r = Node.name_idx[node].console_pkt_log(data['key'], int(data['count']))
 		except:
 			return "NAK"
 		return "ACK"
 
 
 	async def on_join(self, sid, message):
-		logging.debug("SLConsoleNamespace on_join %s" % message)
-		self.enter_room(sid, message['room'], namespace=steam.ns)
-		room = steamlink.Room(sroom=message['room'])
+		logger.debug("SLConsoleNamespace on_join %s", message)
+		self.enter_room(sid, message['room'], namespace=self.steam.ns)
+		room = Room(sroom=message['room'])
 		if room.lvl == 'Steam':
 			await Steam.console_update_full(room)
 		elif room.lvl == 'Mesh':
-			steamlink.Mesh.console_update_full(room)
+			Mesh.console_update_full(room)
 		elif room.lvl == 'Node':
-			steamlink.Node.console_update_full(room)
+			Node.console_update_full(room)
 		elif room.lvl == 'Pkt':
-			steamlink.Node.console_update_tail(room)
+			Node.console_update_tail(room)
 		else:
 			return "NAK"
 		return "ACK"
 
 	async def on_leave(self, sid, message):
-		logging.debug("SLConsoleNamespace on_leave %s" % message)
-		self.leave_room(sid, message['room'], namespace=steam.ns)
-#		await sio.emit('my_response', {'data': 'Left room: ' + message['room']}, room=sid, namespace=steam.ns)
+		logger.debug("SLConsoleNamespace on_leave %s", message)
+		self.leave_room(sid, message['room'], namespace=self.steam.ns)
+#		await sio.emit('my_response', {'data': 'Left room: ' + message['room']}, room=sid, namespace=self.steam.ns)
 		return "ACK"
 
 
 #
-# Web/Socketio
+# Socketio
 #
-async def index(request):
-	index_html = conf_console.get('index',INDEX_HTML)
-	with open(index_html) as f:
-		return web.Response(text=f.read(), content_type='text/html')
-
-
-async def config_js(request):
-	rj = json.dumps(conf['console'])
-	return web.Response(text=rj, content_type='application/json')
-
 
 async def background_task():
 	"""Example of how to send server generated events to clients."""
@@ -93,7 +105,7 @@ async def background_task():
 	while True:
 		await sio.sleep(5)
 		count += 1
-		logging.debug("emit background")
+		logger.debug("emit background")
 		await sio.emit('my_response', {'data': 'Server generated event'},
 				namespace=steam.ns, room="r1")
 
@@ -130,13 +142,30 @@ def phex(p, l=0):
 
 def getargs():
 	parser = argparse.ArgumentParser()
-	parser.add_argument("-c", "--config", help="config file, default steamlink.yaml")
-	parser.add_argument("-l", "--log", help="set loglevel, default is info")
-	parser.add_argument("-C", "--createconfig", help="create a skeleton config file", default=False, action='store_true')
-	parser.add_argument("-T", "--testdata", help="generate test data", default=False, action='store_true')
-	parser.add_argument("-X", "--debug", help="increase debug level",
-					default=0, action="count")
-#	parser.add_argument("conf", help="config file to use", default=None)
+	parser.add_argument("-c", "--config", 
+							help="config file default steamlink.yaml",
+							default="steamlink.yaml")
+	parser.add_argument("-d", "--daemon", 
+							help="excute as a daemon",
+							default=False, action='store_true')
+	parser.add_argument("-l", "--log", 
+							help="set loglevel, default is info", 
+							default="info")
+	parser.add_argument("-C", "--createconfig", 
+							help="create a skeleton config file",
+							default=False, action='store_true')
+	parser.add_argument("-p", "--pid-file", 
+							help="path to pid file when running as daemon", 
+							default=None)
+	parser.add_argument("-T", "--testdata", 
+							help="generate test data",
+							default=False, action='store_true')
+	parser.add_argument("-v", "--verbose", 
+							help="print some info",
+							default=False, action='store_true')
+	parser.add_argument("-X", "--debug", 
+							help="increase debug level",
+							default=0, action="count")
 	return parser.parse_args()
 
 
@@ -152,7 +181,7 @@ def createconfig(conf_fname):
 	if os.path.exists(conf_fname):
 		print("error: config file '%s' exists, will NOT overwrite with sample!!" % conf_fname)
 		sys.exit(1)
-	sample_conf = steamlink.const.LIB_DIR + '/steamlink.yaml.sample'
+	sample_conf = LIB_DIR + '/steamlink.yaml.sample'
 	conf_f = "".join(open(sample_conf, "r").readlines())
 	open(conf_fname,"w").write(conf_f)
 	print("note: config sample copied to %s" % (conf_fname))
@@ -160,199 +189,280 @@ def createconfig(conf_fname):
 
 
 #
-# Web
+# WebApp
 #
-def web_on_cleanup(app):
-	logging.info("web closing down")
+class WebApp(object):
 
-async def web_on_shutdown(app):
-    for ws in app['websockets']:
-        await ws.close(code=WSCloseCode.GOING_AWAY,
-                       message='Server shutdown')
-
-async def websocket_handler(request):
-    ws = web.WebSocketResponse()
-    await ws.prepare(request)
-
-    request.app['websockets'].append(ws)
-    try:
-        async for msg in ws:
-            ...
-    finally:
-        request.app['websockets'].remove(ws)
-
-    return ws
-
-#
-# Test
-#
-class TestData:
-	"""" generate  test data in a thread """
-	def __init__(self, conf):
-		super(TestData, self).__init__()
-		self.name = "TestData"
+	def __init__(self, steam, sio, conf, loop = None):
+		self.name = "WebApp"
 		self.conf = conf
-		self.running = True
-		logging.info("starting Test Data")
+		self.sio = sio
+		self.steam = steam
+		if loop is None:
+			self.loop = asyncio.get_event_loop()
+		else:
+			self.loop = loop
+		self.app = web.Application()
+		self.app['websockets'] = []
+		#self.app.router.add_static('/static', 'static')
+		self.app.router.add_get('/', self.index)
+		self.app.router.add_get('/config.js', self.config_js)
+		self.app.on_cleanup.append(self.web_on_cleanup)
+		self.app.on_shutdown.append(self.web_on_shutdown)
+
+		self.api_password = conf.get('api_password', None)
+		self.ssl_certificate = conf.get('ssl_certificate', None)
+		self.ssl_key = conf.get('ssl_key', None)
+		self.host = conf.get('host', '127.0.0.1')
+		self.port = conf.get('port', 8080)
+		self._handler = None
+		self.server = None
 
 
-	def stop(self):
-		if self.running:
-			self.running = False
-			logging.debug("%s waiting for shutdown", self.name)
+	def start(self):
+		logger.info("%s starting, server %s port %s", self.name, self.host,  self.port)
+		self.sio.attach(self.app)
+		self.sio.register_namespace(SLConsoleNamespace(self.steam))
+		shutdown_timeout = int(self.conf.get('shutdown_timeout','60'))
+
+#		self.loop.run_until_complete(app.startup())
+		web.run_app(self.app,
+			host=self.host,
+			port=self.port,
+			shutdown_timeout=shutdown_timeout,
+			loop=self.loop)
+	
+
+	async def index(self, request):
+		index_html = self.conf.get('index',INDEX_HTML)
+		with open(index_html) as f:
+			return web.Response(text=f.read(), content_type='text/html')
 
 
-	async def start(self):
-		self.nodes = {}
-		logging.info("%s task running" % self.name)
-		await sio.sleep(conf.get('startwait',1))
-
-		for mesh in range(conf.get('meshes',1)):
-			for j in range(conf.get('nodes',1)):
-				i = mesh * 256 + j
-				self.create_node(i)
-				await sio.sleep(0.2)
-
-		for x in range(conf.get('packets',1)):
-			for i in range(conf.get('nodes',1)):
-				self.create_data(i, "hello from packet %s" % x)
-				await sio.sleep(1)
-
-		self.running = False
-		logging.debug("%s done", self.name)
+	async def config_js(self, request):
+		rj = json.dumps(self.conf)
+		return web.Response(text=rj, content_type='application/json')
 
 
-	def create_node(self, i):
-		logging.debug("sending an ON pkt")
-		self.nodes[i] = steamlink.Node(i, nodecfg = None)
-		p = steamlink.SteamLinkPacket(self.nodes[i], sl_op = steamlink.SL_OP.ON, payload = None, pkt = None)
+	def web_on_cleanup(self, app):
+		logger.info("web closing down")
 
-		self.nodes[i].publish_pkt(p, "data")
-		
 
-	def create_data(self, i, data):
-		p = steamlink.SteamLinkPacket(self.nodes[i], sl_op = steamlink.SL_OP.DS, payload = "Hello", pkt = None)
-		self.nodes[i].publish_pkt(p, data)
+	async def web_on_shutdown(self, app):
+		for ws in self.app['websockets']:
+			await ws.close(code=WSCloseCode.GOING_AWAY,
+						   message='Server shutdown')
+
+#	async def websocket_handler(self, request):
+#		ws = web.WebSocketResponse()
+#		await ws.prepare(request)
+#	
+#		request.self.app['websockets'].append(ws)
+#		try:
+#			async for msg in ws:
+#				...
+#		finally:
+#			request.self.app['websockets'].remove(ws)
+#	
+#		return ws
+#
+
+
+def setup_logging(loglevel, debuglvl):
+	global logger
+	FORMAT = '%(asctime)-15s: %(message)s'
+	logging.basicConfig(format=FORMAT)
+	logger = logging.getLogger()
+	
+	logger.setLevel(loglevel)
+	logger.DBG = debuglvl
+	
+# borrowed from homeassistant
+def daemonize() -> None:
+	"""Move current process to daemon process."""
+	# Create first fork
+	pid = os.fork()
+	if pid > 0:
+		sys.exit(0)
+
+	# Decouple fork
+	os.setsid()
+
+	# Create second fork
+	pid = os.fork()
+	if pid > 0:
+		sys.exit(0)
+
+	# redirect standard file descriptors to devnull
+	infd = open(os.devnull, 'r')
+	outfd = open(os.devnull, 'a+')
+	sys.stdout.flush()
+	sys.stderr.flush()
+	os.dup2(infd.fileno(), sys.stdin.fileno())
+	os.dup2(outfd.fileno(), sys.stdout.fileno())
+	os.dup2(outfd.fileno(), sys.stderr.fileno())
+
+
+def check_pid(pid_file: str) -> None:
+	"""Check that HA is not already running."""
+	# Check pid file
+	try:
+		pid = int(open(pid_file, 'r').readline())
+	except IOError:
+		# PID File does not exist
+		return
+
+	# If we just restarted, we just found our own pidfile.
+	if pid == os.getpid():
+		return
+
+	try:
+		os.kill(pid, 0)
+	except OSError:
+		# PID does not exist
+		return
+	print('Fatal Error: HomeAssistant is already running.')
+	sys.exit(1)
+
+
+def write_pid(pid_file: str) -> None:
+	"""Create a PID File."""
+	pid = os.getpid()
+	try:
+		open(pid_file, 'w').write(str(pid))
+	except IOError:
+		print('Fatal Error: Unable to write pid file {}'.format(pid_file))
+		sys.exit(1)
+
+
+def closefds_osx(min_fd: int, max_fd: int) -> None:
+	"""Make sure file descriptors get closed when we restart.
+
+	We cannot call close on guarded fds, and we cannot easily test which fds
+	are guarded. But we can set the close-on-exec flag on everything we want to
+	get rid of.
+	"""
+	from fcntl import fcntl, F_GETFD, F_SETFD, FD_CLOEXEC
+
+	for _fd in range(min_fd, max_fd):
+		try:
+			val = fcntl(_fd, F_GETFD)
+			if not val & FD_CLOEXEC:
+				fcntl(_fd, F_SETFD, val | FD_CLOEXEC)
+		except IOError:
+			pass
+
 
 
 #
 # Main
 #
-nodes = {}
-node_routes = {}
-locations = {}
-radio_param = {}
+def main() -> int:
+	""" start steamlinks """
 
-DBG = 0
-
-cl_args = getargs()
-if not cl_args.log:
-	if cl_args.debug > 0:
-		loglevel = logging.DEBUG
+	cl_args = getargs()
+	if not cl_args.log:
+		if cl_args.debug > 0:
+			loglevel = logging.DEBUG
+		else:
+			loglevel = logging.WARN
 	else:
-		loglevel = logging.WARN
-else:
+		try:
+			loglevel = getattr(logging, cl_args.log.upper())
+		except Exception as e:
+			print("invalid logging level, use debug, info, warning, error or critical")
+			return(1)
+	
+	setup_logging(loglevel, cl_args.debug)
+#	if cl_args.debug > 1:
+#		asyncio.AbstractEventLoop.set_debug(enabled=True)
+
+	if cl_args.verbose:
+		print("%s version %s" % (PROJECT_PACKAGE_NAME, __version__))
+	
+	
+	# create config  if -C
+	conff = cl_args.config 
+	if cl_args.createconfig:
+		rc = createconfig(conff)
+		return(rc)
+	
+	# load config 
+	conf = loadconfig(conff)
+	
+	# Daemon functions
+	if cl_args.pid_file:
+		check_pid(cl_args.pid_file)
+	if cl_args.daemon:
+		if cl_args.verbose:
+			print("continuing in background")
+		daemonize()
+	if cl_args.pid_file:
+		write_pid(cl_args.pid_file)
+
+	conf_general = conf.get('general',{})
+	conf_console = conf.get('console',{})
+	conf_mqtt = conf.get('mqtt',{})
+	
+	#sl_log = LogData(conf['logdata'])
+	sl_log = None
+	
+	logger.debug("startup: create Mqtt")
+	mqtt = Mqtt(conf_mqtt, sl_log)
+	mqtt.start()
+	logger.debug("startup: Mqtt connection started")
+	mqtt.wait_connect()
+	
+	aioloop = asyncio.get_event_loop()
+
+	logging.debug("starting socketio")
+	ping_timeout = conf_general.get('ping_timeout','10')
+	sio = socketio.AsyncServer(async_mode='aiohttp') #, ping_timeout = ping_timeout) 
+
+	logger.debug("startup: create Steam")
+	steam = Steam(conf.get('Steam',{}), mqtt, sio)
+	logger.debug("startup: create WebApp")
+	app = WebApp(steam, sio, conf_console, loop=aioloop)
+	
+	aioloop.run_until_complete(app.start())
+	logger.debug("startup: web app started")
+	aioloop.run_until_complete(steam.start())
+	logger.debug("startup: steam started")
+
+	
+	if cl_args.testdata:
+		TestTask = TestData(conf['testdata'], sio)
+		asyncio.run_coroutine_threadsafe(TestTask.start(), aioloop)
+	else:
+		TestTask = None
+	
+	logging.debug("starting store")
+	
+	# N.B. need way to stop background task for proper shutdown
+	#sio.start_background_task(background_task)
+	
+
 	try:
-		loglevel = getattr(logging, cl_args.log.upper())
+#		app.start()
+		asyncio.run_coroutine_threadsafe(app.start(), aioloop)
+	
+	except KeyboardInterrupt as e:
+		print("exit")
 	except Exception as e:
-		print("invalid logging level, use debug, info, warning, error or critical")
-		sys.exit(1)
-
-FORMAT = '%(asctime)-15s: %(message)s'
-logging.basicConfig(format=FORMAT)
-logger = logging.getLogger()
-
-logger.setLevel(loglevel)
-DBG = cl_args.debug 
-logger.DBG = DBG
-
-logger.info("%s version %s" % (steamlink.const.PROJECT_PACKAGE_NAME, steamlink.const.__version__))
-
-
-# load config 
-conff = cl_args.config if cl_args.config else "steamlink.yaml"
-if cl_args.createconfig:
-	rc = createconfig(conff)
-	sys.exit(rc)
+		logging.warn("general exception %s", e, exc_info=True)
+	
+	#
+	# Shutdown
+	if TestTask:
+		logging.debug("stopping TestTask")
+		TestTask.stop()
+	
+	aioloop.run_until_complete(mqtt.stop())
+	
+	logging.info("done")
+	
 
 
-conf = loadconfig(conff)
-if DBG > 1: print(conf)
+if __name__ == "__main__":
+	sys.exit(main())
 
-conf_general = conf.get('general',{})
-conf_console = conf.get('console',{})
-
-#sl_log = steamlink.LogData(conf['logdata'])
-sl_log = None
-
-aioloop = asyncio.get_event_loop()
-#
-try:
-	sl_mqtt = steamlink.SteamLinkMqtt(conf['steamlink_mqtt'], sl_log, aioloop)
-except KeyError as e:
-	logging.error("Gps config key missing: %s", e)
-	sys.exit(1)
-
-try:
-	aioloop.run_until_complete(sl_mqtt.start())
-except KeyboardInterrupt as e:
-	print("exit")
-	sys.exit(1)
-except Exception as e:
-	print("setup exception %s" % e)
-	sys.exit(2)
-
-steamlink.Node.sl_broker = sl_mqtt
-
-logging.debug("starting socketio")
-ping_timeout = conf_general.get('ping_timeout','10')
-sio = socketio.AsyncServer(async_mode='aiohttp') #, ping_timeout = ping_timeout) 
-
-app = web.Application()
-app['websockets'] = []
-#app.router.add_static('/static', 'static')
-app.router.add_get('/', index)
-app.router.add_get('/config.js', config_js)
-app.on_cleanup.append(web_on_cleanup)
-app.on_shutdown.append(web_on_shutdown)
-
-# create top level
-steam = steamlink.Steam(conf.get('Steam',{}))
-
-sio.attach(app)
-sio.register_namespace(SLConsoleNamespace(steam.ns))
-
-aioloop.run_until_complete(steam.start())
-
-if cl_args.testdata:
-	TestTask = TestData(conf['testdata'])
-	asyncio.run_coroutine_threadsafe(TestTask.start(), aioloop)
-else:
-	TestTask = None
-
-logging.debug("starting store")
-
-# N.B. need way to stop background task for proper shutdown
-#sio.start_background_task(background_task)
-
-
-host = conf_console.get('host', '127.0.0.1')
-port = conf_console.get('port', 8080)
-shutdown_timeout = int(conf_console.get('shutdown_timeout','60'))
-try:
-	web.run_app(app, host=host, port=port, shutdown_timeout=shutdown_timeout)
-except KeyboardInterrupt as e:
-	print("exit")
-except Exception as e:
-	logging.warn("general exception %s", e, exc_info=True)
-
-#
-# Shutdown
-if TestTask:
-	logging.debug("stopping TestTask")
-	TestTask.stop()
-
-logging.debug("stopping sl_mqtt")
-sl_mqtt.stop()
-
-logging.info("done")

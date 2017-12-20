@@ -12,12 +12,12 @@ testdata:
     meshes: 1
     packets: 1
 
-steamlink_mqtt:
+mqtt:
     clientid: "CLIENTID"
     username: "USERNAME"
     password: "PASSWORD"
     server: "mqtt.steamlink.net"
-    cert: "ca.crt"
+    ssl_certificate: "ca.crt"
     port: 8883
 
     prefix: "SteamLink"
