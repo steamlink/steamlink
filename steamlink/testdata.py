@@ -29,16 +29,17 @@ class TestData:
 	async def start(self):
 		self.nodes = {}
 		logger.info("%s task running" % self.name)
-		await self.sio.sleep(conf.get('startwait',1))
+		await self.sio.sleep(self.conf.get('startwait',1))
+		logger.info("%s task proceeding" % self.name)
 
-		for mesh in range(conf.get('meshes',1)):
-			for j in range(conf.get('nodes',1)):
+		for mesh in range(self.conf.get('meshes',1)):
+			for j in range(self.conf.get('nodes',1)):
 				i = mesh * 256 + j
 				self.create_node(i)
 				await self.sio.sleep(0.2)
 
-		for x in range(conf.get('packets',1)):
-			for i in range(conf.get('nodes',1)):
+		for x in range(self.conf.get('packets',1)):
+			for i in range(self.conf.get('nodes',1)):
 				self.create_data(i, "hello from packet %s" % x)
 				await self.sio.sleep(1)
 

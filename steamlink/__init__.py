@@ -14,9 +14,7 @@ import yaml
 import argparse
 import random
 
-from threading import Thread, Event
-
-import paho.mqtt.client as mqtt
+import aiomqtt
 import asyncio
 import socketio
 from aiohttp import web
@@ -210,12 +208,15 @@ class SL_OP:
 #
 # Mqtt
 #
-class Mqtt(Thread):
-	def __init__(self, conf, sl_log):
-		super().__init__()
+class Mqtt:
+	def __init__(self, conf, sl_log, loop = None):
 		self.conf = conf
 		self.name = "mqtt"
 		self.sl_log = sl_log
+		if loop is None:
+			self.loop = asyncio.get_event_loop()
+		else:
+			self.loop = loop
 
 		self.topic_prefix = conf.get('prefix', 'SteamLink')
 		self.topic_control = conf.get('control', 'control')
@@ -231,8 +232,12 @@ class Mqtt(Thread):
 		self.data_topic_x = "%s/%%s/%s" % (self.topic_prefix, self.topic_data)
 		self.data_topic = "%s/+/%s" % (self.topic_prefix, self.topic_data)
 
-		self.connected = Event()
-		self.mq = mqtt.Client(client_id=self.clientid)
+		self.connected = asyncio.Event(loop=loop)
+		self.subscribed = asyncio.Event(loop=loop)
+		self.disconnected = asyncio.Event(loop=loop)
+
+		self.mq = aiomqtt.Client(client_id=self.clientid, loop=loop)
+		self.mq.loop_start()
 #		self.mq.enable_logger(logger)
 		if self.ssl_certificate:
 			logger.debug("%s: using cert %s", self.name, self.ssl_certificate)
@@ -241,23 +246,19 @@ class Mqtt(Thread):
 		if self.username and self.password:
 			self.mq.username_pw_set(self.username, self.password)
 		self.mq.on_connect = self.on_connect
+		self.mq.on_subscribe = self.on_subscribe
 		self.mq.on_message = self.on_message
 		self.mq.on_disconnect = self.on_disconnect
 		self.running = True
-		self.task = Thread(target=self.run)
-		self.task.daemon = True
 
 		self.subscription_list = [self.data_topic]
 		self.mq.message_callback_add(self.data_topic, self.on_data_msg)
 
 
-	def run(self):
-		logging.info("%s: task start" % self.name)
-		while self.running:
-			logger.info("%s connecting to %s:%s", self.name, self.server, self.port)
-			self.mq.connect(self.server, self.port, 60)
-			logger.info("%s connecting" % self.name)
-			self.mq.loop_forever()
+	async def start(self):
+		logger.info("%s connecting to %s:%s", self.name, self.server, self.port)
+		await self.mq.connect(self.server, self.port, 60)
+		await self.wait_connect()
 
 
 	def stop(self):
@@ -266,10 +267,14 @@ class Mqtt(Thread):
 		if self.connected.is_set():
 			self.mq.disconnect()
 
-	def wait_connect(self):
+	async def wait_connect(self):
 		logger.debug("%s waiting for connect", self.name)
-		self.connected.wait()
+		await self.connected.wait()
 		logger.info("%s got connected", self.name)
+		for topic in self.subscription_list:
+			logger.debug("%s subscribe %s", self.name, topic)
+			self.mq.subscribe(topic)
+			await self.subscribed.wait()
 
 
 	def on_connect(self, client, userdata, flags, result):
@@ -277,12 +282,13 @@ class Mqtt(Thread):
 		if result == 0:
 			self.connected.set()
 	
-			for topic in self.subscription_list:
-				logger.debug("%s on_connect subscribe %s", self.name, topic)
-				self.mq.subscribe(topic)
+
+	def on_subscribe(self, client, userdata, mid, granted_qos):
+		self.subscribed.set()
 
 
 	def on_disconnect(self, client, userdata, flags):
+		self.disconnected.set()
 		self.connected.clear()
 
 
@@ -547,6 +553,7 @@ class NodeRoutes:
 # Steam
 #
 class Steam:
+	root = None
 	console_fields = {
  	 "Name": "self.name",
 	 "Description": "self.desc", 
@@ -583,6 +590,7 @@ class Steam:
 			}
 		return {
 		  'id': self.steam_id,
+		  'type': 'home',
 		  'display_vals':  r
 		}
 		return r
@@ -593,7 +601,7 @@ class Steam:
 
 
 	async def console_update_full(room):
-		await steam.console_update(room)
+		await Steam.root.console_update(room)
 
 
 #
@@ -610,8 +618,9 @@ class Mesh:
 	 "Packets received": "self.packets_received",
 	 }
 
-	def __init__(self, mesh_id):
+	def __init__(self, mesh_id, steam):
 		self.mesh_id = mesh_id 
+		self.steam = steam 
 		self.name = Mesh.get_mesh_name(mesh_id)
 		self.desc = "descr. for %s" % self.name
 		self.packets_sent = 0
@@ -652,31 +661,32 @@ class Mesh:
 			r[label] = v
 		return {
 		  'id': self.name,
+		  'type': 'mesh',
 		  'display_vals':  r
 		}
 
-	def console_update(self, room):
+	async def console_update(self, room):
 		r = self.gen_console_data()
-		emit_to_room(r, room)
+		await a_emit_to_room(r, room, self.steam)
 
 
-	def console_update_full(room):
+	async def console_update_full(room):
 		logger.debug("Mesh console_update_full for %s", room)
 		if len(Mesh.mesh_idx) == 0:
 			return
 		if room.key == '*':		# all meshes
 			print("mesh index:", Mesh.mesh_idx.keys())
 			for m in list(Mesh.mesh_idx.keys()):
-				Mesh.mesh_idx[m].console_update(room)
+				await Mesh.mesh_idx[m].console_update(room)
 		else:
 			if not room.key in Mesh.mesh_idx:
 				logging.error("console did not find %s" % room.key)
 				return
 			if room.detail:
 				for node in Mesh.mesh_idx[room.key].nodes.keys():
-					Mesh.mesh_idx[room.key].nodes[node].console_update(room)
+					await Mesh.mesh_idx[room.key].nodes[node].console_update(room)
 			else:
-				Mesh.mesh_idx[room.key].console_update(room)
+				await Mesh.mesh_idx[room.key].console_update(room)
 
 #
 # Node
@@ -716,7 +726,7 @@ class Node:
 		mesh_id = self.mesh_id()
 		self.mesh_name = Mesh.get_mesh_name(mesh_id)
 		if not self.mesh_name in Mesh.mesh_idx:
-			Mesh(mesh_id)
+			Mesh(mesh_id, steam)
 		Mesh.mesh_idx[self.mesh_name].add_node(self)
 		self.console_update(self.default_room)
 
@@ -875,48 +885,51 @@ class Node:
 
 		return {
 		  'id': self.name,
+		  'type': 'node',
 		  'display_vals':  r
 		}
 
 
-	def console_update_full(room):
+	async def console_update_full(room):
 		if len(Node.name_idx) == 0:
 			return
 		if room.key == '*':		# all nodes
 			print("node index:", Node.name_idx.keys())
 			for m in list(Node.name_idx.keys()):
-				Node.name_idx[m].console_update(room)
+				await Node.name_idx[m].console_update(room)
 		else:
 			if not room.key in Node.name_idx:
 				logging.error("console did not find %s" % room.key)
 				return
 			if room.detail:		# FIX when item paging
-				Node.name_idx[room.key].console_pkt_log(room, '', -20)
+				await Node.name_idx[room.key].console_pkt_log(room, '', -20)
 			else:
-				Node.name_idx[room.key].console_update(room)
+				await Node.name_idx[room.key].console_update(room)
 
 
-	def console_update(self, room):
+	async def console_update(self, room):
 		r = self.gen_console_data()
-		emit_to_room(r, room)
+		a_emit_to_room(r, room, self.steam)
 
 
 	def console_tail(self, room):
 		v = self.packet_log.get('',-1)
 		r = {
 		  'id': key,
+		  'type': 'pkt',
 		  'display_vals':  { 'data': v }
 		}
 		emit_to_room(r, room)
 
 
-	def console_pkt_log(self, room, key, count):
+	async def console_pkt_log(self, room, key, count):
 		v = self.packet_log.get(key, count)
 		r = {
 		  'id': key,
+		  'type': 'pkt',
 		  'display_vals':  v 
 		}
-		emit_to_room(r, room)
+		a_emit_to_room(r, room, self.steam)
 
 
 # 
@@ -990,22 +1003,22 @@ async def a_emit_to_room(r, room, steam):
 	await aemit(r, sroom, steam)
 
 
-def emit(r, room):
-	logging.debug("ROOM %s EMIT %s", room, r)
-	try:
-		asyncio.run_coroutine_threadsafe(sio.emit('data_full', r, namespace=steam.ns, room=room), aioloop)
-	except Exception as e:
-		logging.warn("emit %s exception: %s", room, e)
-
-
-def emit_to_room(r, room):
-	logging.debug("emit_to_room %s: %s",room,r)
-	sroom = str(room)
-	if room.no_key() != sroom:
-		emit(r, room.no_key())
-	if room.is_header():
-		r['header'] = True
-	emit(r, sroom)
+#def emit(r, room):
+#	logging.debug("ROOM %s EMIT %s", room, r)
+#	try:
+#		asyncio.run_coroutine_threadsafe(sio.emit('data_full', r, namespace=steam.ns, room=room), aioloop)
+#	except Exception as e:
+#		logging.warn("emit %s exception: %s", room, e)
+#
+#
+#def emit_to_room(r, room):
+#	logging.debug("emit_to_room %s: %s",room,r)
+#	sroom = str(room)
+#	if room.no_key() != sroom:
+#		emit(r, room.no_key())
+#	if room.is_header():
+#		r['header'] = True
+#	emit(r, sroom)
 
 
 FORMAT = '%(asctime)-15s: %(message)s'

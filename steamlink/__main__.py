@@ -42,8 +42,8 @@ from steamlink.const import (
 
 class SLConsoleNamespace(socketio.AsyncNamespace):
 	def __init__(self, steam):
-		super().__init__()
 		self.steam = steam
+		super().__init__(self.steam.ns)
 		logger.debug("SLConsoleNamespace registered for ns %s", self.steam.ns)
 
 
@@ -79,11 +79,11 @@ class SLConsoleNamespace(socketio.AsyncNamespace):
 		if room.lvl == 'Steam':
 			await Steam.console_update_full(room)
 		elif room.lvl == 'Mesh':
-			Mesh.console_update_full(room)
+			await Mesh.console_update_full(room)
 		elif room.lvl == 'Node':
-			Node.console_update_full(room)
+			await Node.console_update_full(room)
 		elif room.lvl == 'Pkt':
-			Node.console_update_tail(room)
+			await Node.console_update_tail(room)
 		else:
 			return "NAK"
 		return "ACK"
@@ -406,50 +406,52 @@ def main() -> int:
 	
 	#sl_log = LogData(conf['logdata'])
 	sl_log = None
-	
-	logger.debug("startup: create Mqtt")
-	mqtt = Mqtt(conf_mqtt, sl_log)
-	mqtt.start()
-	logger.debug("startup: Mqtt connection started")
-	mqtt.wait_connect()
-	
 	aioloop = asyncio.get_event_loop()
 
-	logging.debug("starting socketio")
+	logger.debug("startup: create Mqtt")
+	mqtt = Mqtt(conf_mqtt, sl_log)
+	logger.debug("startup: starting Mqtt")
+	aioloop.run_until_complete(mqtt.start())
+	
 	ping_timeout = conf_general.get('ping_timeout','10')
-	sio = socketio.AsyncServer(async_mode='aiohttp') #, ping_timeout = ping_timeout) 
 
+	logging.debug("startup: create socketio")
+	sio = socketio.AsyncServer(async_mode='aiohttp') #, ping_timeout = ping_timeout) 
 	logger.debug("startup: create Steam")
 	steam = Steam(conf.get('Steam',{}), mqtt, sio)
+	Steam.root = steam	## !!
 	logger.debug("startup: create WebApp")
 	app = WebApp(steam, sio, conf_console, loop=aioloop)
-	
-	aioloop.run_until_complete(app.start())
-	logger.debug("startup: web app started")
-	aioloop.run_until_complete(steam.start())
-	logger.debug("startup: steam started")
 
+	logger.debug("startup: starting steam")
+	aioloop.run_until_complete(steam.start())
 	
 	if cl_args.testdata:
+		logger.debug("startup: create TestData")
 		TestTask = TestData(conf['testdata'], sio)
+		logger.debug("startup: starting TestData")
+#		aioloop.run_until_complete(TestTask.start())
 		asyncio.run_coroutine_threadsafe(TestTask.start(), aioloop)
 	else:
 		TestTask = None
 	
-	logging.debug("starting store")
+	aioloop.run_until_complete(app.start())
+	logger.debug("startup: web app started")
+
+	
 	
 	# N.B. need way to stop background task for proper shutdown
 	#sio.start_background_task(background_task)
 	
 
-	try:
-#		app.start()
-		asyncio.run_coroutine_threadsafe(app.start(), aioloop)
-	
-	except KeyboardInterrupt as e:
-		print("exit")
-	except Exception as e:
-		logging.warn("general exception %s", e, exc_info=True)
+#	try:
+##		app.start()
+#		asyncio.run_coroutine_threadsafe(app.start(), aioloop)
+#	
+#	except KeyboardInterrupt as e:
+#		print("exit")
+#	except Exception as e:
+#		logging.warn("general exception %s", e, exc_info=True)
 	
 	#
 	# Shutdown
