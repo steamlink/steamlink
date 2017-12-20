@@ -1,2 +1,14 @@
+- make a new release
+	cd ~/git/steamlink
+	vi steamlink/const.py   edit *_VERSION
+	git commit -a -m "version 0.7.1"
+	git push
+	git tag 0.7.1 -m "0.7.1"	
+	git push --tags origin master
+
+	. ~/sl/bin/activate
+	
+	python3 setup.py sdist upload -r pypi
+	
 
 - in c++ code, change ON opcode to transmit a SL_NodeCfgStruct packet

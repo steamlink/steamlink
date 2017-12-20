@@ -130,8 +130,9 @@ def phex(p, l=0):
 
 def getargs():
 	parser = argparse.ArgumentParser()
-	parser.add_argument("-c", "--config", help="config file, default TestControl.yaml")
+	parser.add_argument("-c", "--config", help="config file, default steamlink.yaml")
 	parser.add_argument("-l", "--log", help="set loglevel, default is info")
+	parser.add_argument("-C", "--createconfig", help="create a skeleton config file", default=False, action='store_true')
 	parser.add_argument("-T", "--testdata", help="generate test data", default=False, action='store_true')
 	parser.add_argument("-X", "--debug", help="increase debug level",
 					default=0, action="count")
@@ -141,11 +142,21 @@ def getargs():
 
 def loadconfig(conf_fname):
 	try:
-		conf_f = "\n".join(open(conf_fname, "r").readlines())
+		conf_f = "".join(open(conf_fname, "r").readlines())
 		return yaml.load(conf_f)
 	except Exception as e:
 		print("error: config load: %s" % e)
 		sys.exit(1)
+
+def createconfig(conf_fname):
+	if os.path.exists(conf_fname):
+		print("error: config file '%s' exists, will NOT overwrite with sample!!" % conf_fname)
+		sys.exit(1)
+	sample_conf = steamlink.const.LIB_DIR + '/steamlink.yaml.sample'
+	conf_f = "".join(open(sample_conf, "r").readlines())
+	open(conf_fname,"w").write(conf_f)
+	print("note: config sample copied to %s" % (conf_fname))
+	sys.exit(0)
 
 
 #
@@ -260,6 +271,11 @@ logger.info("%s version %s" % (steamlink.const.PROJECT_PACKAGE_NAME, steamlink.c
 
 # load config 
 conff = cl_args.config if cl_args.config else "steamlink.yaml"
+if cl_args.createconfig:
+	rc = createconfig(conff)
+	sys.exit(rc)
+
+
 conf = loadconfig(conff)
 if DBG > 1: print(conf)
 
