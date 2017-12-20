@@ -49,7 +49,7 @@
 
 /* CONSTANTS */
 var socketNamespace = '/sl';
-var socketUrl = 'http:/localhost:5050';
+var socketUrl = 'http://localhost:5050';
 
 var socket;
 var vueApp;
@@ -114,9 +114,9 @@ Vue.component('tileitem', {
             console.log("selected " + this.id);
             this.$emit('select', this.id
                        /*
-                         {"tileId": this.id, "tileType" : this.tileType
+                         {"tileId": this.id, "tileType" : this.tileType}
                        */
-                       });
+                       );
         }
     }
 })
@@ -240,6 +240,7 @@ window.onload = function(){
     socket = io.connect(socketUrl + socketNamespace);
 
     socket.on('connect', function() {
+        console.log("connected to websocket server");
         socket.emit('connected', {data: 'I\'m connected!'});
         joinRoom(socket, vueApp.curTileRoom);
         joinRoom(socket, vueApp.curHeaderRoom);
