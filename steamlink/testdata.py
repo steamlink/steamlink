@@ -1,6 +1,8 @@
-from steamlink import (
-	Packet,
+from steamlink.steamlink import (
+	Steam,
+	Mesh,
 	Node,
+	Packet,
 	SL_OP,
 )
 
@@ -18,6 +20,9 @@ class TestData:
 		self.sio = sio
 		self.running = True
 		logger.info("starting Test Data")
+		self.m = Mesh(0)
+		self.meshes = {}
+		self.nodes = {}
 
 
 	def stop(self):
@@ -27,12 +32,13 @@ class TestData:
 
 
 	async def start(self):
-		self.nodes = {}
 		logger.info("%s task running" % self.name)
 		await self.sio.sleep(self.conf.get('startwait',1))
 		logger.info("%s task proceeding" % self.name)
 
 		for mesh in range(self.conf.get('meshes',1)):
+			self.meshes[mesh] = Mesh(mesh)
+			logger.info("%s doing nodes" % self.name)
 			for j in range(self.conf.get('nodes',1)):
 				i = mesh * 256 + j
 				self.create_node(i)

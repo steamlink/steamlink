@@ -31,7 +31,7 @@ class TimeLog:
 		else:
 			start = min(pos+1, len(keys))
 			end = min(pos+1+count, len(keys))
-		print("DBG: pos %s start %s end %s len %s" % (pos, start, end, len(keys)))
+		logger.debug("TimeLog.get: pos %s start %s end %s len %s", pos, start, end, len(keys))
 		r = {}
 		for i in range(start, end):
 			r[keys[i]] =  str(self.items[keys[i]])
