@@ -266,6 +266,7 @@ class Item:
 		if p:
 			p.add_child(self)
 		self.my_rooms = [Room(self.itype, self.key), Room(self.itype, "*")]
+		self.last_update_time = time.time()
 		self.schedule_update()
 
 
@@ -308,10 +309,10 @@ class Item:
 		self.schedule_update()
 
 
-	def schedule_update(self):
-		logger.debug("Item: schedule_item_update %s", self)
+	def schedule_update(self, rooms = None):
+		logger.debug("Item %s: schedule_item_update for %s", self.name, rooms)
 		# XXX
-		self.console_update()
+		self.console_update(rooms)
 
 
 #XXX  send item and rooms, not the data
@@ -397,7 +398,6 @@ class Steam(Item):
 
 
 	async def start(self):
-#		await self.console_update(self.default_room)
 		pass
 
 
@@ -442,7 +442,7 @@ class Mesh(Item):
 		super().__init__()
 		logger.debug("Mesh created: %s", self.name)
 
-		self.console_update()
+		self.schedule_update()
 
 
 	def mkname(self):
@@ -509,7 +509,7 @@ class Node(Item):
 
 		logger.debug("Node created: %s" % self.name)
 
-#?		self.console_update(self.default_room)
+		self.schedule_update()
 
 
 	def mkname(self):
@@ -546,7 +546,7 @@ class Node(Item):
 			self.state = new_state
 			logger.info("node %s state %s", self.key, self.state)
 #			sl_log.log_state(self.key, "ONLINE" if self.state == "UP" else "offline")
-			self.console_update()
+			self.schedule_update()
 	
 
 
@@ -559,8 +559,8 @@ class Node(Item):
 		self.packets_sent += 1
 		self.mesh.packets_sent += 1
 		self.steam.sl_broker.publish(self.get_firsthop(), sl_pkt, sub=sub)
-		self.console_update()
-		self.mesh.console_update()
+		self.schedule_update()
+		self.mesh.schedule_update()
 
 
 	def send_boot_cold(self):
@@ -609,7 +609,7 @@ class Node(Item):
 		self.log_pkt(sl_pkt)
 		self.packets_received += 1
 		self.mesh.packets_received += 1
-#?		self.console_update(self.default_room)
+		self.schedule_update()
 
 		logger.info("post_data %s", sl_pkt)
 

@@ -3,6 +3,7 @@
 import aiomqtt
 import asyncio
 import random
+import sys
 
 import logging
 logger = logging.getLogger(__name__)
@@ -43,7 +44,11 @@ class Mqtt:
 #		self.mq.enable_logger(logger)
 		if self.ssl_certificate:
 			logger.debug("%s: using cert %s", self.name, self.ssl_certificate)
-			self.mq.tls_set(self.ssl_certificate)
+			try:
+				self.mq.tls_set(self.ssl_certificate)
+			except FileNotFoundError as e:
+				logger.error("Mqtt: tls_set certificate %s: %s", self.ssl_certificate, e)
+				sys.exit(1)
 			self.mq.tls_insecure_set(False)
 		if self.username and self.password:
 			self.mq.username_pw_set(self.username, self.password)

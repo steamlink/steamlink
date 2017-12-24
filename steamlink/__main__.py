@@ -91,8 +91,7 @@ def main() -> int:
 		logging.captureWarnings(True)
 		aioloop.set_debug(enabled=True)
 
-	if cl_args.verbose:
-		print("%s version %s" % (PROJECT_PACKAGE_NAME, __version__))
+	logger.info("%s version %s" % (PROJECT_PACKAGE_NAME, __version__))
 	
 	
 	# create config  if -C

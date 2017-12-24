@@ -220,8 +220,8 @@ class WebApp(object):
 
 	def send_con_upd(self, room, data):
 		logger.debug("send_con_upd: q size: %s", self.con_upd_q.qsize())
-		self.con_upd_q.put([room, data])
-		asyncio.ensure_future(self.con_upd_q.put([room, data]),loop=self.loop)
+		self.con_upd_q.put_nowait([room, data])
+#		asyncio.ensure_future(self.con_upd_q.put([room, data]),loop=self.loop)
 
 
 	async def con_upd_t(self):
