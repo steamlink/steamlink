@@ -49,7 +49,7 @@
 
 /* CONSTANTS */
 var socketNamespace = '/sl';
-var socketUrl = 'http://localhost:5050';
+var socketUrl = 'http://' + document.domain + ':' + location.port;
 
 var socket;
 var vueApp;
