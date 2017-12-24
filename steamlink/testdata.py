@@ -1,3 +1,6 @@
+import asyncio
+import random
+
 from steamlink.steamlink import (
 	Steam,
 	Mesh,
@@ -14,11 +17,12 @@ logger = logging.getLogger(__name__)
 #
 class TestData:
 	"""" generate  test data in a thread """
-	def __init__(self, conf, sio):
+	def __init__(self, conf, loop):
 		self.name = "TestData"
 		self.conf = conf
-		self.sio = sio
+		self.loop = loop
 		self.running = True
+#		self.go = asyncio.Event(loop=loop)
 		logger.info("starting Test Data")
 		self.m = Mesh(0)
 		self.meshes = {}
@@ -32,37 +36,49 @@ class TestData:
 
 
 	async def start(self):
+		n_nodes = self.conf.get('nodes',1)
+		n_meshes = self.conf.get('meshes',1)
+		n_packets = self.conf.get('packets',1)
+
 		logger.info("%s task running" % self.name)
-		await self.sio.sleep(self.conf.get('startwait',1))
+		await asyncio.sleep(self.conf.get('startwait',1))
 		logger.info("%s task proceeding" % self.name)
 
-		for mesh in range(self.conf.get('meshes',1)):
+		for mesh in range(n_meshes):
+			logger.debug("creating test mesh %s", mesh)
 			self.meshes[mesh] = Mesh(mesh)
-			logger.info("%s doing nodes" % self.name)
-			for j in range(self.conf.get('nodes',1)):
-				i = mesh * 256 + j
-				self.create_node(i)
-				await self.sio.sleep(0.2)
 
-		for x in range(self.conf.get('packets',1)):
-			for i in range(self.conf.get('nodes',1)):
-				self.create_data(i, "hello from packet %s" % x)
-				await self.sio.sleep(1)
+
+		logger.info("%s doing %s nodes", self.name, n_nodes)
+		nodelist = {}
+		for j in range(n_nodes):
+			i = int(random.random() * n_meshes) * 256 + j
+			await self.create_node(i)
+		
+			await asyncio.sleep(0.2)
+
+		for x in range(n_packets):
+			ii = int(random.random() * n_nodes)
+			i = list(self.nodes.keys())[ii]
+			await self.create_data(i, "hello from packet %s" % x)
+			await asyncio.sleep(0.1)
 
 		self.running = False
 		logger.debug("%s done", self.name)
 
 
-	def create_node(self, i):
-		logger.debug("sending an ON pkt")
+	async def create_node(self, i):
+		logger.debug("creating test node %s", i)
 		self.nodes[i] = Node(i, nodecfg = None)
-		p = Packet(self.nodes[i], sl_op = SL_OP.ON, payload = None, pkt = None)
-
+		logger.debug("create packet %s", "ON")
+		p = Packet(self.nodes[i], sl_op = SL_OP.ON, payload="Online")
+		logger.debug("sending ON pkt")
 		self.nodes[i].publish_pkt(p, "data")
 		
 
-	def create_data(self, i, data):
-		p = Packet(self.nodes[i], sl_op = SL_OP.DS, payload = "Hello", pkt = None)
+	async def create_data(self, i, data):
+		p = Packet(self.nodes[i], sl_op = SL_OP.DS, payload = "Hello")
+		logger.debug("sending DS pkt")
 		self.nodes[i].publish_pkt(p, data)
 
 

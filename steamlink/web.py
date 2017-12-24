@@ -1,7 +1,10 @@
 
 import asyncio
 import socketio
+import signal
+
 from aiohttp import web
+from aiohttp.log import access_logger, web_logger
 
 from steamlink.steamlink import (
 	Room,
@@ -11,7 +14,6 @@ from steamlink.steamlink import (
 	SL_OP,
 	Packet,
 	LogData,
-	Mqtt,
 	registry,
 )
 
@@ -19,19 +21,32 @@ from steamlink.steamlink import (
 from steamlink.const import (
 	LIB_DIR,
 #	PROJECT_PACKAGE_NAME, 
-    INDEX_HTML, 
+	INDEX_HTML, 
 #	__version__
 )
 
 import logging
 logger = logging.getLogger(__name__)
 
+from yarl import URL
+
+
+class GracefulExit(SystemExit):
+	code = 1
+
+
+def raise_graceful_exit():
+	raise GracefulExit()
+
+
+
 class SLConsoleNamespace(socketio.AsyncNamespace):
-	def __init__(self, steam, sio):
-		self.steam = steam
-		self.sio = sio
-		super().__init__(self.steam.ns)
-		logger.debug("SLConsoleNamespace registered for ns %s", self.steam.ns)
+	def __init__(self, webapp):
+		self.webapp = webapp
+		self.namespace = self.webapp.namespace
+
+		super().__init__(self.namespace)
+		logger.debug("SLConsoleNamespace registered for namespace %s", self.namespace)
 
 
 	def on_connect(self, sid, environ):
@@ -43,12 +58,12 @@ class SLConsoleNamespace(socketio.AsyncNamespace):
 
 	async def on_my_event(self, sid, data):
 		logger.debug("SLConsoleNamespace on_my_event %s", data)
-#		await self.emit('my_response', {'data': data['data']} ) #, room=sid, namespace=self.steam.ns)
+#		await self.emit('my_response', {'data': data['data']} ) #, room=sid, namespace=self.namespace)
 		return "ACK"
 
 	async def on_need_log(self, sid, data):
 		logger.debug("SLConsoleNamespace need_log %s", data)
-#		await self.emit('my_response', {'data': data['data']} ) #, room=sid, namespace=self.steam.ns)
+#		await self.emit('my_response', {'data': data['data']} ) #, room=sid, namespace=self.namespace)
 		node = data.get('id',None)
 		if  not node in Node.name_idx:
 			return "NAK"
@@ -59,11 +74,6 @@ class SLConsoleNamespace(socketio.AsyncNamespace):
 		return "ACK"
 
 
-	async def emit_data_full(self, sroom, data):
-		logger.debug("ROOM %s EMIT %s" % (sroom, data))
-		await self.sio.emit('data_full', data, namespace=self.steam.ns, room=sroom)
-
-
 	async def on_join(self, sid, message):
 		logger.debug("SLConsoleNamespace on_join %s", message)
 		if not 'room' in message:
@@ -71,40 +81,42 @@ class SLConsoleNamespace(socketio.AsyncNamespace):
 			return "NAK"
 		room = Room(sroom=message['room'])
 		sroom = str(room)
-		self.enter_room(sid, sroom, namespace=self.steam.ns)
+		self.enter_room(sid, sroom, namespace=self.namespace)
 		if room.is_item_room():		# item_key_*
 			item = registry.find_by_id(room.lvl, int(room.key))
 			if item is None:
 				logger.debug("SLConsoleNamespace no items in room  %s", room)
 				return "NAK"
-			items_to_emit = []
+			items_to_send = []
 			for i in item.children:
-				items_to_emit.append(item.children[i])
+				items_to_send.append(item.children[i])
 		elif not room.is_header():		# item_*
-			items_to_emit = registry.get_all(room.lvl)
+			items_to_send = registry.get_all(room.lvl)
 		else:						# item_key
 			item = registry.find_by_id(room.lvl, int(room.key))
 			if item is None:
 				logger.debug("SLConsoleNamespace no items in room  %s", room)
 				return "NAK"
-			items_to_emit = [item]
+			items_to_send = [item]
 
-		logger.debug("SLConsoleNamespace items_to_emit %s", items_to_emit)
-		for item in items_to_emit:
-			data_id, data_to_emit = item.gen_console_data()
-			pack =  {
-			  'id': data_id,
-			  'type': room.lvl, 
-			  'display_vals':  data_to_emit,
-			}
-			await self.emit_data_full(sroom, pack)
+		logger.debug("SLConsoleNamespace items_to_send %s", items_to_send)
+		for item in items_to_send:
+			item.console_update([room])
+#			data_id, data_to_send = item.gen_console_data()
+#			pack =  {
+#			  'id': data_id,
+#			  'type': room.lvl, 
+#			  'display_vals':  data_to_send,
+#			}
+#			if room.is_header():
+#				pack['header'] = True
+#			await self.webapp.a_send_con_upd(sroom, pack)
 		return "ACK"
 
 	async def on_leave(self, sid, message):
 		logger.debug("SLConsoleNamespace on_leave %s", message)
-		self.leave_room(sid, message['room'], namespace=self.steam.ns)
+		self.leave_room(sid, message['room'], namespace=self.namespace)
 		return "ACK"
-
 
 
 #
@@ -112,43 +124,73 @@ class SLConsoleNamespace(socketio.AsyncNamespace):
 #
 class WebApp(object):
 
-	def __init__(self, steam, sio, conf, loop = None):
+	def __init__(self, namespace, sio, conf, loop = None):
 		self.name = "WebApp"
 		self.conf = conf
 		self.sio = sio
-		self.steam = steam
-		if loop is None:
-			self.loop = asyncio.get_event_loop()
-		else:
-			self.loop = loop
+		self.namespace = namespace
+		self.loop = loop
+		self.con_upd_q = asyncio.Queue(loop=self.loop)
 		self.app = web.Application()
+		self.app._set_loop(self.loop)
 		self.sio.attach(self.app)
 		self.app['websockets'] = []
 		self.app.router.add_static('/',LIB_DIR+"/html")
 		self.app.router.add_get('/config.json', self.config_json)
 		self.app.on_cleanup.append(self.web_on_cleanup)
 		self.app.on_shutdown.append(self.web_on_shutdown)
+		self.backlog = 128
 
-#		self.api_password = conf.get('api_password', None)
-#		self.ssl_certificate = conf.get('ssl_certificate', None)
-#		self.ssl_key = conf.get('ssl_key', None)
+		self.shutdown_timeout = int(self.conf.get('shutdown_timeout','60'))
+		self.api_password = conf.get('api_password', None)
+		self.ssl_certificate = conf.get('ssl_certificate', None)
+		self.ssl_key = conf.get('ssl_key', None)
+		self.ssl_context = None
+		self.access_log_format = None
+		self.access_log = access_logger
+
 		self.host = conf.get('host', '127.0.0.1')
 		self.port = conf.get('port', 8080)
-#		self._handler = None
-#		self.server = None
+	#		self._handler = None
+	#		self.server = None
 
 
-	def start(self):
+
+	async def qstart(self):
+		logger.info("%s starting q handler", self.name)
+		self.conf_upd_res = await self.con_upd_t()
+	
+
+	async def start(self):
 		logger.info("%s starting, server %s port %s", self.name, self.host,  self.port)
-		self.sio.register_namespace(SLConsoleNamespace(self.steam, self.sio))
-		shutdown_timeout = int(self.conf.get('shutdown_timeout','60'))
+		self.sio.register_namespace(SLConsoleNamespace(self))
 
-#		self.loop.run_until_complete(app.startup())
-		web.run_app(self.app,
-			host=self.host,
-			port=self.port,
-			shutdown_timeout=shutdown_timeout,
-			loop=self.loop)
+		await self.app.startup()
+	
+		scheme = 'https' if self.ssl_context else 'http'
+		base_url = URL.build(scheme=scheme, host='localhost', port=self.port)
+		uri = str(base_url.with_host(self.host).with_port(self.port))
+	
+		make_handler_kwargs = dict()
+		if self.access_log_format is not None:
+			make_handler_kwargs['access_log_format'] = self.access_log_format
+
+		self.handler = self.app.make_handler(loop=self.loop,
+						access_log=self.access_log,
+						**make_handler_kwargs)
+
+		self.server = await self.loop.create_server(
+						self.handler, self.host, self.port, 
+						ssl=self.ssl_context,
+						backlog=self.backlog)
+
+
+	def stop(self):
+		self.server.close()
+		self.loop.run_until_complete(self.server.wait_closed())
+		self.loop.run_until_complete(self.app.shutdown())
+		self.loop.run_until_complete(self.handler.shutdown(self.shutdown_timeout))
+		self.loop.run_until_complete(self.app.cleanup())
 	
 
 	async def index(self, request):
@@ -168,7 +210,26 @@ class WebApp(object):
 
 	async def web_on_shutdown(self, app):
 		for ws in self.app['websockets']:
-			await ws.close(code=WSCloseCode.GOING_AWAY,
-						   message='Server shutdown')
+			await ws.close(code=WSCloseCode.GOING_AWAY, message='Server shutdown')
 
 
+	async def a_send_con_upd(self, room, data):
+		logger.debug("a_send_con_upd: q size: %s", self.con_upd_q.qsize())
+		await self.con_upd_q.put([room, data])
+
+
+	def send_con_upd(self, room, data):
+		logger.debug("send_con_upd: q size: %s", self.con_upd_q.qsize())
+		self.con_upd_q.put([room, data])
+		asyncio.ensure_future(self.con_upd_q.put([room, data]),loop=self.loop)
+
+
+	async def con_upd_t(self):
+		while True:	
+#			await asyncio.sleep(10)
+			logger.debug("con_upd_t get entry")
+			sroom, data =  await self.con_upd_q.get() 
+			logger.debug("con_upd_t ROOM %s EMIT %s" % (sroom, data))
+			await self.sio.emit('data_full', data, 
+					namespace=self.namespace, room=sroom)
+			self.con_upd_q.task_done()

@@ -1,5 +1,6 @@
 
 import sys
+import os
 import argparse
 import logging
 import yaml
@@ -68,11 +69,13 @@ def getargs():
 
 def loadconfig(conf_fname):
 	try:
-		conf_f = "".join(open(conf_fname, "r").readlines())
+		with open(conf_fname, "r") as fh:
+			conf_f = "".join(fh.readlines())
 		return yaml.load(conf_f)
 	except Exception as e:
 		print("error: config load: %s" % e)
 		sys.exit(1)
+		
 
 def createconfig(conf_fname):
 	if os.path.exists(conf_fname):

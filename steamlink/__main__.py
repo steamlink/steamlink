@@ -3,17 +3,10 @@
 # Main program for a Stealink network
 
 import sys
-import os
-import struct
-import collections
-import queue
-import json
-import time
-import yaml
 
 import asyncio
 import socketio
-from aiohttp import web
+import signal
 
 import logging
 logger = logging.getLogger()
@@ -30,6 +23,10 @@ from steamlink.steamlink import (
 	Packet,
 	LogData,
 	registry,
+)
+
+from steamlink.web import (
+	WebApp,
 )
 
 from steamlink.util import (
@@ -52,10 +49,14 @@ from steamlink.const import (
 	__version__
 )
 
-from steamlink.web import (
-	SLConsoleNamespace,
-	WebApp,
-)
+
+class GracefulExit(SystemExit):
+	code = 1
+
+
+def raise_graceful_exit():
+	raise GracefulExit()
+
 
 
 #
@@ -77,13 +78,18 @@ def main() -> int:
 			print("invalid logging level, use debug, info, warning, error or critical")
 			return(1)
 
+	aioloop = asyncio.get_event_loop()
+
 	FORMAT = '%(asctime)-15s: %(levelname)s %(module)s %(message)s'
 	logging.basicConfig(format=FORMAT, filename=cl_args.logfile)
 	logger.setLevel(loglevel)
-	logger.DBG = cl_args.debug
-	
-#	if cl_args.debug > 1:
-#		asyncio.AbstractEventLoop.set_debug(enabled=True)
+	logging.DBG = cl_args.debug
+	if logging.DBG >= 2:
+		logger.info("DBG: logging all warnings")
+		import warnings
+		warnings.simplefilter("always")
+		logging.captureWarnings(True)
+		aioloop.set_debug(enabled=True)
 
 	if cl_args.verbose:
 		print("%s version %s" % (PROJECT_PACKAGE_NAME, __version__))
@@ -98,6 +104,14 @@ def main() -> int:
 	# load config 
 	conf = loadconfig(conff)
 	
+
+	try:
+		aioloop.add_signal_handler(signal.SIGINT, raise_graceful_exit)
+		aioloop.add_signal_handler(signal.SIGTERM, raise_graceful_exit)
+	except NotImplementedError:  # pragma: no cover
+		# add_signal_handler is not implemented on Windows
+		pass
+
 	# Daemon functions
 	if cl_args.pid_file:
 		check_pid(cl_args.pid_file)
@@ -110,14 +124,18 @@ def main() -> int:
 
 	conf_general = conf.get('general',{})
 	conf_console = conf.get('console',{})
+	conf_steam = conf.get('Steam',{})
+
 	conf_mqtt = conf.get('mqtt',{})
 	
+	namespace = conf_general.get('namespace','/sl')
+
 	#sl_log = LogData(conf['logdata'])
 	sl_log = None
-	aioloop = asyncio.get_event_loop()
 
 	logger.debug("startup: create Mqtt")
 	mqtt = Mqtt(conf_mqtt, sl_log)
+
 	logger.debug("startup: starting Mqtt")
 	aioloop.run_until_complete(mqtt.start())
 	
@@ -128,52 +146,48 @@ def main() -> int:
 		async_mode = 'aiohttp',
 #		cors_allowed_origins =  "http://localhost:* http://127.0.0.1:*", 
 #		cors_credentials = True, 
-#		ping_timeout = ping_timeout) ,
+		ping_timeout = ping_timeout,
 	)
-	logger.debug("startup: create Steam")
 
-	steam = Steam(conf.get('Steam',{}), mqtt, sio)
-	Steam.root = steam	## !!
 	logger.debug("startup: create WebApp")
-	app = WebApp(steam, sio, conf_console, loop=aioloop)
+	webapp = WebApp(namespace, sio, conf_console, loop=aioloop)
 
-	logger.debug("startup: starting steam")
-	aioloop.run_until_complete(steam.start())
-	
+	logger.debug("startup: create Steam")
+	steam = Steam(conf_steam, mqtt, sio)
+	steam.attach(webapp, namespace)
+
+	logger.debug("startup: starting coros")
+	coros = []
+	coros.append(steam.start())
+	coros.append(webapp.start())
+	coros.append(webapp.qstart())
+
 	if cl_args.testdata:
 		logger.debug("startup: create TestData")
-		TestTask = TestData(conf['testdata'], sio)
+		TestTask = TestData(conf['testdata'], aioloop)
 		logger.debug("startup: starting TestData")
-#		aioloop.run_until_complete(TestTask.start())
-		asyncio.run_coroutine_threadsafe(TestTask.start(), aioloop)
+		coros.append(TestTask.start())
 	else:
 		TestTask = None
-	
-	aioloop.run_until_complete(app.start())
-	logger.debug("startup: web app started")
 
+	try:
+		aioloop.run_until_complete(asyncio.gather(
+			*coros
+			))
+		aioloop.run_forever()
+	except (GracefulExit, KeyboardInterrupt):
+		logger.debug("terminating")
 	
-
-#	try:
-##		app.start()
-#		asyncio.run_coroutine_threadsafe(app.start(), aioloop)
-#	
-#	except KeyboardInterrupt as e:
-#		print("exit")
-#	except Exception as e:
-#		logger.warn("general exception %s", e, exc_info=True)
 	
-	#
 	# Shutdown
 	if TestTask:
 		logger.debug("stopping TestTask")
 		TestTask.stop()
 	
 	aioloop.run_until_complete(mqtt.stop())
+	aioloop.run_until_complete(steam.stop())
 	
 	logger.info("done")
-	
-
 
 if __name__ == "__main__":
 	sys.exit(main())
