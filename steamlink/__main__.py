@@ -3,6 +3,8 @@
 # Main program for a Stealink network
 
 import sys
+import traceback
+import syslog
 
 import asyncio
 import socketio
@@ -62,7 +64,8 @@ def raise_graceful_exit():
 #
 # Main
 #
-def main() -> int:
+def steamlink_main() -> int:
+	global daemon
 	""" start steamlinks """
 
 	cl_args = getargs()
@@ -78,18 +81,16 @@ def main() -> int:
 			print("invalid logging level, use debug, info, warning, error or critical")
 			return(1)
 
-	aioloop = asyncio.get_event_loop()
-
 	FORMAT = '%(asctime)-15s: %(levelname)s %(module)s %(message)s'
 	logging.basicConfig(format=FORMAT, filename=cl_args.logfile)
 	logger.setLevel(loglevel)
 	logging.DBG = cl_args.debug
+
 	if logging.DBG >= 2:
 		logger.info("DBG: logging all warnings")
 		import warnings
 		warnings.simplefilter("always")
 		logging.captureWarnings(True)
-		aioloop.set_debug(enabled=True)
 
 	logger.info("%s version %s" % (PROJECT_PACKAGE_NAME, __version__))
 	
@@ -102,24 +103,29 @@ def main() -> int:
 	
 	# load config 
 	conf = loadconfig(conff)
-	
-
-	try:
-		aioloop.add_signal_handler(signal.SIGINT, raise_graceful_exit)
-		aioloop.add_signal_handler(signal.SIGTERM, raise_graceful_exit)
-	except NotImplementedError:  # pragma: no cover
-		# add_signal_handler is not implemented on Windows
-		pass
 
 	# Daemon functions
 	if cl_args.pid_file:
 		check_pid(cl_args.pid_file)
+	
+	daemon = cl_args.daemon
 	if cl_args.daemon:
 		if cl_args.verbose:
 			print("continuing in background")
 		daemonize()
 	if cl_args.pid_file:
 		write_pid(cl_args.pid_file)
+
+	# N.B. no asyncio before daemon!
+	aioloop = asyncio.get_event_loop()
+	if logging.DBG >= 2:
+		aioloop.set_debug(enabled=True)
+
+	try:
+		aioloop.add_signal_handler(signal.SIGINT, raise_graceful_exit)
+		aioloop.add_signal_handler(signal.SIGTERM, raise_graceful_exit)
+	except NotImplementedError:  # pragma: no cover
+		logger.error("main: failed to trap signals")
 
 	conf_general = conf.get('general',{})
 	conf_console = conf.get('console',{})
@@ -188,6 +194,28 @@ def main() -> int:
 	
 	logger.info("done")
 
-if __name__ == "__main__":
-	sys.exit(main())
 
+daemon = False
+def main() -> int:
+	try:
+		rc = steamlink_main()
+	except SystemExit as e:
+		rc  = e
+		pass
+	except:
+		rc = 127
+		exc_type, exc_value, exc_traceback = sys.exc_info()
+		tb = traceback.format_exception(exc_type, exc_value,
+                                          exc_traceback)
+		if not daemon:
+			for l in tb:
+				print(l.rstrip('\n'))
+		else:
+			syslog.syslog(syslog.LOG_ERR, ' main failed')
+			for l in tb:
+				syslog.syslog(syslog.LOG_ERR, ' -> %s' % l.rstrip('\n'))
+				logger.error(' -> %s', l.rstrip('\n'))
+
+	sys.exit(rc)
+if __name__ == "__main__":
+	main()
