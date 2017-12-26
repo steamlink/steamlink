@@ -23,15 +23,15 @@ class Mqtt:
 		else:
 			self.loop = loop
 
-		self.topic_prefix = conf.get('prefix', 'SteamLink')
-		self.topic_control = conf.get('control', 'control')
-		self.topic_data = conf.get('data', 'data')
-		self.server =   conf.get('server', '127.0.0.1')
-		self.port =     int(conf.get('port', 1883))
-		self.clientid = conf.get('clientid', "clie"+"%04i" % int(random.random() * 10000))
-		self.username = conf.get('username', None)
-		self.password = conf.get('password', None)
-		self.ssl_certificate = conf.get('ssl_certificate', None)
+		self.topic_prefix = conf['prefix']
+		self.topic_control = conf['control']
+		self.topic_data = conf['data']
+		self.server =   conf['server']
+		self.port =     conf['port']
+		self.clientid = conf['clientid']
+		self.username = conf['username']
+		self.password = conf['password']
+		self.ssl_certificate = conf['ssl_certificate']
 
 		self.control_topic_x = "%s/%%s/%s" % (self.topic_prefix, self.topic_control)
 		self.data_topic_x = "%s/%%s/%s" % (self.topic_prefix, self.topic_data)

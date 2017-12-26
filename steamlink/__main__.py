@@ -6,7 +6,7 @@ import sys
 import os
 import traceback
 import syslog
-
+import random
 import asyncio
 import socketio
 import signal
@@ -63,6 +63,10 @@ class GracefulExit(SystemExit):
 def raise_graceful_exit():
 	raise GracefulExit()
 
+
+#
+# Default config
+# specified config file (if any) will get merged in here
 DEFAULT_CONF = {
  	'general': {
 		'mqtt_broker': 'mqtt_broker',
@@ -77,12 +81,12 @@ DEFAULT_CONF = {
 	'tests': {
 	},
 	'mqtt': {
-#		'clientid': 'CLIENTID',
-#		'username': 'USERNAME',
-#		'password': 'PASSWORD',
-		'server': 'localhost',
+		'clientid': "clie"+"%04i" % int(random.random() * 10000),
+		'username': None,
+		'password': None,
+		'server': '127.0.0.1',
 		'port': 1883,
-#		'ssl_certificate': 'ca.crt',
+		'ssl_certificate': None,
 
 		'prefix': 'SteamLink',
 		'data': 'data',
@@ -95,13 +99,15 @@ DEFAULT_CONF = {
 		'shutdown_timeout': 10,        # seconds to wait for web server shutdown
 		'namespace': '/sl',
 		'prefix': 'SteamLinkWeb',
-		'index': 'index.htm',         # root page 
+		'index': INDEX_HTML,           # root page 
+        'ssl_certificate': None,
+        'ssl_key': None,
 	},
 	'mqtt_broker':  {
 		'listeners': {
 			'default': {
 				'type': 'tcp',
-				'bind': '0.0.0.0:1883',
+				'bind': '127.0.0.1:1883',
 			},
 			'ws-mqtt': {
 				'bind': '127.0.0.1:8080',
@@ -192,13 +198,13 @@ def steamlink_main() -> int:
 	except NotImplementedError:  # pragma: no cover
 		logger.error("main: failed to trap signals")
 
-	conf_general = conf.get('general',{})
-	conf_console = conf.get('console',{})
-	conf_steam = conf.get('Steam',{})
-	conf_broker = conf.get('mqtt_broker',{})
-	conf_mqtt = conf.get('mqtt',{})
+	conf_general = conf['general']
+	conf_console = conf['console']
+	conf_steam = conf['Steam']
+	conf_broker = conf['mqtt_broker']
+	conf_mqtt = conf['mqtt']
 	
-	namespace = conf_general.get('namespace','/sl')
+	namespace = conf_general['namespace']
 
 	#sl_log = LogData(conf['logdata'])
 	sl_log = None
@@ -214,7 +220,7 @@ def steamlink_main() -> int:
 
 	aioloop.run_until_complete(mqtt.start())
 	
-	ping_timeout = conf_general.get('ping_timeout','10')
+	ping_timeout = conf_general['ping_timeout']
 
 	logger.debug("startup: create socketio")
 	sio = socketio.AsyncServer(

@@ -383,13 +383,13 @@ class Steam(Item):
 	 }
 	
 	def __init__(self, conf, broker,  sio):
-		self.key = conf.get('id', 0) 
+		self.key = conf['id']
 		name = self.mkname()
-		self.name = conf.get('name', name)
+		self.name = conf['name']
 		self.itype = 'Steam'
 		self.sio = sio
-		self.desc = conf.get('description', 'Description for %s' % name)
-		self.namespace = conf.get('namespace', '/sl')
+		self.desc = conf['description']
+		self.namespace = conf['namespace']
 		self.steam = self
 		self.my_rooms = [Room("Steam", self.key), Room("Steam", "*")]
 		self.sl_broker = broker

@@ -4,6 +4,7 @@ import os
 import argparse
 import logging
 import yaml
+import collections
 
 #
 # Utility
@@ -67,12 +68,20 @@ def getargs():
 	return parser.parse_args()
 
 
+def update(d, u):
+	for k, v in u.items():
+		if isinstance(v, collections.Mapping):
+			d[k] = update(d.get(k, {}), v)
+		else:
+			d[k] = v
+	return d
+
 def loadconfig(default_conf, conf_fname):
 	conf = default_conf
 	try:
 		with open(conf_fname, "r") as fh:
 			conf_f = "".join(fh.readlines())
-		conf.update(yaml.load(conf_f))
+		update(conf, yaml.load(conf_f))
 		return conf
 	except Exception as e:
 		print("error: config load: %s" % e)

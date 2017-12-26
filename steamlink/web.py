@@ -141,16 +141,16 @@ class WebApp(object):
 		self.app.on_shutdown.append(self.web_on_shutdown)
 		self.backlog = 128
 
-		self.shutdown_timeout = int(self.conf.get('shutdown_timeout','60'))
-		self.api_password = conf.get('api_password', None)
-		self.ssl_certificate = conf.get('ssl_certificate', None)
-		self.ssl_key = conf.get('ssl_key', None)
+		self.shutdown_timeout = self.conf['shutdown_timeout']
+#		self.api_password = conf['api_password']
+		self.ssl_certificate = conf['ssl_certificate']
+		self.ssl_key = conf['ssl_key']
 		self.ssl_context = None
 		self.access_log_format = None
 		self.access_log = access_logger
 
-		self.host = conf.get('host', '127.0.0.1')
-		self.port = conf.get('port', 8080)
+		self.host = conf['host']
+		self.port = conf['port']
 	#		self._handler = None
 	#		self.server = None
 
@@ -194,7 +194,7 @@ class WebApp(object):
 	
 
 	async def index(self, request):
-		index_html = self.conf.get('index',INDEX_HTML)
+		index_html = self['index']
 		with open(index_html) as f:
 			return web.Response(text=f.read(), content_type='text/html')
 
