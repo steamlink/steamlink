@@ -5,6 +5,7 @@
 import sys
 import os
 import traceback
+import hbmqtt
 import syslog
 import random
 import asyncio
@@ -99,6 +100,7 @@ DEFAULT_CONF = {
 		'shutdown_timeout': 10,        # seconds to wait for web server shutdown
 		'namespace': '/sl',
 		'prefix': 'SteamLinkWeb',
+		'minupdinterval': 1.0,
 		'index': INDEX_HTML,           # root page 
         'ssl_certificate': None,
         'ssl_key': None,

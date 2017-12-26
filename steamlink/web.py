@@ -127,6 +127,7 @@ class WebApp(object):
 	def __init__(self, namespace, sio, conf, loop = None):
 		self.name = "WebApp"
 		self.conf = conf
+		self.minupdinterval = conf['minupdinterval']
 		self.sio = sio
 		self.namespace = namespace
 		self.loop = loop
@@ -213,23 +214,32 @@ class WebApp(object):
 			await ws.close(code=WSCloseCode.GOING_AWAY, message='Server shutdown')
 
 
-	async def a_send_con_upd(self, room, data):
+	async def a_send_con_upd(self, item, rooms):
 		logger.debug("a_send_con_upd: q size: %s", self.con_upd_q.qsize())
-		await self.con_upd_q.put([room, data])
-
-
-	def send_con_upd(self, room, data):
-		logger.debug("send_con_upd: q size: %s", self.con_upd_q.qsize())
-		self.con_upd_q.put_nowait([room, data])
-#		asyncio.ensure_future(self.con_upd_q.put([room, data]),loop=self.loop)
+		await self.con_upd_q.put([item, rooms])
 
 
 	async def con_upd_t(self):
 		while True:	
-#			await asyncio.sleep(10)
-			logger.debug("con_upd_t get entry")
-			sroom, data =  await self.con_upd_q.get() 
-			logger.debug("con_upd_t ROOM %s EMIT %s" % (sroom, data))
-			await self.sio.emit('data_full', data, 
-					namespace=self.namespace, room=sroom)
-			self.con_upd_q.task_done()
+			item, rooms =  await self.con_upd_q.get() 
+			logger.debug("con_upd_t get entry %s for room %s", item.name, rooms)
+			if rooms is None:
+				continue
+			nrooms = []
+			for room in rooms:
+				sroom = str(room)
+				if item.last_updates.get(sroom,0) <= \
+						 (self.loop.time() - self.minupdinterval):
+					nrooms.append(room)
+					item.last_updates[sroom] = self.loop.time()
+					if sroom in item.future_updates:
+						del item.future_updates[sroom]
+				elif sroom not in item.future_updates:
+					item.future_updates[sroom] = item.last_updates[sroom] + self.minupdinterval
+
+			res = item.console_update(nrooms)
+			for sroom, data in res:
+				logger.debug("con_upd_t ROOM %s EMIT %s" % (sroom, data))
+				await self.sio.emit('data_full', data, 
+						namespace=self.namespace, room=sroom)
+		self.con_upd_q.task_done()

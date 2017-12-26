@@ -266,7 +266,8 @@ class Item:
 		if p:
 			p.add_child(self)
 		self.my_rooms = [Room(self.itype, self.key), Room(self.itype, "*")]
-		self.last_update_time = time.time()
+		self.last_updates = {}		# pre room last update time stamps
+		self.future_updates = {}		# pre room last update time stamps
 		self.schedule_update()
 
 
@@ -311,29 +312,29 @@ class Item:
 
 	def schedule_update(self, rooms = None):
 		logger.debug("Item %s: schedule_item_update for %s", self.name, rooms)
-		# XXX
-		self.console_update(rooms)
+		if rooms is None:
+			rooms = self.my_rooms
+		if webapp:
+			asyncio.ensure_future(webapp.a_send_con_upd(self, rooms), loop=webapp.loop)
 
 
-#XXX  send item and rooms, not the data
 	def console_update(self, rooms = None):
+		res = []
 		data_id, data_to_emit = self.gen_console_data()
 		pack =  {
 		  'id': data_id,
 		  'type': self.itype,
 		  'display_vals':  data_to_emit,
 		}
-		if rooms is None:
-			rooms = self.my_rooms
 		for room in rooms:
 			if room.is_header():
 				pack['header'] = True
 			else:
 				if 'header' in pack: del pack['header']
 			sroom = str(room)
-#			logger.debug("ROOM %s EMIT %s" % (sroom, pack))
-			if webapp:
-				asyncio.ensure_future(webapp.a_send_con_upd(sroom, pack), loop=webapp.loop)
+			self.last_updates[sroom] = webapp.loop.time()
+			res.append((sroom, pack))
+		return res
 
 
 	def gen_console_data(self):
