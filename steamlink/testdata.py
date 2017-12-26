@@ -44,9 +44,9 @@ class TestData:
 		pkt_delay = float(self.conf.get('pkt_delay',1))
 
 		logger.info("%s task starting" % self.name)
-		self.starttime = time.time()
 		await asyncio.sleep(self.conf.get('startwait',1))
-		logger.info("%s task proceeding" % self.name)
+		self.starttime = time.time()
+		logger.warning("%s test start timing" % self.name)
 
 		for mesh in range(n_meshes):
 			logger.debug("creating test mesh %s", mesh)
@@ -69,7 +69,7 @@ class TestData:
 
 		self.running = False
 		duration = time.time() - self.starttime 
-		logger.info("%s finished, duration %s sec", self.name, int(duration))
+		logger.warning("%s finished, duration %s sec", self.name, int(duration))
 
 
 	async def create_node(self, i):
