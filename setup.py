@@ -19,7 +19,7 @@ REQUIRES = [
 	'aiomqtt>=0.1.0',
 	'python-socketio>=1.8.4',
 	'paho-mqtt>=1.3.1,<2',
-	'hbmqtt>=0.9.1',
+	'hbmqtt==0.8.0',
 ]
 
 setup(
