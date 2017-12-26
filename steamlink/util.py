@@ -39,7 +39,7 @@ def getargs():
 	parser = argparse.ArgumentParser()
 	parser.add_argument("-c", "--config", 
 							help="config file default steamlink.yaml",
-							default="steamlink.yaml")
+							default=None)
 	parser.add_argument("-d", "--daemon", 
 							help="excute as a daemon",
 							default=False, action='store_true')
@@ -56,8 +56,8 @@ def getargs():
 							help="path to pid file when running as daemon", 
 							default=None)
 	parser.add_argument("-T", "--testdata", 
-							help="generate test data",
-							default=False, action='store_true')
+							help="generate test data per section 'testdata'",
+							default=False)  #, action='store_true')
 	parser.add_argument("-v", "--verbose", 
 							help="print some info",
 							default=False, action='store_true')
@@ -67,14 +67,17 @@ def getargs():
 	return parser.parse_args()
 
 
-def loadconfig(conf_fname):
+def loadconfig(default_conf, conf_fname):
+	conf = default_conf
 	try:
 		with open(conf_fname, "r") as fh:
 			conf_f = "".join(fh.readlines())
-		return yaml.load(conf_f)
+		conf.update(yaml.load(conf_f))
+		return conf
 	except Exception as e:
 		print("error: config load: %s" % e)
 		sys.exit(1)
+	con
 		
 
 def createconfig(conf_fname):

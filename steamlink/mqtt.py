@@ -1,11 +1,13 @@
 
 
+import logging
 import aiomqtt
 import asyncio
 import random
 import sys
+import os
+from hbmqtt.broker import Broker
 
-import logging
 logger = logging.getLogger(__name__)
 
 #
@@ -25,7 +27,7 @@ class Mqtt:
 		self.topic_control = conf.get('control', 'control')
 		self.topic_data = conf.get('data', 'data')
 		self.server =   conf.get('server', '127.0.0.1')
-		self.port =     int(conf.get('port', 8883))
+		self.port =     int(conf.get('port', 1883))
 		self.clientid = conf.get('clientid', "clie"+"%04i" % int(random.random() * 10000))
 		self.username = conf.get('username', None)
 		self.password = conf.get('password', None)
@@ -64,7 +66,14 @@ class Mqtt:
 
 	async def start(self):
 		logger.info("%s connecting to %s:%s", self.name, self.server, self.port)
-		await self.mq.connect(self.server, self.port, 60)
+		
+		while True:
+			try:
+				await self.mq.connect(self.server, self.port, 60)
+				break
+			except ConnectionRefusedError as e:
+				logger.error("Mqtt: connect to %s:%s failed: %s", self.server, self.port, e)
+				asyncio.sleep(10)
 		await self.wait_connect()
 
 
@@ -137,4 +146,21 @@ class Mqtt:
 		logger.info("%s publish %s %s", self.name, topic, pkt)
 		self.mq.publish(topic, payload=pkt.pkt, qos=qos, retain=retain)
 #		time.sleep(0.1)
+
+
+
+
+class Mqtt_Broker(Broker):
+
+	def __init__(self, config=None, loop=None, plugin_namespace=None):
+		print("Config", config)
+		super().__init__(config, loop, plugin_namespace)
+
+
+#	async def start(start):
+#		await Broker.start(self)
+
+
+	async def stop(self):
+		await Broker.shutdown(self)
 
