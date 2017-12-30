@@ -8,21 +8,13 @@ from aiohttp.log import access_logger, web_logger
 
 from steamlink.steamlink import (
 	Room,
-	Steam,
-	Mesh,
-	Node,
-	SL_OP,
-	Packet,
-	LogData,
 	registry,
 )
 
 
 from steamlink.const import (
 	LIB_DIR,
-#	PROJECT_PACKAGE_NAME, 
-	INDEX_HTML, 
-#	__version__
+	INDEX_HTML,
 )
 
 import logging
@@ -31,90 +23,74 @@ logger = logging.getLogger(__name__)
 from yarl import URL
 
 
-class GracefulExit(SystemExit):
-	code = 1
-
-
-def raise_graceful_exit():
-	raise GracefulExit()
-
-
-
-class SLConsoleNamespace(socketio.AsyncNamespace):
+class WebNamespace(socketio.AsyncNamespace):
 	def __init__(self, webapp):
 		self.webapp = webapp
 		self.namespace = self.webapp.namespace
 
 		super().__init__(self.namespace)
-		logger.debug("SLConsoleNamespace registered for namespace %s", self.namespace)
+		logger.debug("WebNamespace registered for namespace %s", self.namespace)
 
 
 	def on_connect(self, sid, environ):
-		logger.debug("SLConsoleNamespace connect %s",str(environ['REMOTE_ADDR']))
+		logger.debug("WebNamespace connect %s",str(environ['REMOTE_ADDR']))
+
 
 	def on_disconnect(self, sid):
-		logger.debug("SLConsoleNamespace disconnect")
+		logger.debug("WebNamespace disconnect")
+		for r in registry.get_all('Room'):
+			if sid in r.members:
+				logger.debug("WebNamespace %s removed from room %s", sid, r)
+				del r.members[sid]
 
 
 	async def on_my_event(self, sid, data):
-		logger.debug("SLConsoleNamespace on_my_event %s", data)
+		logger.debug("WebNamespace on_my_event %s", data)
 #		await self.emit('my_response', {'data': data['data']} ) #, room=sid, namespace=self.namespace)
 		return "ACK"
 
-	async def on_need_log(self, sid, data):
-		logger.debug("SLConsoleNamespace need_log %s", data)
-#		await self.emit('my_response', {'data': data['data']} ) #, room=sid, namespace=self.namespace)
-		node = data.get('id',None)
-		if  not node in Node.name_idx:
-			return "NAK"
-		try:
-			r = Node.name_idx[node].console_pkt_log(data['key'], int(data['count']))
-		except:
-			return "NAK"
-		return "ACK"
 
+#	async def on_need_log(self, sid, data):
+#		logger.debug("WebNamespace need_log %s", data)
+##		await self.emit('my_response', {'data': data['data']} ) #, room=sid, namespace=self.namespace)
+#		node = data.get('id',None)
+#		if  not node in Node.name_idx:
+#			return "NAK"
+#		try:
+#			r = Node.name_idx[node].console_pkt_log(data['key'], int(data['count']))
+#		except:
+#			return "NAK"
+#		return "ACK"
+#
 
 	async def on_join(self, sid, message):
-		logger.debug("SLConsoleNamespace on_join %s", message)
+		logger.debug("WebNamespace on_join %s", message)
 		if not 'room' in message:
 			logger.error("sio join: message without room: %s", str(message))
 			return "NAK"
-		room = Room(sroom=message['room'])
-		sroom = str(room)
-		self.enter_room(sid, sroom, namespace=self.namespace)
-		if room.is_item_room():		# item_key_*
-			item = registry.find_by_id(room.lvl, int(room.key))
-			if item is None:
-				logger.debug("SLConsoleNamespace no items in room  %s", room)
-				return "NAK"
-			items_to_send = []
-			for i in item.children:
-				items_to_send.append(item.children[i])
-		elif not room.is_header():		# item_*
-			items_to_send = registry.get_all(room.lvl)
-		else:						# item_key
-			item = registry.find_by_id(room.lvl, int(room.key))
-			if item is None:
-				logger.debug("SLConsoleNamespace no items in room  %s", room)
-				return "NAK"
-			items_to_send = [item]
+		sroom=message['room']
+		room = registry.find_by_id('Room', sroom)
+		if room is None:
+			room = Room(sroom=sroom)
 
-		logger.debug("SLConsoleNamespace items_to_send %s", items_to_send)
-		for item in items_to_send:
-			item.console_update([room])
-#			data_id, data_to_send = item.gen_console_data()
-#			pack =  {
-#			  'id': data_id,
-#			  'type': room.lvl, 
-#			  'display_vals':  data_to_send,
-#			}
-#			if room.is_header():
-#				pack['header'] = True
-#			await self.webapp.a_send_con_upd(sroom, pack)
+		self.enter_room(sid, sroom, namespace=self.namespace)
+		room.add_member(sid)
+		logger.debug("WebNamespace items_to_send %s", room.items)
+		for item in room.items:
+			logger.debug("WebNamespace update itme %s %s", item, room)
+			item.schedule_update([room])
 		return "ACK"
 
 	async def on_leave(self, sid, message):
-		logger.debug("SLConsoleNamespace on_leave %s", message)
+		logger.debug("WebNamespace on_leave %s", message)
+		if not 'room' in message:
+			logger.error("sio join: message without room: %s", str(message))
+			return "NAK"
+		sroom=message['room']
+		room = registry.find_by_id('Room', sroom)
+		if room is None:
+			return "NAK"
+		room.add_member(sid)
 		self.leave_room(sid, message['room'], namespace=self.namespace)
 		return "ACK"
 
@@ -160,18 +136,19 @@ class WebApp(object):
 	async def qstart(self):
 		logger.info("%s starting q handler", self.name)
 		self.conf_upd_res = await self.con_upd_t()
-	
+
 
 	async def start(self):
 		logger.info("%s starting, server %s port %s", self.name, self.host,  self.port)
-		self.sio.register_namespace(SLConsoleNamespace(self))
+		self.sio.register_namespace(WebNamespace(self))
 
 		await self.app.startup()
-	
+		logger.debug("%s: app started", self.name)
+
 		scheme = 'https' if self.ssl_context else 'http'
 		base_url = URL.build(scheme=scheme, host='localhost', port=self.port)
 		uri = str(base_url.with_host(self.host).with_port(self.port))
-	
+
 		make_handler_kwargs = dict()
 		if self.access_log_format is not None:
 			make_handler_kwargs['access_log_format'] = self.access_log_format
@@ -181,7 +158,7 @@ class WebApp(object):
 						**make_handler_kwargs)
 
 		self.server = await self.loop.create_server(
-						self.handler, self.host, self.port, 
+						self.handler, self.host, self.port,
 						ssl=self.ssl_context,
 						backlog=self.backlog)
 
@@ -192,7 +169,7 @@ class WebApp(object):
 		self.loop.run_until_complete(self.app.shutdown())
 		self.loop.run_until_complete(self.handler.shutdown(self.shutdown_timeout))
 		self.loop.run_until_complete(self.app.cleanup())
-	
+
 
 	async def index(self, request):
 		index_html = self['index']
@@ -214,32 +191,39 @@ class WebApp(object):
 			await ws.close(code=WSCloseCode.GOING_AWAY, message='Server shutdown')
 
 
-	async def a_send_con_upd(self, item, rooms):
-		logger.debug("a_send_con_upd: q size: %s", self.con_upd_q.qsize())
-		await self.con_upd_q.put([item, rooms])
+	def schedule_update(self, item, rooms):
+		logger.info("%s schedule_update for %s", self.name, item)
+		asyncio.ensure_future(self.con_upd_q.put([item, rooms]), loop=self.loop)
 
 
 	async def con_upd_t(self):
-		while True:	
-			item, rooms =  await self.con_upd_q.get() 
-			logger.debug("con_upd_t get entry %s for room %s", item.name, rooms)
-			if rooms is None:
+		logger.info("%s q handler", self.name)
+		while True:
+			item, upd_rooms =  await self.con_upd_q.get()
+			logger.debug("conf_upd_t item %s", item.pretty())
+			if upd_rooms is None:
 				continue
 			nrooms = []
-			for room in rooms:
-				sroom = str(room)
-				if item.last_updates.get(sroom,0) <= \
+			for upd_room in upd_rooms:
+				if len(upd_room.members) == 0:		# nobody in the room
+					logger.debug("conf_upd_t empty room %s", upd_room)
+					continue
+				logger.debug("con_upd_t get entry %s for room %s", item, upd_room.pretty())
+				if upd_room.last_update <= \
 						 (self.loop.time() - self.minupdinterval):
-					nrooms.append(room)
-					item.last_updates[sroom] = self.loop.time()
-					if sroom in item.future_updates:
-						del item.future_updates[sroom]
-				elif sroom not in item.future_updates:
-					item.future_updates[sroom] = item.last_updates[sroom] + self.minupdinterval
+					nrooms.append(upd_room)
+#					upd_room.last_update = self.loop.time()
+					upd_room.future_update = 0
+				else:
+					upd_room.future_update = upd_room.last_update + self.minupdinterval
 
 			res = item.console_update(nrooms)
+
 			for sroom, data in res:
 				logger.debug("con_upd_t ROOM %s EMIT %s" % (sroom, data))
-				await self.sio.emit('data_full', data, 
+				await self.sio.emit('data_full', data,
 						namespace=self.namespace, room=sroom)
-		self.con_upd_q.task_done()
+			self.con_upd_q.task_done()
+
+
+

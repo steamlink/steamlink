@@ -25,7 +25,7 @@ PROJECT_CLASSIFIERS = [
     'License :: OSI Approved :: MIT License',
     'Operating System :: OS Independent',
     'Programming Language :: Python :: 3.6',
-    'Topic :: Software Development :: Libraries :: Python Modules', 
+    'Topic :: Software Development :: Libraries :: Python Modules',
     'Topic :: Internet :: WWW/HTTP :: Dynamic Content'
 ]
 

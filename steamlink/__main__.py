@@ -6,6 +6,7 @@ import sys
 import os
 import traceback
 import hbmqtt
+import hbmqtt.broker
 import syslog
 import random
 import asyncio
@@ -21,38 +22,24 @@ from steamlink.mqtt import (
 	Mqtt_Broker
 )
 
-from steamlink.steamlink import (
-	Room,
-	Steam,
-	Mesh,
-	Node,
-	SL_OP,
-	Packet,
-	LogData,
-	registry,
-)
+from steamlink.steamlink import Steam
 
-from steamlink.web import (
-	WebApp,
-)
+from steamlink.web import WebApp
 
 from steamlink.util import (
-	phex,
 	getargs,
 	loadconfig,
 	createconfig,
 	daemonize,
 	check_pid,
 	write_pid,
-	closefds_osx,
 )
 
 from steamlink.testdata import TestData
 
 from steamlink.const import (
-	LIB_DIR,
-	PROJECT_PACKAGE_NAME, 
-	INDEX_HTML, 
+	PROJECT_PACKAGE_NAME,
+	INDEX_HTML,
 	__version__
 )
 
@@ -76,8 +63,8 @@ DEFAULT_CONF = {
 	'Steam': {
 		'id': 0,
 		'name': 'sample1',
-		'namespace': '/sl',
 		'description': 'SteamLink Sample',
+		'namespace': '/sl',
 	},
 	'tests': {
 	},
@@ -101,7 +88,7 @@ DEFAULT_CONF = {
 		'namespace': '/sl',
 		'prefix': 'SteamLinkWeb',
 		'minupdinterval': 1.0,
-		'index': INDEX_HTML,           # root page 
+		'index': INDEX_HTML,           # root page
         'ssl_certificate': None,
         'ssl_key': None,
 	},
@@ -122,7 +109,7 @@ DEFAULT_CONF = {
 			'allow-anonymous': True,
 #			'password-file': os.path.join(os.path.dirname(os.path.realpath(__file__)), 'passwd'),
 			'plugins': [
-#				'auth_file', 
+#				'auth_file',
 				'auth_anonymous',
 			]
 		}
@@ -139,17 +126,14 @@ def steamlink_main() -> int:
 	""" start steamlinks """
 
 	cl_args = getargs()
-	if not cl_args.loglevel:
-		if cl_args.debug > 0:
-			loglevel = logging.DEBUG
-		else:
-			loglevel = logging.WARN
-	else:
-		try:
-			loglevel = getattr(logging, cl_args.loglevel.upper())
-		except Exception as e:
-			print("invalid logging level, use debug, info, warning, error or critical")
-			return(1)
+	try:
+		loglevel = getattr(logging, cl_args.loglevel.upper())
+	except Exception as e:
+		print("invalid logging level, use debug, info, warning, error or critical")
+		return(1)
+
+	if cl_args.debug > 0:
+		loglevel = logging.DEBUG
 
 	FORMAT = '%(asctime)-15s: %(levelname)s %(module)s %(message)s'
 	logging.basicConfig(format=FORMAT, filename=cl_args.logfile)
@@ -163,15 +147,15 @@ def steamlink_main() -> int:
 		logging.captureWarnings(True)
 
 	logger.info("%s version %s" % (PROJECT_PACKAGE_NAME, __version__))
-	
-	
+
+
 	# create config  if -C
-	conff = cl_args.config 
+	conff = cl_args.config
 	if cl_args.createconfig:
 		rc = createconfig(conff)
 		return(rc)
-	
-	# load config 
+
+	# load config
 	if conff is None:
 		conf = DEFAULT_CONF
 	else:
@@ -180,7 +164,7 @@ def steamlink_main() -> int:
 	# Daemon functions
 	if cl_args.pid_file:
 		check_pid(cl_args.pid_file)
-	
+
 	daemon = cl_args.daemon
 	if cl_args.daemon:
 		if cl_args.verbose:
@@ -205,31 +189,37 @@ def steamlink_main() -> int:
 	conf_steam = conf['Steam']
 	conf_broker = conf['mqtt_broker']
 	conf_mqtt = conf['mqtt']
-	
-	namespace = conf_general['namespace']
 
-	#sl_log = LogData(conf['logdata'])
-	sl_log = None
+	namespace = conf_steam['namespace']
 
-	if not conf_broker is None: 
+	if conf_broker is not None:
 		logger.debug("startup: create MQTT Broker")
 		mqtt_broker = Mqtt_Broker(conf_broker, loop=aioloop)
 		logger.debug("startup: start MQTT Broker")
-		aioloop.run_until_complete(mqtt_broker.start())
+		try:
+			aioloop.run_until_complete(mqtt_broker.start())
+		except hbmqtt.broker.BrokerException as e:
+#			logger.error("mqtt: broker start failed: %s", e)
+			sys.exit(1)
 
 	logger.debug("startup: create Mqtt")
-	mqtt = Mqtt(conf_mqtt, sl_log)
+	mqtt = Mqtt(conf_mqtt)
 
 	aioloop.run_until_complete(mqtt.start())
-	
+
 	ping_timeout = conf_general['ping_timeout']
 
 	logger.debug("startup: create socketio")
+	ll = logging.getLogger('AsyncServer')
+	# use different logging level socketio/engineio modules
+	ll.setLevel(logging.WARN)
 	sio = socketio.AsyncServer(
+		logger = ll,
 		async_mode = 'aiohttp',
-#		cors_allowed_origins =  "http://localhost:* http://127.0.0.1:*", 
-#		cors_credentials = True, 
+#		cors_allowed_origins =  "http://localhost:* http://127.0.0.1:*",
+#		cors_credentials = True,
 		ping_timeout = ping_timeout,
+		engineio_logger = ll,
 	)
 
 	logger.debug("startup: create WebApp")
@@ -238,11 +228,11 @@ def steamlink_main() -> int:
 	aioloop.run_until_complete(webapp.start())
 
 	logger.debug("startup: create Steam")
-	steam = Steam(conf_steam, mqtt, sio)
-	steam.attach(webapp, namespace)
+	steam = Steam(conf_steam)
+	steam.attach(webapp, mqtt)
 
-	logger.debug("startup: start steam")
-	aioloop.run_until_complete(steam.start())
+#	logger.debug("startup: start steam")
+#	aioloop.run_until_complete(steam.start())
 
 	coros = []
 	if cl_args.testdata:
@@ -257,6 +247,9 @@ def steamlink_main() -> int:
 	else:
 		TestTask = None
 
+	ll = logging.getLogger('asyncio_socket')
+	ll.setLevel(logging.WARN)
+
 	coros.append(webapp.qstart())
 	logger.debug("startup: starting coros")
 	try:
@@ -268,18 +261,16 @@ def steamlink_main() -> int:
 		logger.debug("terminating")
 	except hbmqtt.errors.NoDataException as e:
 		logger.notice("coros run_until: hbmqtt.errors.NoDataException: %s", e)
-	
-	
+
 	# Shutdown
 	if TestTask:
 		logger.debug("stopping TestTask")
 		TestTask.stop()
-	
+
 	aioloop.run_until_complete(mqtt.stop())
-	aioloop.run_until_complete(steam.stop())
-	if not conf_broker is None: 
+	if not conf_broker is None:
 		aioloop.run_until_complete(mqtt_broker.stop())
-	
+
 	logger.info("done")
 
 

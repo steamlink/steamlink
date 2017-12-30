@@ -175,7 +175,10 @@ window.onload = function(){
                 var newTileRoomType;
                 var newHeaderRoomType;
 
-                if (this.headerRoomType === "mesh_all") {
+                console.log("in  room " + this.headerRoomType);
+
+//                if (this.headerRoomType === "mesh_all") {
+                if (this.headerRoomType === "home_id") {
                     // We want to go to a specific mesh display
                     // The header will be description for the mesh
                     // Tiles will be all the nodes

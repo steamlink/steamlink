@@ -18,7 +18,7 @@ class TimeLog:
 	def get(self, where, count):
 		keys = list(self.items.keys())
 		if where in [None, '', 'last']:
-			pos = len(keys) 
+			pos = len(keys)
 		else:
 			try:
 				pos = keys.index(where)

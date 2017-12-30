@@ -14,8 +14,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-
-ItemTypes = ['Steam', 'Mesh', 'Node', 'Pkt']
+ItemTypes = ['Steam', 'Mesh', 'Node', 'Pkt', 'Room']
 
 TODO = """
 - track routing table from received packets
@@ -55,50 +54,18 @@ Pkt_1
 Pkt_1_*					XXX nothing below pkt
 
 """
+
+
+# Globals, initialized by attach
+_LOOP = None
+_WEBAPP = None
+_BROKER = None
+
 #
-# Room
-#
-class Room:
-	def __init__(self, lvl = None, key = None, detail = None, sroom = None):
-		if sroom:
-			l = sroom.split('_')
-#			assert len(l) >= 2 and len(l) <= 3, "room string invalid: %s" % sroom
-			self.lvl = l[0]
-			self.key = l[1]
-			self.detail = None if len(l) < 3 else l[2]
-		else:
-			self.lvl = lvl
-			self.key = key
-			self.detail = detail
-#		assert self.lvl in ItemTypes , "room key invalid: %s" % sroom
-
-
-	def is_item_room(self):
-		return self.detail != None
-
-
-	def is_header(self):
-		if self.detail == '*' or self.key == '*':
-			return False
-		return True
-
-
-	def no_key(self):
-		return "%s_*" % (self.lvl)
-		
-
-	def __str__(self):
-		if not self.detail is None:
-			return "%s_%s_%s" % (self.lvl, self.key, self.detail)
-		return "%s_%s" % (self.lvl, self.key)
-		
-
-		
-#
-# SL_CodeCfgStruct 
+# SL_CodeCfgStruct
 #
 class SL_NodeCfgStruct:
-	""" 
+	"""
 	Node configuration data, as stored in flash
 
 	struct SL_NodeCfgStruct {
@@ -129,8 +96,8 @@ class SL_NodeCfgStruct:
 			self.sleeps = sleeps					# B
 			self.pingable = pingable				# B
 			self.battery_powered = battery_powered	# B
-			self.radio_params = radio_params		# B 
-	
+			self.radio_params = radio_params		# B
+
 		else:			# deconstruct
 #			assert struct.calcsize(SL_NodeCfgStruct.sfmt) == len(pkt)
 			self.slid, name, description, self.gps_lat, self.gps_lon, self.altitude, self.max_silence, sleeps, pingable, battery_powered, self.radio_params = struct.unpack(SL_NodeCfgStruct.sfmt, pkt)
@@ -170,7 +137,7 @@ class SL_NodeCfgStruct:
 #
 class SL_OP:
 	'''
-	control message types: EVEN, 0 bottom bit 
+	control message types: EVEN, 0 bottom bit
 	data message types: ODD, 1 bottom bit
 	'''
 
@@ -193,7 +160,7 @@ class SL_OP:
 
 	def code(code):
 		try:
-			return list(SL_OP.__dict__.keys())[list(SL_OP.__dict__.values()).index(code)] 
+			return list(SL_OP.__dict__.keys())[list(SL_OP.__dict__.values()).index(code)]
 		except:
 			pass
 		return '??'
@@ -221,7 +188,7 @@ class Registry:
 	def unregister(self, item):
 		if logging.DBG > 2: logger.debug("Registry: unregister %s", item)
 #		assert item.name in self.name_idx[item.itype], "Name not in Index"
-		del self.name_idx[item.itype][item.name] 
+		del self.name_idx[item.itype][item.name]
 #		assert item.key in self.id_idx[item.itype], "Id not in Index"
 		del self.id_idx[item.itype][item.key]
 
@@ -251,34 +218,172 @@ class Registry:
 
 # create registry
 registry = Registry()
-webapp = None
+
+#
+# BaseItem
+#
+class BaseItem:
+	def __init__(self, itype, key, name = None, key_in_parent = 0):
+		self.itype = itype
+		self.key = key
+		if name is None:
+			self.name = self.mkname()
+		else:
+			self.name = name
+		self.parent = None
+		self.children = {}
+		logger.debug("BaseItem: created %s", self.__str__())
+		registry.register(self)
+		self.pp = False
+
+
+	def __del__(self):
+		if registry.find_by_id(self.itype, self.key):
+			registry.unregister(self)
+			logger.debug("BaseItem: deleted %s", self)
+
+
+	def mkname(self):
+		return "%s:%s" % (self.itype, self.key)
+
+
+	def __str__(self):
+		return "%s %s(%s)" % (self.itype, self.name, self.key)
+
+
+	def pretty(self):
+		import pprint
+
+		if self.pp:
+			return "XXX"
+		self.pp = True
+		res = pprint.pformat(self.__dict__, indent=2, width=80)
+		self.pp = False
+		return res
+
+
+#
+# RoomItem
+#
+class RoomItem:
+	def __init__(self, room, item):
+		self.room = room
+		self.item = item
+		self.item_key = "%s_%s" % (item.itype, item.key)
+		self.last_update = 0		# room's last update time stamp
+		self.future_update = 0		# room's next update time stamp
+
+
+	def update(self):
+		self.last_update = _LOOP.time()
+		self.item.console_update([self.room])
+
+#
+# Room
+#
+class Room(BaseItem):
+	def __init__(self, lvl = None, rkey = None, detail = None, sroom = None):
+
+		if sroom:
+			l = sroom.split('_')
+			if  len(l) < 2 or len(l) > 3:
+				logger.error("Room: sroom string invalid: %s" % sroom)
+				l.append("*")	# XXX
+			self.lvl = l[0]
+			self.rkey = l[1]
+			self.detail = None if len(l) < 3 else l[2]
+			self.sroom = sroom
+		else:
+			self.lvl = lvl
+			self.rkey = rkey
+			self.detail = detail
+			self.sroom = self.__str__()
+		super().__init__('Room', sroom)
+
+		self.last_update = 0		# room's last update time stamp
+		self.future_update = 0		# room's next update time stamp
+		self.members = {}			# fake dict: web session in room
+		self.items = []				# item keys in room
+
+
+	def is_item_room(self):
+		return self.detail != None
+
+
+	def is_header(self):
+		if self.detail == '*' or self.rkey == '*':
+			return False
+		return True
+
+
+	def no_key(self):
+		return "%s_*" % (self.lvl)
+
+
+	def full_key(self):
+		return self.sroom
+
+
+	def add_member(self, mid):
+		if mid in self.members:
+			logger.error("room add_member: id %s already a member in room", mid, self)
+		self.members[mid] = mid
+
+
+	def del_member(self, mid):
+		if not mid in self.members:
+			logger.error("room del_member: id %s not a member in room %s", mid, self)
+		else:
+			del self.members[mid] 
+
+#	def __str__(self):
+#		if not self.detail is None:
+#			return "%s_%s_%s" % (self.lvl, self.rkey, self.detail)
+#		return "%s_%s" % (self.lvl, self.rkey)
+
+
 
 #
 # Item
 #
-class Item:
-	def __init__(self):
-		logger.debug("Item: create %s", self)
-#		assert self.itype in ItemTypes, "Item.__init__: %s not an ItemType" % self.itype
-		self.children = {}		# keyed by _key of decendent
-		registry.register(self)
-		p = self.get_parent()
-		if p:
-			p.add_child(self)
-		self.my_rooms = [Room(self.itype, self.key), Room(self.itype, "*")]
-		self.last_updates = {}		# pre room last update time stamps
-		self.future_updates = {}		# pre room last update time stamps
+class Item(BaseItem):
+	def __init__(self, itype, key, name = None, key_in_parent = 0):
+		super().__init__(itype, key, name)
+
+		self.parent = self.get_parent(key_in_parent)
+		if self.parent:
+			self.parent.add_child(self)
+
+		self.my_rooms = []
+		for r in self.get_room_list():
+			logger.debug("Item: room to add %s", r)
+			room = registry.find_by_id('Room', r)
+			if room is None:
+				room = Room(sroom = r)
+			self.my_rooms.append(room)
+			room.items.append(self)		#XXX del
+
 		self.schedule_update()
 
 
 	def __del__(self):
 		if registry.find_by_id(self.itype, self.key):
-			logger.debug("Item: delete %s", self)
-			registry.unregister(self)
-			p = self.get_parent()
-			if p:
-				p.del_child(self)
-			self.schedule_update()
+			super().__del__()
+			if self.parent:
+				self.parent.del_child(self)
+			self.schedule_update()	#XXX update type: del?
+
+
+	def attach(self, app, broker):
+		global _ROOT, _WEBAPP, _LOOP, _BROKER
+		if _WEBAPP is not None:
+			logger.error("Item %s: attach already done", self.key)
+			return
+		_ROOT = self
+		_WEBAPP = app
+		_BROKER = broker
+		_LOOP = asyncio.get_event_loop()
+		logger.debug("Item: attached webapp '%s'", _WEBAPP.name)
 
 
 	def get_parent_type(self):
@@ -288,13 +393,13 @@ class Item:
 		return ItemTypes[i-1]
 
 
-	def get_parent(self):
+	def get_parent(self, key_in_parent = 0):
 		ptype = self.get_parent_type()
 		if ptype is None:
 			p = None
 		else:
-			p =  registry.find_by_id(ptype, 0)
-		if logging.DBG > 2: logger.debug("Item: get_parent  %s): %s", self, str(p))
+			p =  registry.find_by_id(ptype, key_in_parent)
+		if logging.DBG > 1: logger.debug("Item: get_parent  %s): %s", self, str(p))
 		return p
 
 
@@ -306,16 +411,18 @@ class Item:
 
 	def del_child(self, item):
 		logger.debug("Item: child  %s delete from %s", item.key, self)
-		del self.children[item.key] 
+		del self.children[item.key]
 		self.schedule_update()
 
 
 	def schedule_update(self, rooms = None):
-		logger.debug("Item %s: schedule_item_update for %s", self.name, rooms)
+		if not _WEBAPP:
+			logger.warning("Item %s: update before _WEBAPP", self.name)
+			return
 		if rooms is None:
 			rooms = self.my_rooms
-		if webapp:
-			asyncio.ensure_future(webapp.a_send_con_upd(self, rooms), loop=webapp.loop)
+		logger.debug("Item %s: schedule_update for %s", self.name, rooms)
+		_WEBAPP.schedule_update(self, rooms)
 
 
 	def console_update(self, rooms = None):
@@ -331,9 +438,7 @@ class Item:
 				pack['header'] = True
 			else:
 				if 'header' in pack: del pack['header']
-			sroom = str(room)
-			self.last_updates[sroom] = webapp.loop.time()
-			res.append((sroom, pack))
+			res.append((room.sroom, pack))
 		return res
 
 
@@ -350,29 +455,14 @@ class Item:
 		return self.key, r
 
 
-#	def gen_datafull_emit(self):
-#		r = self.gen_console_data()
-#		return {
-#		  'id': self.key,
-#		  'type': self.itype, 
-#		  'display_vals':  r
-#		}
-
-
 	def get_room_list(self):
-		return ['%s_%s' % (self.type, self.key)]
+		rooms = []
+		rooms.append( "%s_*" % (self.itype))
+		rooms.append( "%s_%s" % (self.itype, self.key))
+		if self.parent:
+			rooms.append( "%s_%s_*" % (self.parent.itype, self.parent.key))
+		return rooms
 
-
-	def update(self, item):
-		all_room = "%s_*" % (self.itype)
-		head_room = "%s_%s" % (self.itype, self.key)
-		item_room = "%s_%s_*" % (self.itype, self.key)
-
-		rooms = [all_room, head_room, item_room]
-
-
-	def __str__(self):
-		return "%s %s(%s)" % (self.itype, self.name, self.key)
 
 #
 # Steam
@@ -380,41 +470,27 @@ class Item:
 class Steam(Item):
 	console_fields = {
  	 "Name": "self.name",
-	 "Description": "self.desc", 
+ 	 "Key": "self.key",
+#	 "Description": "self.desc",
+	 "Time": "time.asctime()",
 	 }
-	
-	def __init__(self, conf, broker,  sio):
-		self.key = conf['id']
-		name = self.mkname()
-		self.name = conf['name']
-		self.itype = 'Steam'
-		self.sio = sio
+
+
+	def __init__(self, conf):
 		self.desc = conf['description']
-		self.namespace = conf['namespace']
-		self.steam = self
-		self.my_rooms = [Room("Steam", self.key), Room("Steam", "*")]
-		self.sl_broker = broker
-		super().__init__()
-		self.loop = asyncio.get_event_loop()
+		super().__init__('Steam', conf['id'])
 
 
-	async def start(self):
-		pass
-
-
-	def attach(self, app, namespace):
-		global webapp
-		webapp = app
-		logger.debug("Steam: attached webapp '%s'", webapp.name)
-		self.namespace = namespace
-
-
-	async def stop(self):
-		logger.debug("stopping steam")
-
-
-	def mkname(self):
-		return "Steam%i" % self.key
+	def gen_console_data(self):
+		r = {}
+		for label in Steam.console_fields:
+			source = Steam.console_fields[label]
+			try:
+				v = eval(source)
+			except:
+				v = "*UNK*"
+			r[label] = v
+		return self.key, r
 
 
 #
@@ -423,7 +499,7 @@ class Steam(Item):
 class Mesh(Item):
 	console_fields = {
  	 "Name": "self.name",
-	 "Description": "self.desc", 
+	 "Description": "self.desc",
 	 "Total Nodes": "len(self.children)",
 	 "Active Nodes": "len(self.children)",
 	 "Packets sent": "self.packets_sent",
@@ -432,31 +508,17 @@ class Mesh(Item):
 
 	def __init__(self, mesh_id):
 		logger.debug("Mesh creating: %s", mesh_id)
-		self.key = mesh_id 
-		self.name = self.mkname()
-		self.itype = 'Mesh'
-		self.steam = registry.find_by_id('Steam', 0)
-		self.desc = "Description for %s" % self.name
+#		self.steam = registry.find_by_id('Steam', 0)
 		self.packets_sent = 0
 		self.packets_received = 0
-		self.my_rooms = [Room("Mesh", self.key), Room("Mesh", "*")]
-		super().__init__()
+		super().__init__('Mesh', mesh_id)
+		self.desc = "Description for %s" % self.name
 		logger.debug("Mesh created: %s", self.name)
-
-		self.schedule_update()
 
 
 	def mkname(self):
 		return "Mesh%06x" % self.key
 
-
-	def get_room_list(self):
-		return [
-			"%_*" % self.type,
-			'%s_%s' % (self.type, self.key),
-			'%s_%s' % (self.type, self.key),
-			"%s_%s_*" % ("Node", self.key),
-			] 
 
 
 	def gen_console_data(self):
@@ -476,41 +538,38 @@ class Mesh(Item):
 class Node(Item):
 	console_fields = {
  	 "Name": "self.nodecfg.name",
-	 "Description": "self.nodecfg.desc", 
+	 "Description": "self.nodecfg.desc",
 	 "Packets sent": "self.packets_sent",
 	 "Packets received": "self.packets_received",
-	 "SL ID": "self.key", 
+	 "SL ID": "self.key",
 	}
 	""" a node in the test set """
-	def __init__(self, sl_id, nodecfg = None, steam = None):
+	def __init__(self, sl_id, nodecfg = None):
 		logger.debug("Node createing : %s" % sl_id)
-		self.nodecfg = nodecfg
-		self.key = sl_id
-		self.name = self.mkname()
-		self.itype = 'Node'
-		self.steam = registry.find_by_id('Steam', 0)
+		if nodecfg is None:
+			self.nodecfg = SL_NodeCfgStruct(sl_id, "Node%08x" % sl_id)
+		else:
+			self.nodecfg = nodecfg
+			self.name = nodecfg.name
+#		self.steam = registry.find_by_id('Steam', 0)
 		self.response_q = queue.Queue(maxsize=1)
 
 		self.packets_sent = 0
 		self.packets_received = 0
-		self.state = "DOWN"	
+		self.state = "DOWN"
 		self.status = []
 		self.tr = {}		# dict of sending nodes, each holds a list of (pktno, rssi)
 		self.packet_log = TimeLog(MAX_NODE_LOG_LEN)
 
+
+		super().__init__('Node', sl_id, None, key_in_parent=self.mesh_id(sl_id))
+
 		self.mesh = registry.find_by_id('Mesh', self.mesh_id())
 		if self.mesh is None:		# Auto-create Mesh
-			self.mesh = Mesh(mesh_id, steam)
+			self.mesh = Mesh(mesh_id)
 			logger.debug("Node __init__: mesh is %s" % mesh)
 
-		self.my_rooms = [Room("Node", self.key), Room("Node", "*", self.key),
-					Room("Mesh", self.mesh.key, "*")]
-
-		super().__init__()
-
 		logger.debug("Node created: %s" % self.name)
-
-		self.schedule_update()
 
 
 	def mkname(self):
@@ -519,18 +578,10 @@ class Node(Item):
 		return "Node%08x" % self.key
 
 
-	def mesh_id(self):
-		return (self.key >> 8)
-
-
-	def get_parent(self):
-		ptype = self.get_parent_type()
-		if ptype is None:
-			p = None
-		else:
-			p = registry.find_by_id(ptype, self.mesh_id())
-		logger.debug("Node: get_parent  %s: %s", self, p)
-		return p
+	def mesh_id(self, key = None):
+		if key is None:
+			key = self.key
+		return (key >> 8)
 
 
 	def get_firsthop(self):
@@ -548,7 +599,7 @@ class Node(Item):
 			logger.info("node %s state %s", self.key, self.state)
 #			sl_log.log_state(self.key, "ONLINE" if self.state == "UP" else "offline")
 			self.schedule_update()
-	
+
 
 
 	def is_up(self):
@@ -558,23 +609,23 @@ class Node(Item):
 	def publish_pkt(self, sl_pkt, sub="control"):
 		self.log_pkt(sl_pkt)
 		self.packets_sent += 1
-		self.mesh.packets_sent += 1
-		self.steam.sl_broker.publish(self.get_firsthop(), sl_pkt, sub=sub)
 		self.schedule_update()
+		self.mesh.packets_sent += 1
+		_BROKER.publish(self.get_firsthop(), sl_pkt, sub=sub)
 		self.mesh.schedule_update()
 
 
 	def send_boot_cold(self):
 		sl_pkt = Packet(slnode=self, sl_op=SL_OP.BC)
 		self.publish_pkt(sl_pkt)
-		return 
+		return
 
 
 	def send_get_status(self):
 		sl_pkt = Packet(slnode=self, sl_op=SL_OP.GS)
 		self.publish_pkt(sl_pkt)
 #		rc = self.get_response(timeout=SL_RESPONSE_WAIT_SEC)
-		return 
+		return
 
 
 	def send_set_radio_param(self, radio):
@@ -597,10 +648,6 @@ class Node(Item):
 		return rc
 
 
-	def __repr__(self):
-		return "Node %s" % (self.key)
-
-
 	def log_pkt(self, sl_pkt):
 		self.packet_log.add(sl_pkt)
 
@@ -609,8 +656,9 @@ class Node(Item):
 		""" handle incoming messages on the ../data topic """
 		self.log_pkt(sl_pkt)
 		self.packets_received += 1
-		self.mesh.packets_received += 1
 		self.schedule_update()
+		self.mesh.packets_received += 1
+		self.mesh.schedule_update()
 
 		logger.info("post_data %s", sl_pkt)
 
@@ -645,29 +693,21 @@ class Node(Item):
 			except ValueError as e:
 				logger.warning("post_incoming: cannot convert %s to pkt", sl_pkt.payload)
 				return
-			
+
 			test_pkt.set_receiver_slid(sl_pkt.via)
 			test_pkt.set_rssi(sl_pkt.rssi)
 			if not test_pkt.pkt['slid'] in self.tr:
 				self.tr[test_pkt.pkt['slid']] = []
 			self.tr[test_pkt.pkt['slid']].append((test_pkt.pkt['pktno'], test_pkt.pkt['rssi']))
 #			sl_log.post_incoming(test_pkt)
-			
-	
+
+
 	def get_response(self, timeout):
 		try:
 			data = self.response_q.get(block=True, timeout=timeout)
 		except queue.Empty:
 			data = SL_OP.NC
 		return data
-		
-
-	def get_room_list(self):
-		return [
-			"%s_*" % self.type,
-			"%s_%s_*" % (self.type, self.key),
-			'%s_%s' % (self.type, self.key)
-			] 
 
 
 	def gen_console_data(self):
@@ -692,14 +732,14 @@ class Node(Item):
 #		emit_to_room(r, room)
 
 
-	async def console_pkt_log(self, room, key, count):
-		v = self.packet_log.get(key, count)
-		r = {
-		  'id': key,
-		  'type': 'pkt',
-		  'display_vals':  v 
-		}
-		a_emit_to_room(r, room, self.steam)
+#	async def console_pkt_log(self, room, key, count):
+#		v = self.packet_log.get(key, count)
+#		r = {
+#		  'id': key,
+#		  'type': 'pkt',
+#		  'display_vals':  v
+#		}
+#		a_emit_to_room(r, room, self.steam)
 
 
 #
@@ -708,12 +748,8 @@ class Node(Item):
 class Packet(Item):
 	Number = 0
 	def __init__(self, slnode = None, sl_op = None, rssi = 0, payload = None, pkt = None):
-		self.key = Packet.Number
-		self.name = "pktno-%s" % self.key
 		Packet.Number += 1
-		self.itype = 'Pkt'
-		self.steam = registry.find_by_id('Steam', 0)
-		self.my_rooms = [Room("Pkt", self.key), Room("Pkt", "*")]
+#		self.steam = registry.find_by_id('Steam', 0)
 
 		self.sl_op = None
 		self.slid = None
@@ -723,7 +759,10 @@ class Packet(Item):
 		self.via = []
 		self.payload = None
 
-		super().__init__()
+		super().__init__('Pkt', Packet.Number )
+#X??		self.my_rooms = [str(Room("Pkt", self.key)), str(Room("Pkt", "*"))]
+		self.name = "pktno-%s" % self.key
+
 		logger.debug("Packet created: %s", self.name)
 
 		if pkt is None:						# construct pkt
@@ -750,7 +789,7 @@ class Packet(Item):
 				sfmt = '<BL%is' % len(self.bpayload)
 				self.pkt = struct.pack(sfmt, self.sl_op, self.slid, self.bpayload)
 			elif sl_op in [SL_OP.AK, SL_OP.NK]:
-				sfmt = '<BL' 
+				sfmt = '<BL'
 				self.pkt = struct.pack(sfmt, self.sl_op, self.slid)
 			elif sl_op == SL_OP.TR:
 				sfmt = '<BLB%is' % len(self.bpayload)
@@ -764,7 +803,7 @@ class Packet(Item):
 				sfmt = '<BLB%is' % len(self.bpayload)
 				self.pkt = struct.pack(sfmt, self.sl_op, self.slid, self.qos, self.rssi, self.bpayload)
 			elif sl_op in [SL_OP.GS, SL_OP.BC, SL_OP.BR]:
-				sfmt = '<B' 
+				sfmt = '<B'
 				self.pkt = struct.pack(sfmt, self.sl_op)
 			elif sl_op == SL_OP.TD:
 				sfmt = '<B%is' % len(self.bpayload)
@@ -806,7 +845,7 @@ class Packet(Item):
 				self.sl_op, self.slid, self.bpayload = struct.unpack(sfmt, pkt)
 				self.payload = self.bpayload.decode('utf8')
 			elif pkt[0] in [SL_OP.AK, SL_OP.NK]:
-				sfmt = '<BL' 
+				sfmt = '<BL'
 				self.sl_op, self.slid = struct.unpack(sfmt, pkt)
 				self.payload = None
 			elif pkt[0] == SL_OP.TR:
@@ -832,7 +871,7 @@ class Packet(Item):
 				self.sl_op, self.slid, self.bpayload = struct.unpack(sfmt, pkt)
 				self.payload = self.bpayload.decode('utf8')
 			elif pkt[0] in [SL_OP.GS, SL_OP.BC, SL_OP.BR]:
-				sfmt = '<B' 
+				sfmt = '<B'
 				self.sl_op = struct.unpack(sfmt, pkt)
 				self.payload = None
 			elif pkt[0] == SL_OP.TD:
@@ -866,12 +905,6 @@ class Packet(Item):
 		return s
 
 
-	def get_room_list(self):
-		return [
-			"%s_*" % self.type,
-			"%s_%s_*" % (self.type, self.key),
-			'%s_%s' % (self.type, self.key)
-			] 
 
 #
 # TestPkt
@@ -940,7 +973,7 @@ class NodeRoutes:
 		return "VIA(0x%0x: %s" % (self.dest, svia)
 
 
-# 
+#
 # LogData
 #
 class LogData:
@@ -950,7 +983,7 @@ class LogData:
 		self.logfile = open(conf["file"],"a+")
 		self.pkt_inq = queue.Queue()
 		self.nodes_online = 0
-		
+
 
 	def log_state(self, sl_id, new_state):
 		logger.debug("logdata node 0x%0x %s", sl_id, new_state)
@@ -959,7 +992,7 @@ class LogData:
 
 	def post_incoming(self, pkt):
 		""" a pkt arrives """
-		
+
 		self.log_pkt(pkt, "receive")
 		self.pkt_inq.put(pkt, "recv")
 

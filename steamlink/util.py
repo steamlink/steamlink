@@ -38,32 +38,32 @@ def phex(p, l=0):
 
 def getargs():
 	parser = argparse.ArgumentParser()
-	parser.add_argument("-c", "--config", 
+	parser.add_argument("-c", "--config",
 							help="config file default steamlink.yaml",
 							default=None)
-	parser.add_argument("-d", "--daemon", 
+	parser.add_argument("-d", "--daemon",
 							help="excute as a daemon",
 							default=False, action='store_true')
-	parser.add_argument("-L", "--loglevel", 
-							help="set loglevel, default is info", 
+	parser.add_argument("-L", "--loglevel",
+							help="set loglevel, default is 'info'",
 							default="info")
-	parser.add_argument("-l", "--logfile", 
-							help="file to log to", 
+	parser.add_argument("-l", "--logfile",
+							help="file to log to",
 							default=None)
-	parser.add_argument("-C", "--createconfig", 
+	parser.add_argument("-C", "--createconfig",
 							help="create a skeleton config file",
 							default=False, action='store_true')
-	parser.add_argument("-p", "--pid-file", 
-							help="path to pid file when running as daemon", 
+	parser.add_argument("-p", "--pid-file",
+							help="path to pid file when running as daemon",
 							default=None)
-	parser.add_argument("-T", "--testdata", 
+	parser.add_argument("-T", "--testdata",
 							help="generate test data per section 'testdata'",
 							default=False)  #, action='store_true')
-	parser.add_argument("-v", "--verbose", 
+	parser.add_argument("-v", "--verbose",
 							help="print some info",
 							default=False, action='store_true')
-	parser.add_argument("-X", "--debug", 
-							help="increase debug level",
+	parser.add_argument("-X", "--debug",
+							help="increase debug level, bumps loglevel to 'debug'",
 							default=0, action="count")
 	return parser.parse_args()
 
@@ -82,12 +82,11 @@ def loadconfig(default_conf, conf_fname):
 		with open(conf_fname, "r") as fh:
 			conf_f = "".join(fh.readlines())
 		update(conf, yaml.load(conf_f))
-		return conf
 	except Exception as e:
 		print("error: config load: %s" % e)
 		sys.exit(1)
-	con
-		
+	return conf
+
 
 def createconfig(conf_fname):
 	if os.path.exists(conf_fname):

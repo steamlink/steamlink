@@ -14,10 +14,9 @@ logger = logging.getLogger(__name__)
 # Mqtt
 #
 class Mqtt:
-	def __init__(self, conf, sl_log, loop = None):
+	def __init__(self, conf, loop = None):
 		self.conf = conf
 		self.name = "mqtt"
-		self.sl_log = sl_log
 		if loop is None:
 			self.loop = asyncio.get_event_loop()
 		else:
@@ -66,7 +65,7 @@ class Mqtt:
 
 	async def start(self):
 		logger.info("%s connecting to %s:%s", self.name, self.server, self.port)
-		
+
 		while True:
 			try:
 				await self.mq.connect(self.server, self.port, 60)
@@ -98,7 +97,7 @@ class Mqtt:
 		logger.info("%s connected %s", self.name, result)
 		if result == 0:
 			self.connected.set()
-	
+
 
 	def on_subscribe(self, client, userdata, mid, granted_qos):
 		self.subscribed.set()
@@ -138,8 +137,8 @@ class Mqtt:
 			logger.warning("Mqtt new node with sl_id 0x%0x", sl_id)
 			Node(sl_id, steam)
 		node.post_data(sl_pkt)
-				
-	
+
+
 	def publish(self, firsthop, pkt, qos=0, retain=False, sub="control"):
 		s = self.control_topic_x if sub == "control" else self.data_topic_x
 		topic = s % firsthop

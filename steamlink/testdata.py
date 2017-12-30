@@ -58,7 +58,7 @@ class TestData:
 		for j in range(n_nodes):
 			i = int(random.random() * n_meshes) * 256 + j
 			await self.create_node(i)
-		
+
 			await asyncio.sleep(0.2)
 
 		for x in range(n_packets):
@@ -68,7 +68,7 @@ class TestData:
 			await asyncio.sleep(pkt_delay)
 
 		self.running = False
-		duration = time.time() - self.starttime 
+		duration = time.time() - self.starttime
 		logger.warning("%s finished, duration %s sec", self.name, int(duration))
 
 
@@ -79,7 +79,7 @@ class TestData:
 		p = Packet(self.nodes[i], sl_op = SL_OP.ON, payload="Online")
 		logger.debug("sending ON pkt")
 		self.nodes[i].publish_pkt(p, "data")
-		
+
 
 	async def create_data(self, i, data):
 		p = Packet(self.nodes[i], sl_op = SL_OP.DS, payload = "Hello")
