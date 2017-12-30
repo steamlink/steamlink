@@ -21,7 +21,12 @@ def dict_representer(dumper, data):
 def dict_constructor(loader, node):
     return OrderedDict(loader.construct_pairs(node))
 
+def represent_none(self, data):
+    return self.represent_scalar(u'tag:yaml.org,2002:null', u'')
+
 Dumper.add_representer(OrderedDict, dict_representer)
+Dumper.add_representer(type(None), represent_none)
+
 Loader.add_constructor(_mapping_tag, dict_constructor)
 
 Dumper.add_representer(str, SafeRepresenter.represent_str)

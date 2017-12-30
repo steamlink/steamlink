@@ -70,6 +70,14 @@ DEFAULT_CONF = OrderedDict({
 		'namespace': '/sl',
 	}),
 	'tests': OrderedDict({
+		'test1': OrderedDict({
+			'desc': 'Test1',
+		    'startwait': 2,
+		    'meshes': 3,
+		    'nodes': 12,
+		    'packets': 1000,
+		    'pkt_delay': 0.0,
+		})
 	}),
 	'mqtt': OrderedDict({
 		'clientid': None,
