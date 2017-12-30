@@ -4,7 +4,30 @@ import os
 import argparse
 import logging
 import yaml
-import collections
+from collections import  Mapping, OrderedDict
+
+
+# per oglops/yaml_OrderedDict.py
+# try to use LibYAML bindings if possible
+from yaml import Loader, Dumper
+from yaml.representer import SafeRepresenter
+
+_mapping_tag = yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG
+
+def dict_representer(dumper, data):
+    return dumper.represent_dict(data.items())
+
+
+def dict_constructor(loader, node):
+    return OrderedDict(loader.construct_pairs(node))
+
+Dumper.add_representer(OrderedDict, dict_representer)
+Loader.add_constructor(_mapping_tag, dict_constructor)
+
+Dumper.add_representer(str, SafeRepresenter.represent_str)
+Dumper.add_representer(dict, SafeRepresenter.represent_dict)
+
+#Dumper.add_representer(unicode, SafeRepresenter.represent_unicode)
 
 #
 # Utility
@@ -51,7 +74,7 @@ def getargs():
 							help="file to log to",
 							default=None)
 	parser.add_argument("-C", "--createconfig",
-							help="create a skeleton config file",
+							help="write default config file and exit",
 							default=False, action='store_true')
 	parser.add_argument("-p", "--pid-file",
 							help="path to pid file when running as daemon",
@@ -70,11 +93,12 @@ def getargs():
 
 def update(d, u):
 	for k, v in u.items():
-		if isinstance(v, collections.Mapping):
+		if isinstance(v, Mapping):
 			d[k] = update(d.get(k, {}), v)
 		else:
 			d[k] = v
 	return d
+
 
 def loadconfig(default_conf, conf_fname):
 	conf = default_conf
@@ -82,21 +106,22 @@ def loadconfig(default_conf, conf_fname):
 		with open(conf_fname, "r") as fh:
 			conf_f = "".join(fh.readlines())
 		update(conf, yaml.load(conf_f))
+	except FileNotFoundError as e:
+		print("note: using default config")
 	except Exception as e:
 		print("error: config load: %s" % e)
 		sys.exit(1)
 	return conf
 
 
-def createconfig(conf_fname):
+def createconfig(conf_fname, conf):
 	if os.path.exists(conf_fname):
-		print("error: config file '%s' exists, will NOT overwrite with sample!!" % conf_fname)
-		sys.exit(1)
-	sample_conf = LIB_DIR + '/steamlink.yaml.sample'
-	conf_f = "".join(open(sample_conf, "r").readlines())
-	open(conf_fname,"w").write(conf_f)
-	print("note: config sample copied to %s" % (conf_fname))
-	sys.exit(0)
+		print("error: config file '%s' exists, will NOT overwrite!!" % conf_fname)
+		return 1
+	with open(conf_fname, 'w') as outfile:
+		yaml.dump(conf, outfile,  default_flow_style=False)
+	print("note: config written to %s" % (conf_fname))
+	return 0
 
 
 # borrowed from homeassistant

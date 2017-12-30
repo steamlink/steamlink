@@ -152,7 +152,6 @@ class Mqtt:
 class Mqtt_Broker(Broker):
 
 	def __init__(self, config=None, loop=None, plugin_namespace=None):
-		print("Config", config)
 		super().__init__(config, loop, plugin_namespace)
 
 

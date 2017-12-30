@@ -4,6 +4,7 @@
 
 import sys
 import os
+import pathlib
 import traceback
 import hbmqtt
 import hbmqtt.broker
@@ -12,6 +13,7 @@ import random
 import asyncio
 import socketio
 import signal
+from collections import  Mapping, OrderedDict
 
 import logging
 logger = logging.getLogger()
@@ -40,7 +42,8 @@ from steamlink.testdata import TestData
 from steamlink.const import (
 	PROJECT_PACKAGE_NAME,
 	INDEX_HTML,
-	__version__
+	__version__,
+	DEFAULT_CONFIG_FILE,
 )
 
 
@@ -55,21 +58,21 @@ def raise_graceful_exit():
 #
 # Default config
 # specified config file (if any) will get merged in here
-DEFAULT_CONF = {
- 	'general': {
+DEFAULT_CONF = OrderedDict({
+ 	'general': OrderedDict({
 		'mqtt_broker': 'mqtt_broker',
 		'ping_timeout': 30,
-	},
-	'Steam': {
+	}),
+	'Steam': OrderedDict({
 		'id': 0,
 		'name': 'sample1',
 		'description': 'SteamLink Sample',
 		'namespace': '/sl',
-	},
-	'tests': {
-	},
-	'mqtt': {
-		'clientid': "clie"+"%04i" % int(random.random() * 10000),
+	}),
+	'tests': OrderedDict({
+	}),
+	'mqtt': OrderedDict({
+		'clientid': None,
 		'username': None,
 		'password': None,
 		'server': '127.0.0.1',
@@ -79,9 +82,9 @@ DEFAULT_CONF = {
 		'prefix': 'SteamLink',
 		'data': 'data',
 		'control': 'control',
-	},
+	}),
 
-	'console': {
+	'console': OrderedDict({
 		'host': '0.0.0.0',
 		'port': 5050,
 		'shutdown_timeout': 10,        # seconds to wait for web server shutdown
@@ -91,30 +94,30 @@ DEFAULT_CONF = {
 		'index': INDEX_HTML,           # root page
         'ssl_certificate': None,
         'ssl_key': None,
-	},
-	'mqtt_broker':  {
-		'listeners': {
-			'default': {
+	}),
+	'mqtt_broker':  OrderedDict({
+		'listeners': OrderedDict({
+			'default': OrderedDict({
 				'type': 'tcp',
 				'bind': '127.0.0.1:1883',
-			},
-			'ws-mqtt': {
+			}),
+			'ws-mqtt': OrderedDict({
 				'bind': '127.0.0.1:8080',
 				'type': 'ws',
 				'max_connections': 10,
-			},
-		},
+			}),
+		}),
 		'sys_interval': 10,
-		'auth': {
+		'auth': OrderedDict({
 			'allow-anonymous': True,
-#			'password-file': os.path.join(os.path.dirname(os.path.realpath(__file__)), 'passwd'),
+			'#password-file': os.path.join(os.path.dirname(os.path.realpath(__file__)), 'passwd'),
 			'plugins': [
-#				'auth_file',
+				'#auth_file',
 				'auth_anonymous',
 			]
-		}
-	}
-}
+		})
+	})
+})
 
 
 
@@ -149,17 +152,21 @@ def steamlink_main() -> int:
 	logger.info("%s version %s" % (PROJECT_PACKAGE_NAME, __version__))
 
 
+	if cl_args.config is None:
+		home = str(pathlib.Path.home())	
+		conff = home + "/" + DEFAULT_CONFIG_FILE
+	else:
+		conff = cl_args.config
+
 	# create config  if -C
-	conff = cl_args.config
 	if cl_args.createconfig:
-		rc = createconfig(conff)
+		rc = createconfig(conff, DEFAULT_CONF)
 		return(rc)
 
 	# load config
-	if conff is None:
-		conf = DEFAULT_CONF
-	else:
-		conf = loadconfig(DEFAULT_CONF, conff)
+	conf = loadconfig(DEFAULT_CONF, conff)
+	if conf['mqtt']['clientid'] is None:
+		conf['mqtt']['clientid'] = "clie"+"%04i" % int(random.random() * 10000)
 
 	# Daemon functions
 	if cl_args.pid_file:
