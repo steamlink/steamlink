@@ -15,6 +15,11 @@ import socketio
 import signal
 from collections import  Mapping, OrderedDict
 
+from steamlink.linkage import SetRegistry
+SetRegistry(['Steam', 'Mesh', 'Node', 'Pkt', 'Room'])
+
+from steamlink.linkage import Attach as linkageAttach
+
 import logging
 logger = logging.getLogger()
 
@@ -24,7 +29,9 @@ from steamlink.mqtt import (
 	Mqtt_Broker
 )
 
+
 from steamlink.steamlink import Steam
+from steamlink.steamlink import Attach as steamlinkAttach
 
 from steamlink.web import WebApp
 
@@ -137,14 +144,14 @@ def steamlink_main() -> int:
 	""" start steamlinks """
 
 	cl_args = getargs()
+
 	try:
 		loglevel = getattr(logging, cl_args.loglevel.upper())
 	except Exception as e:
-		print("invalid logging level, use debug, info, warning, error or critical")
-		return(1)
+		loglevel = None
 
-	if cl_args.debug > 0:
-		loglevel = logging.DEBUG
+	if loglevel is None:
+		loglevel = logging.DEBUG if cl_args.debug > 0 else logging.INFO
 
 	FORMAT = '%(asctime)-15s: %(levelname)s %(module)s %(message)s'
 	logging.basicConfig(format=FORMAT, filename=cl_args.logfile)
@@ -242,9 +249,11 @@ def steamlink_main() -> int:
 	logger.debug("startup: start webapp")
 	aioloop.run_until_complete(webapp.start())
 
+	linkageAttach(webapp)
+	steamlinkAttach(mqtt)
+
 	logger.debug("startup: create Steam")
 	steam = Steam(conf_steam)
-	steam.attach(webapp, mqtt)
 
 #	logger.debug("startup: start steam")
 #	aioloop.run_until_complete(steam.start())

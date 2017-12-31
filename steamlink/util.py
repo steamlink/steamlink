@@ -74,7 +74,7 @@ def getargs():
 							default=False, action='store_true')
 	parser.add_argument("-L", "--loglevel",
 							help="set loglevel, default is 'info'",
-							default="info")
+							default=None)
 	parser.add_argument("-l", "--logfile",
 							help="file to log to",
 							default=None)

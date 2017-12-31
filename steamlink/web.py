@@ -1,4 +1,3 @@
-
 import asyncio
 import socketio
 import signal
@@ -6,11 +5,12 @@ import signal
 from aiohttp import web
 from aiohttp.log import access_logger, web_logger
 
-from steamlink.steamlink import (
-	Room,
-	registry,
-)
 
+from steamlink.linkage import (
+	registry,
+	BaseItem,
+	Room,
+)
 
 from steamlink.const import (
 	LIB_DIR,
@@ -23,6 +23,9 @@ logger = logging.getLogger(__name__)
 from yarl import URL
 
 
+#
+# WebNameSpace
+#
 class WebNamespace(socketio.AsyncNamespace):
 	def __init__(self, webapp):
 		self.webapp = webapp
@@ -46,51 +49,51 @@ class WebNamespace(socketio.AsyncNamespace):
 
 	async def on_my_event(self, sid, data):
 		logger.debug("WebNamespace on_my_event %s", data)
-#		await self.emit('my_response', {'data': data['data']} ) #, room=sid, namespace=self.namespace)
+	#	await self.emit('my_response', {'data': data['data']} ) #, room=sid, namespace=self.namespace)
 		return "ACK"
 
 
-#	async def on_need_log(self, sid, data):
-#		logger.debug("WebNamespace need_log %s", data)
-##		await self.emit('my_response', {'data': data['data']} ) #, room=sid, namespace=self.namespace)
-#		node = data.get('id',None)
-#		if  not node in Node.name_idx:
-#			return "NAK"
-#		try:
-#			r = Node.name_idx[node].console_pkt_log(data['key'], int(data['count']))
-#		except:
-#			return "NAK"
-#		return "ACK"
-#
+	async def on_need_log(self, sid, data):
+		logger.debug("WebNamespace need_log %s", data)
+	#	await self.emit('my_response', {'data': data['data']} ) #, room=sid, namespace=self.namespace)
+		node = data.get('id',None)
+		if  not node in Node.name_idx:
+			return "NAK"
+		try:
+			r = Node.name_idx[node].console_pkt_log(data['key'], int(data['count']))
+		except:
+			return "NAK"
+		return "ACK"
+
 
 	async def on_join(self, sid, message):
 		logger.debug("WebNamespace on_join %s", message)
 		if not 'room' in message:
-			logger.error("sio join: message without room: %s", str(message))
+			logger.error("join: message without room: %s", str(message))
 			return "NAK"
 		sroom=message['room']
 		room = registry.find_by_id('Room', sroom)
 		if room is None:
-			room = Room(sroom=sroom)
+			room = Room(sroom=sroom) 	# create a room on-the-fly XX?
+			logger.error("join: auto create room: %s", str(message))
 
 		self.enter_room(sid, sroom, namespace=self.namespace)
 		room.add_member(sid)
-		logger.debug("WebNamespace items_to_send %s", room.items)
-		for item in room.items:
-			logger.debug("WebNamespace update itme %s %s", item, room)
-			item.schedule_update([room])
+		logger.debug("WebNamespace items_to_send %s", room.name)
+		room.schedule_update()					# update all items in the room
 		return "ACK"
+
 
 	async def on_leave(self, sid, message):
 		logger.debug("WebNamespace on_leave %s", message)
 		if not 'room' in message:
-			logger.error("sio join: message without room: %s", str(message))
+			logger.error("leave: message without room: %s", str(message))
 			return "NAK"
 		sroom=message['room']
 		room = registry.find_by_id('Room', sroom)
 		if room is None:
 			return "NAK"
-		room.add_member(sid)
+		room.del_member(sid)
 		self.leave_room(sid, message['room'], namespace=self.namespace)
 		return "ACK"
 
@@ -119,7 +122,7 @@ class WebApp(object):
 		self.backlog = 128
 
 		self.shutdown_timeout = self.conf['shutdown_timeout']
-#		self.api_password = conf['api_password']
+	#	self.api_password = conf['api_password']
 		self.ssl_certificate = conf['ssl_certificate']
 		self.ssl_key = conf['ssl_key']
 		self.ssl_context = None
@@ -128,14 +131,14 @@ class WebApp(object):
 
 		self.host = conf['host']
 		self.port = conf['port']
-	#		self._handler = None
-	#		self.server = None
+	#	self._handler = None
+	#	self.server = None
 
 
 
 	async def qstart(self):
 		logger.info("%s starting q handler", self.name)
-		self.conf_upd_res = await self.con_upd_t()
+		self.con_upd_res = await self.console_update_loop()
 
 
 	async def start(self):
@@ -191,39 +194,29 @@ class WebApp(object):
 			await ws.close(code=WSCloseCode.GOING_AWAY, message='Server shutdown')
 
 
-	def schedule_update(self, item, rooms):
-		logger.info("%s schedule_update for %s", self.name, item)
-		asyncio.ensure_future(self.con_upd_q.put([item, rooms]), loop=self.loop)
+	def schedule_update(self, roomitem, force):
+		logger.debug("webapp schedule_update for %s", roomitem.itemname)
+		asyncio.ensure_future(self.con_upd_q.put([roomitem, force]), loop=self.loop)
 
 
-	async def con_upd_t(self):
+	async def console_update_loop(self):
 		logger.info("%s q handler", self.name)
 		while True:
-			item, upd_rooms =  await self.con_upd_q.get()
-			logger.debug("conf_upd_t item %s", item.pretty())
-			if upd_rooms is None:
-				continue
-			nrooms = []
-			for upd_room in upd_rooms:
-				if len(upd_room.members) == 0:		# nobody in the room
-					logger.debug("conf_upd_t empty room %s", upd_room)
-					continue
-				logger.debug("con_upd_t get entry %s for room %s", item, upd_room.pretty())
-				if upd_room.last_update <= \
-						 (self.loop.time() - self.minupdinterval):
-					nrooms.append(upd_room)
-#					upd_room.last_update = self.loop.time()
-					upd_room.future_update = 0
-				else:
-					upd_room.future_update = upd_room.last_update + self.minupdinterval
+			upd_roomitem, upd_force =  await self.con_upd_q.get()
+			if upd_roomitem is None:
+				break
 
-			res = item.console_update(nrooms)
-
-			for sroom, data in res:
-				logger.debug("con_upd_t ROOM %s EMIT %s" % (sroom, data))
-				await self.sio.emit('data_full', data,
-						namespace=self.namespace, room=sroom)
+#			if len(upd_roomitem.room.members) == 0:		# nobody in the room
+#				logger.debug("console_update_loop empty room %s", upd_roomitem.room)
+#				continue
+		
+			await self.sio.emit('data_full', 
+						data = upd_roomitem.console_update(upd_force),
+						namespace = self.namespace,
+						room = upd_roomitem.room.sroom)	
+			upd_roomitem.update_sent()
 			self.con_upd_q.task_done()
 
+		logger.debug("console_update_loop done")
 
 

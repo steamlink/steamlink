@@ -1,6 +1,5 @@
 
 
-import logging
 import aiomqtt
 import asyncio
 import random
@@ -8,7 +7,10 @@ import sys
 import os
 from hbmqtt.broker import Broker
 
+import logging
 logger = logging.getLogger(__name__)
+
+from steamlink.linkage import registry
 
 #
 # Mqtt
@@ -144,7 +146,6 @@ class Mqtt:
 		topic = s % firsthop
 		logger.info("%s publish %s %s", self.name, topic, pkt)
 		self.mq.publish(topic, payload=pkt.pkt, qos=qos, retain=retain)
-#		time.sleep(0.1)
 
 
 
@@ -153,10 +154,7 @@ class Mqtt_Broker(Broker):
 
 	def __init__(self, config=None, loop=None, plugin_namespace=None):
 		super().__init__(config, loop, plugin_namespace)
-
-
-#	async def start(start):
-#		await Broker.start(self)
+		self.logger.setLevel(logging.WARN)
 
 
 	async def stop(self):

@@ -25,7 +25,6 @@ class TestData:
 		self.running = True
 #		self.go = asyncio.Event(loop=loop)
 		logger.info("starting Test Data")
-		self.m = Mesh(0)
 		self.meshes = {}
 		self.nodes = {}
 		self.starttime = None
@@ -39,7 +38,9 @@ class TestData:
 
 	async def start(self):
 		n_nodes = self.conf.get('nodes',1)
+		d_nodes = self.conf.get('del_nodes',1)
 		n_meshes = self.conf.get('meshes',1)
+		d_meshes = self.conf.get('del_meshes',1)
 		n_packets = self.conf.get('packets',1)
 		pkt_delay = float(self.conf.get('pkt_delay',1))
 
@@ -54,11 +55,10 @@ class TestData:
 
 
 		logger.info("%s doing %s nodes", self.name, n_nodes)
-		nodelist = {}
+
 		for j in range(n_nodes):
 			i = int(random.random() * n_meshes) * 256 + j
 			await self.create_node(i)
-
 			await asyncio.sleep(0.2)
 
 		for x in range(n_packets):
@@ -66,6 +66,19 @@ class TestData:
 			i = list(self.nodes.keys())[ii]
 			await self.create_data(i, "hello from packet %s" % x)
 			await asyncio.sleep(pkt_delay)
+
+
+		for x in range(min(d_nodes, len(self.nodes))):
+			i = list(self.nodes.keys())[x]
+			logger.info("%s deleting node %s", self.name, i)
+
+			self.nodes[i].delete()
+			del self.nodes[i]
+
+		for x in range(min(d_meshes, len(self.meshes))):
+			logger.info("%s deleting mesh %s", self.name, x)
+			self.meshes[x].delete()
+			del self.meshes[x]
 
 		self.running = False
 		duration = time.time() - self.starttime

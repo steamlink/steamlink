@@ -14,7 +14,20 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-ItemTypes = ['Steam', 'Mesh', 'Node', 'Pkt', 'Room']
+from steamlink.linkage import (
+	registry,
+	Room,
+	Item,
+)
+
+
+_BROKER = None
+
+def Attach(broker):
+	global _BROKER
+	_BROKER = broker
+	logger.debug("steamlink: Attached broker '%s'", _BROKER.name)
+
 
 TODO = """
 - track routing table from received packets
@@ -56,10 +69,6 @@ Pkt_1_*					XXX nothing below pkt
 """
 
 
-# Globals, initialized by attach
-_LOOP = None
-_WEBAPP = None
-_BROKER = None
 
 #
 # SL_CodeCfgStruct
@@ -164,305 +173,6 @@ class SL_OP:
 		except:
 			pass
 		return '??'
-#
-# Registry
-#
-class Registry:
-	def __init__(self):
-		self.name_idx = {}
-		for lvl in ItemTypes:
-			self.name_idx[lvl] = {}
-		self.id_idx = {}
-		for lvl in ItemTypes:
-			self.id_idx[lvl] = {}
-
-	def register(self, item):
-		if logging.DBG > 2: logger.debug("Registry: register %s", item)
-#		assert not item.name in self.name_idx[item.itype], "Name already in Index"
-		if logging.DBG > 2: logger.debug("Registry: 0 registered %s", item)
-		self.name_idx[item.itype][item.name] = item
-#		assert not item.key in self.id_idx[item.itype], "Id already in Index"
-		self.id_idx[item.itype][item.key] = item
-		if logging.DBG > 2: logger.debug("Registry: registered %s", item)
-
-	def unregister(self, item):
-		if logging.DBG > 2: logger.debug("Registry: unregister %s", item)
-#		assert item.name in self.name_idx[item.itype], "Name not in Index"
-		del self.name_idx[item.itype][item.name]
-#		assert item.key in self.id_idx[item.itype], "Id not in Index"
-		del self.id_idx[item.itype][item.key]
-
-
-	def get_all(self, itype):
-		r = []
-		for key in self.id_idx[itype]:
-			r.append(self.id_idx[itype][key])
-		return r
-
-
-	def find_by_name(self, itype, name):
-#		t = self.name_idx.get(itype, None)
-#		if t is None:
-#			return None
-		t = self.name_idx[itype].get(name, None)
-		return t
-
-	def find_by_id(self, itype, Id):
-#		t = self.id_idx.get(itype, None)
-#		if t is None:
-#			return None
-		t = self.id_idx[itype].get(Id, None)
-		if logging.DBG > 2: logger.debug("find_by_id %s %s = %s", itype, Id, str(t))
-		return t
-
-
-# create registry
-registry = Registry()
-
-#
-# BaseItem
-#
-class BaseItem:
-	def __init__(self, itype, key, name = None, key_in_parent = 0):
-		self.itype = itype
-		self.key = key
-		if name is None:
-			self.name = self.mkname()
-		else:
-			self.name = name
-		self.parent = None
-		self.children = {}
-		logger.debug("BaseItem: created %s", self.__str__())
-		registry.register(self)
-		self.pp = False
-
-
-	def __del__(self):
-		if registry.find_by_id(self.itype, self.key):
-			registry.unregister(self)
-			logger.debug("BaseItem: deleted %s", self)
-
-
-	def mkname(self):
-		return "%s:%s" % (self.itype, self.key)
-
-
-	def __str__(self):
-		return "%s %s(%s)" % (self.itype, self.name, self.key)
-
-
-	def pretty(self):
-		import pprint
-
-		if self.pp:
-			return "XXX"
-		self.pp = True
-		res = pprint.pformat(self.__dict__, indent=2, width=80)
-		self.pp = False
-		return res
-
-
-#
-# RoomItem
-#
-class RoomItem:
-	def __init__(self, room, item):
-		self.room = room
-		self.item = item
-		self.item_key = "%s_%s" % (item.itype, item.key)
-		self.last_update = 0		# room's last update time stamp
-		self.future_update = 0		# room's next update time stamp
-
-
-	def update(self):
-		self.last_update = _LOOP.time()
-		self.item.console_update([self.room])
-
-#
-# Room
-#
-class Room(BaseItem):
-	def __init__(self, lvl = None, rkey = None, detail = None, sroom = None):
-
-		if sroom:
-			l = sroom.split('_')
-			if  len(l) < 2 or len(l) > 3:
-				logger.error("Room: sroom string invalid: %s" % sroom)
-				l.append("*")	# XXX
-			self.lvl = l[0]
-			self.rkey = l[1]
-			self.detail = None if len(l) < 3 else l[2]
-			self.sroom = sroom
-		else:
-			self.lvl = lvl
-			self.rkey = rkey
-			self.detail = detail
-			self.sroom = self.__str__()
-		super().__init__('Room', sroom)
-
-		self.last_update = 0		# room's last update time stamp
-		self.future_update = 0		# room's next update time stamp
-		self.members = {}			# fake dict: web session in room
-		self.items = []				# item keys in room
-
-
-	def is_item_room(self):
-		return self.detail != None
-
-
-	def is_header(self):
-		if self.detail == '*' or self.rkey == '*':
-			return False
-		return True
-
-
-	def no_key(self):
-		return "%s_*" % (self.lvl)
-
-
-	def full_key(self):
-		return self.sroom
-
-
-	def add_member(self, mid):
-		if mid in self.members:
-			logger.error("room add_member: id %s already a member in room", mid, self)
-		self.members[mid] = mid
-
-
-	def del_member(self, mid):
-		if not mid in self.members:
-			logger.error("room del_member: id %s not a member in room %s", mid, self)
-		else:
-			del self.members[mid] 
-
-#	def __str__(self):
-#		if not self.detail is None:
-#			return "%s_%s_%s" % (self.lvl, self.rkey, self.detail)
-#		return "%s_%s" % (self.lvl, self.rkey)
-
-
-
-#
-# Item
-#
-class Item(BaseItem):
-	def __init__(self, itype, key, name = None, key_in_parent = 0):
-		super().__init__(itype, key, name)
-
-		self.parent = self.get_parent(key_in_parent)
-		if self.parent:
-			self.parent.add_child(self)
-
-		self.my_rooms = []
-		for r in self.get_room_list():
-			logger.debug("Item: room to add %s", r)
-			room = registry.find_by_id('Room', r)
-			if room is None:
-				room = Room(sroom = r)
-			self.my_rooms.append(room)
-			room.items.append(self)		#XXX del
-
-		self.schedule_update()
-
-
-	def __del__(self):
-		if registry.find_by_id(self.itype, self.key):
-			super().__del__()
-			if self.parent:
-				self.parent.del_child(self)
-			self.schedule_update()	#XXX update type: del?
-
-
-	def attach(self, app, broker):
-		global _ROOT, _WEBAPP, _LOOP, _BROKER
-		if _WEBAPP is not None:
-			logger.error("Item %s: attach already done", self.key)
-			return
-		_ROOT = self
-		_WEBAPP = app
-		_BROKER = broker
-		_LOOP = asyncio.get_event_loop()
-		logger.debug("Item: attached webapp '%s'", _WEBAPP.name)
-
-
-	def get_parent_type(self):
-		i = ItemTypes.index(self.itype)
-		if i == 0:
-			return None
-		return ItemTypes[i-1]
-
-
-	def get_parent(self, key_in_parent = 0):
-		ptype = self.get_parent_type()
-		if ptype is None:
-			p = None
-		else:
-			p =  registry.find_by_id(ptype, key_in_parent)
-		if logging.DBG > 1: logger.debug("Item: get_parent  %s): %s", self, str(p))
-		return p
-
-
-	def add_child(self, item):
-		logger.debug("Item: child  %s added to %s", item.key, self)
-		self.children[item.key] = item
-		self.schedule_update()
-
-
-	def del_child(self, item):
-		logger.debug("Item: child  %s delete from %s", item.key, self)
-		del self.children[item.key]
-		self.schedule_update()
-
-
-	def schedule_update(self, rooms = None):
-		if not _WEBAPP:
-			logger.warning("Item %s: update before _WEBAPP", self.name)
-			return
-		if rooms is None:
-			rooms = self.my_rooms
-		logger.debug("Item %s: schedule_update for %s", self.name, rooms)
-		_WEBAPP.schedule_update(self, rooms)
-
-
-	def console_update(self, rooms = None):
-		res = []
-		data_id, data_to_emit = self.gen_console_data()
-		pack =  {
-		  'id': data_id,
-		  'type': self.itype,
-		  'display_vals':  data_to_emit,
-		}
-		for room in rooms:
-			if room.is_header():
-				pack['header'] = True
-			else:
-				if 'header' in pack: del pack['header']
-			res.append((room.sroom, pack))
-		return res
-
-
-	def gen_console_data(self):
-		cs = []
-		for c in self.children:
-			cs.append(str(self.children[c]))
-		r = {
-		  'name': self.name,
-		  'type': self.itype,
-		  'id': self.key,
-		  'children': str(cs),
-		}
-		return self.key, r
-
-
-	def get_room_list(self):
-		rooms = []
-		rooms.append( "%s_*" % (self.itype))
-		rooms.append( "%s_%s" % (self.itype, self.key))
-		if self.parent:
-			rooms.append( "%s_%s_*" % (self.parent.itype, self.parent.key))
-		return rooms
-
 
 #
 # Steam
@@ -471,6 +181,7 @@ class Steam(Item):
 	console_fields = {
  	 "Name": "self.name",
  	 "Key": "self.key",
+ 	 "Meshes": "' '.join(self.children)",
 #	 "Description": "self.desc",
 	 "Time": "time.asctime()",
 	 }
@@ -482,15 +193,15 @@ class Steam(Item):
 
 
 	def gen_console_data(self):
-		r = {}
+		data = {}
 		for label in Steam.console_fields:
 			source = Steam.console_fields[label]
 			try:
 				v = eval(source)
 			except:
 				v = "*UNK*"
-			r[label] = v
-		return self.key, r
+			data[label] = v
+		return data
 
 
 #
@@ -508,7 +219,6 @@ class Mesh(Item):
 
 	def __init__(self, mesh_id):
 		logger.debug("Mesh creating: %s", mesh_id)
-#		self.steam = registry.find_by_id('Steam', 0)
 		self.packets_sent = 0
 		self.packets_received = 0
 		super().__init__('Mesh', mesh_id)
@@ -517,20 +227,19 @@ class Mesh(Item):
 
 
 	def mkname(self):
-		return "Mesh%06x" % self.key
-
+		return "Mesh%06x" % int(self.key)
 
 
 	def gen_console_data(self):
-		r = {}
+		data = {}
 		for label in Mesh.console_fields:
 			source = Mesh.console_fields[label]
 			try:
 				v = eval(source)
 			except:
 				v = "*UNK*"
-			r[label] = v
-		return self.key, r
+			data[label] = v
+		return data
 
 #
 # Node
@@ -551,9 +260,9 @@ class Node(Item):
 		else:
 			self.nodecfg = nodecfg
 			self.name = nodecfg.name
-#		self.steam = registry.find_by_id('Steam', 0)
 		self.response_q = queue.Queue(maxsize=1)
 
+		self.mesh_id = (sl_id >> 8)
 		self.packets_sent = 0
 		self.packets_received = 0
 		self.state = "DOWN"
@@ -561,27 +270,20 @@ class Node(Item):
 		self.tr = {}		# dict of sending nodes, each holds a list of (pktno, rssi)
 		self.packet_log = TimeLog(MAX_NODE_LOG_LEN)
 
+		super().__init__('Node', sl_id, None, key_in_parent=self.mesh_id)
 
-		super().__init__('Node', sl_id, None, key_in_parent=self.mesh_id(sl_id))
-
-		self.mesh = registry.find_by_id('Mesh', self.mesh_id())
+		self.mesh = registry.find_by_id('Mesh', self.mesh_id)
 		if self.mesh is None:		# Auto-create Mesh
-			self.mesh = Mesh(mesh_id)
-			logger.debug("Node __init__: mesh is %s" % mesh)
+			logger.debug("Node %s:  mesh  %s autocreated", self.key, self.mesh_id)
+			self.mesh = Mesh(self.mesh_id)
 
 		logger.debug("Node created: %s" % self.name)
 
 
 	def mkname(self):
-		if self.nodecfg:
+		if self.nodecfg is not None:
 			return self.nodecfg.name
-		return "Node%08x" % self.key
-
-
-	def mesh_id(self, key = None):
-		if key is None:
-			key = self.key
-		return (key >> 8)
+		return "Node%08x" % int(self.key)
 
 
 	def get_firsthop(self):
@@ -711,15 +413,15 @@ class Node(Item):
 
 
 	def gen_console_data(self):
-		r = {}
+		data = {}
 		for label in Node.console_fields:
 			source = Node.console_fields[label]
 			try:
 				v = eval(source)
 			except:
 				v = "*UNK*"
-			r[label] = v
-		return self.key, r
+			data[label] = v
+		return data
 
 
 #	def console_tail(self, room):
@@ -749,7 +451,6 @@ class Packet(Item):
 	Number = 0
 	def __init__(self, slnode = None, sl_op = None, rssi = 0, payload = None, pkt = None):
 		Packet.Number += 1
-#		self.steam = registry.find_by_id('Steam', 0)
 
 		self.sl_op = None
 		self.slid = None
@@ -761,17 +462,16 @@ class Packet(Item):
 
 		super().__init__('Pkt', Packet.Number )
 #X??		self.my_rooms = [str(Room("Pkt", self.key)), str(Room("Pkt", "*"))]
-		self.name = "pktno-%s" % self.key
 
 		logger.debug("Packet created: %s", self.name)
 
 		if pkt is None:						# construct pkt
-			self.slid = slnode.key
+			self.slid = int(slnode.key)
 			self.sl_op = sl_op
 			self.rssi = rssi + 256
 			self.payload = payload
 			logger.debug("SteamLinkPaktet payload = %s", payload);
-			if self.payload:
+			if self.payload is not None:
 				if type(self.payload) == type(b''):
 					self.bpayload = self.payload
 				else:
@@ -897,9 +597,9 @@ class Packet(Item):
 		if len(self.via) > 0:
 			for v in self.via[::-1]: via += "->0x%0x" % v
 		s = "SL(op %s, id %s" % (SL_OP.code(self.sl_op), via)
-		if self.rssi:
+		if self.rssi is not None:
 			s += " rssi %s" % (self.rssi)
-		if self.payload:
+		if self.payload is not None:
 			s += " payload %s" % (self.payload)
 		s += ")"
 		return s
@@ -1025,4 +725,5 @@ class LogData:
 			if waited >= lwait or test_pkt.pkt['pktno'] > pktnumber:	# our pkt will never arrive
 				return None
 			lwait -= waited
+
 
