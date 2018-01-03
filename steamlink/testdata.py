@@ -2,7 +2,7 @@ import asyncio
 import random
 import time
 
-from steamlink.steamlink import (
+from .steamlink import (
 	Steam,
 	Mesh,
 	Node,
@@ -38,11 +38,12 @@ class TestData:
 
 	async def start(self):
 		n_nodes = self.conf.get('nodes',1)
-		d_nodes = self.conf.get('del_nodes',1)
+		d_nodes = self.conf.get('del_nodes',0)
 		n_meshes = self.conf.get('meshes',1)
-		d_meshes = self.conf.get('del_meshes',1)
+		d_meshes = self.conf.get('del_meshes',0)
 		n_packets = self.conf.get('packets',1)
-		pkt_delay = float(self.conf.get('pkt_delay',1))
+		pkt_delay = float(self.conf.get('pkt_delay',0))
+		node_delay = float(self.conf.get('node_delay',0))
 
 		logger.info("%s task starting" % self.name)
 		await asyncio.sleep(self.conf.get('startwait',1))
@@ -59,7 +60,7 @@ class TestData:
 		for j in range(n_nodes):
 			i = int(random.random() * n_meshes) * 256 + j
 			await self.create_node(i)
-			await asyncio.sleep(0.2)
+			await asyncio.sleep(node_delay)
 
 		for x in range(n_packets):
 			ii = int(random.random() * n_nodes)

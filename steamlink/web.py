@@ -6,13 +6,13 @@ from aiohttp import web
 from aiohttp.log import access_logger, web_logger
 
 
-from steamlink.linkage import (
+from .linkage import (
 	registry,
 	BaseItem,
 	Room,
 )
 
-from steamlink.const import (
+from .const import (
 	LIB_DIR,
 	INDEX_HTML,
 )
@@ -74,13 +74,13 @@ class WebNamespace(socketio.AsyncNamespace):
 		sroom=message['room']
 		room = registry.find_by_id('Room', sroom)
 		if room is None:
-			room = Room(sroom=sroom) 	# create a room on-the-fly XX?
-			logger.error("join: auto create room: %s", str(message))
+			room = Room(sroom=sroom) 	
+			logger.debug("join: auto create room: %s", str(message))
 
 		self.enter_room(sid, sroom, namespace=self.namespace)
 		room.add_member(sid)
 		logger.debug("WebNamespace items_to_send %s", room.name)
-		room.schedule_update()					# update all items in the room
+		room.schedule_update(sid)	# update all items in the room for this sid only
 		return "ACK"
 
 
@@ -93,11 +93,43 @@ class WebNamespace(socketio.AsyncNamespace):
 		room = registry.find_by_id('Room', sroom)
 		if room is None:
 			return "NAK"
+		if not room.is_private(sid):
+			self.leave_room(sid, message['room'], namespace=self.namespace)
 		room.del_member(sid)
-		self.leave_room(sid, message['room'], namespace=self.namespace)
 		return "ACK"
 
 
+	async def on_move(self, sid, message):
+		logger.debug("WebNamespace on_move %s", message)
+		if not 'room' in message:
+			logger.error("on_move: message without room: %s", str(message))
+			return "NAK"
+		sroom=message['room']
+		key = message.get('key', '')
+		count = message.get('count', '')
+		if key == '':
+			key = None
+		if count != '':
+			try:
+				count = int(count)
+			except:
+				count = 0
+
+		room = registry.find_by_id('Room', sroom)
+		if room is None:
+			logger.error("on_move: no room: %s", str(message))
+			return "NAK"
+		if not sid in room.members:
+			logger.error("on_move: no sid  %s in room %s", sid, str(message))
+			return "NAK"
+		if key is None:
+			logger.error("on_move: no key for sid %s in room %s", sid, str(message))
+			return "NAK"
+		if not room.is_private(sid):		# make this a private room member
+			room.add_member(sid, key, count)
+			self.leave_room(sid, message['room'], namespace=self.namespace)
+		room.members[sid].set_position(key, count)
+		# return items in range?
 #
 # WebApp
 #
@@ -194,15 +226,15 @@ class WebApp(object):
 			await ws.close(code=WSCloseCode.GOING_AWAY, message='Server shutdown')
 
 
-	def schedule_update(self, roomitem, force):
-		logger.debug("webapp schedule_update for %s", roomitem.itemname)
-		asyncio.ensure_future(self.con_upd_q.put([roomitem, force]), loop=self.loop)
+	def schedule_update(self, roomitem, sroom, force):
+		logger.debug("webapp schedule_update for %s item %s", roomitem.room, roomitem.item)
+		asyncio.ensure_future(self.con_upd_q.put([roomitem, sroom, force]), loop=self.loop)
 
 
 	async def console_update_loop(self):
 		logger.info("%s q handler", self.name)
 		while True:
-			upd_roomitem, upd_force =  await self.con_upd_q.get()
+			upd_roomitem, upd_sroom, upd_force =  await self.con_upd_q.get()
 			if upd_roomitem is None:
 				break
 
@@ -213,7 +245,7 @@ class WebApp(object):
 			await self.sio.emit('data_full', 
 						data = upd_roomitem.console_update(upd_force),
 						namespace = self.namespace,
-						room = upd_roomitem.room.sroom)	
+						room = upd_sroom)	
 			upd_roomitem.update_sent()
 			self.con_upd_q.task_done()
 

@@ -26,11 +26,11 @@ class Registry:
 	def __init__(self, ItemTypes):
 		self.ItemTypes = ItemTypes
 		self.name_idx = {}
-		for lvl in self.ItemTypes:
-			self.name_idx[lvl] = {}
+		for itype in self.ItemTypes:
+			self.name_idx[itype] = {}
 		self.id_idx = {}
-		for lvl in self.ItemTypes:
-			self.id_idx[lvl] = {}
+		for itype in self.ItemTypes:
+			self.id_idx[itype] = {}
 
 	def register(self, item):
 		if logging.DBG > 2: logger.debug("Registry: register %s", item)
@@ -230,8 +230,9 @@ class RoomItem:
 		self.last_update = 0		# roomitem's last update time stamp
 		self.future_update = False	
 		self.pack = {
-			'id': self.item.name,
+			'name': self.item.name,		#XXX? extra fields
 			'type': self.item.itype,
+			'id': self.item.key,
 			'header': self.room.is_header(),
 		 	'display_vals': {},
 		}
@@ -258,7 +259,7 @@ class RoomItem:
 		self.schedule_update(False)
 
 
-	def schedule_update(self, force):
+	def schedule_update(self, force, sroom = None):
 		if self.upd_in_progress:
 			return
 #		if not _WEBAPP:
@@ -271,41 +272,85 @@ class RoomItem:
 				self.future_update = True
 			return
 
+		if sroom is None:
+			sroom = self.room.sroom
 		self.upd_in_progress = True
-		_WEBAPP.schedule_update(self, True)
+		_WEBAPP.schedule_update(self, sroom, True)
 
 
 	def update_sent(self):
 		self.upd_in_progress = False
 		self.last_update = _WEBAPP.loop.time()
 
+#
+# MemberRoom
+#
+class MemberRoom:
+	def __init__(self, room, sid):
+		self.m_room = room
+		self.m_sid = sid
+		self.m_roomitem_keys = []
+		self.cur_key = None
+		self.count = 1
+
+
+	def set_position(self, key, count = 20):
+		self.cur_key = key
+		self.count = count
+		keys = self.m_room.get_roomitem_keys()
+		if key == "FIRST":
+			key = keys[0]
+		elif key == "LAST":
+			key = keys[-1]
+		if not key in keys:
+			self.m_roomitem_keys = []
+		else:
+			k_idx = keys.index(key)
+			if count >= 0:
+				self.m_roomitem_keys = keys[k_idx:k_idx+count]
+			else:
+				end = k_idx + 1
+				start = k_idx + count + 1
+				if start < 0:
+					end = end - start + 1
+					start = 0
+				self.m_roomitem_keys = keys[start:end]
+				logger.debug("set_position: key %s start %s end %s", key, start, end)
+			# send out the item
+			for k in self.m_roomitem_keys:
+				self.m_room.roomitems[k].schedule_update(False, self.m_sid)
+
+	def has_roomitem(self, key):
+		return key in self.m_roomitem_keys
 
 #
 # Room
 #
 class Room(BaseItem):
-	def __init__(self, lvl = None, rkey = None, detail = None, sroom = None):
+	def __init__(self, ritype = None, rkey = None, detail = None, sroom = None):
 
 		if sroom is not None:
 			l = sroom.split('_')
 			if len(l) < 2 or len(l) > 3:
 				logger.error("Room: sroom string invalid: %s" % sroom)
 				l.append("*")	# XXX
-			self.lvl = l[0]
+			self.ritype = l[0]
 			self.rkey = l[1]
 			self.detail = None if len(l) < 3 else l[2]
 			self.sroom = sroom
 		else:
-			self.lvl = lvl
+			self.ritype = ritype
 			self.rkey = rkey
 			self.detail = detail
 			self.sroom = self.mksroom()
 		super().__init__('Room', sroom)
 
-		self.last_update = 0		# room's last update time stamp
-		self.future_update = 0		# room's next update time stamp
 		self.members = {}			# fake dict: web session in room
-		self.roomitems = {}				# item keys in room
+		self.roomitems = {}			# RoomItem keys in room
+
+
+	def get_roomitem_keys(self):
+		return list(self.roomitems.keys())
 
 
 	def is_item_room(self):
@@ -319,24 +364,37 @@ class Room(BaseItem):
 
 
 	def no_key(self):
-		return "%s_*" % (self.lvl)
+		return "%s_*" % (self.ritype)
 
 
 	def full_key(self):
 		return self.sroom
 
 
-	def add_member(self, mid):
-		if mid in self.members:
-			logger.error("room add_member: id %s already a member in room", mid, self)
-		self.members[mid] = mid
-
-
-	def del_member(self, mid):
-		if not mid in self.members:
-			logger.error("room del_member: id %s not a member in room %s", mid, self)
+	def add_member(self, sid, key = None, count = 0 ):
+		if sid in self.members:
+			if self.members[sid] == sid and key is not None:
+				logger.info("room add_member: id %s making room %s private", sid, self)
+			else:
+				logger.error("room add_member: id %s already a member in room %s", sid, self)
+				return "NAK"
+		if key is None:
+			self.members[sid] = sid
 		else:
-			del self.members[mid] 
+			self.members[sid] = MemberRoom(self, sid)
+
+
+	def del_member(self, sid):
+		if not sid in self.members:
+			logger.error("room del_member: id %s not a member in room %s", sid, self)
+		else:
+			del self.members[sid] 
+
+
+	def is_private(self, sid):
+		if not sid in self.members or type(self.members[sid]) == type(""):
+			return False
+		return isinstance(self.members[sid], MemberRoom)
 
 
 	def add_item(self, item):
@@ -354,14 +412,18 @@ class Room(BaseItem):
 			self.roomitems[item.key].item = None
 
 
-	def schedule_update(self):
+	def schedule_update(self, rsid = None):
 		for roomitem in self.roomitems:
-			self.roomitems[roomitem].schedule_update(True)
+			self.roomitems[roomitem].schedule_update(True, rsid)
+			for sid in self.members:
+				if self.is_private(sid) and self.members[sid].has_roomitem(roomitem):
+					self.roomitems[roomitem].schedule_update(True, sid)
+					
 
 			
 	def mkdsroom(self):
 		if not self.detail is None:
-			return "%s_%s_%s" % (self.lvl, self.rkey, self.detail)
-		return "%s_%s" % (self.lvl, self.rkey)
+			return "%s_%s_%s" % (self.ritype, self.rkey, self.detail)
+		return "%s_%s" % (self.ritype, self.rkey)
 
 

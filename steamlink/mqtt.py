@@ -10,7 +10,7 @@ from hbmqtt.broker import Broker
 import logging
 logger = logging.getLogger(__name__)
 
-from steamlink.linkage import registry
+from .linkage import registry
 
 #
 # Mqtt

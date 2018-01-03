@@ -1,6 +1,7 @@
 <!DOCTYPE HTML>
-<html>
+<html lang="en">
 <head>
+	<meta charset="utf-8"/>
     <title>SteamLink SocketIO test</title>
     <script type="text/javascript" src="//code.jquery.com/jquery-2.1.4.min.js"></script>
     <script type="text/javascript" src="//cdnjs.cloudflare.com/ajax/libs/socket.io/2.0.4/socket.io.slim.js"></script>
@@ -25,8 +26,10 @@
                 socket.emit('my_event', {data: $('#emit_data').val()});
                 return false;
             });
-            $('form#broadcast').submit(function(event) {
-                socket.emit('my_broadcast_event', {data: $('#broadcast_data').val()});
+            $('form#move').submit(function(event) {
+                socket.emit('move', {room: $('#move_room').val(),
+						 key: $('#move_key').val(),
+						 count: $('#move_count').val()});
                 return false;
             });
             $('form#join').submit(function(event) {
@@ -49,6 +52,10 @@
                 socket.emit('disconnect request');
                 return false;
             });
+            $('form#clear').submit(function(event) {
+				$("#log").text('');
+                return false;
+            });
         });
     </script>
 </head>
@@ -59,13 +66,15 @@
         <input type="text" name="emit_data" id="emit_data" placeholder="Message">
         <input type="submit" value="Echo">
     </form>
-    <form id="broadcast" method="POST" action='#'>
-        <input type="text" name="broadcast_data" id="broadcast_data" placeholder="Message">
-        <input type="submit" value="Broadcast">
-    </form>
     <form id="join" method="POST" action='#'>
         <input type="text" name="join_room" id="join_room" placeholder="Room Name">
         <input type="submit" value="Join Room">
+    </form>
+    <form id="move" method="POST" action='#'>
+        <input type="text" name="move_room" id="move_room" placeholder="Room Name">
+        <input type="text" name="move_key" id="move_key" placeholder="start key">
+        <input type="text" name="move_count" id="move_count" placeholder="count">
+        <input type="submit" value="Move">
     </form>
     <form id="leave" method="POST" action='#'>
         <input type="text" name="leave_room" id="leave_room" placeholder="Room Name">
@@ -82,6 +91,9 @@
     </form>
     <form id="disconnect" method="POST" action="#">
         <input type="submit" value="Disconnect">
+    </form>
+    <form id="clear" method="POST" action="#">
+        <input type="submit" value="Clear">
     </form>
     <h2>Receive:</h2>
     <div><p id="log"></p></div>

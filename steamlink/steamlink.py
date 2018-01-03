@@ -8,13 +8,13 @@ import json
 import time
 import asyncio
 
-from steamlink.timelog import TimeLog
+from .timelog import TimeLog
 
 import logging
 logger = logging.getLogger(__name__)
 
 
-from steamlink.linkage import (
+from .linkage import (
 	registry,
 	Room,
 	Item,
@@ -39,9 +39,9 @@ MAX_NODE_LOG_LEN = 1000		# maximum packets stored in per node log
 
 
 RoomSyntax = """
-<lvl>_<key>_<detail>
+<ritype>_<key>_<detail>
 
-lvl = Steam, Mesh, Node, Pkt
+ritype = Steam, Mesh, Node, Pkt
 key = ID or *
 detail = None or *
 
@@ -180,15 +180,15 @@ class SL_OP:
 class Steam(Item):
 	console_fields = {
  	 "Name": "self.name",
- 	 "Key": "self.key",
  	 "Meshes": "' '.join(self.children)",
-#	 "Description": "self.desc",
 	 "Time": "time.asctime()",
+	 "Load": '"%3.1f%%" % self.load',
 	 }
 
 
 	def __init__(self, conf):
 		self.desc = conf['description']
+		self.load = 0
 		super().__init__('Steam', conf['id'])
 
 
@@ -203,6 +203,27 @@ class Steam(Item):
 			data[label] = v
 		return data
 
+	async def start(self):
+		process_time = time.process_time()
+		now = time.time()
+		delta = 0
+		wait = 1
+		while True:
+			await asyncio.sleep(wait)
+			self.heartbeat()
+
+			n_process_time = time.process_time()
+			n_now = time.time()
+
+			delta = n_now - now 
+			wait = 1 - (n_now % 1)
+			self.load = ((n_process_time - process_time) / delta ) * 100.0
+			now = n_now
+			process_time = n_process_time
+
+
+	def heartbeat(self):
+		self.schedule_update()
 
 #
 # Mesh

@@ -15,27 +15,27 @@ import socketio
 import signal
 from collections import  Mapping, OrderedDict
 
-from steamlink.linkage import SetRegistry
+from .linkage import SetRegistry
 SetRegistry(['Steam', 'Mesh', 'Node', 'Pkt', 'Room'])
 
-from steamlink.linkage import Attach as linkageAttach
+from .linkage import Attach as linkageAttach
 
 import logging
 logger = logging.getLogger()
 
 # SteamLink project imports
-from steamlink.mqtt import (
+from .mqtt import (
 	Mqtt,
 	Mqtt_Broker
 )
 
 
-from steamlink.steamlink import Steam
-from steamlink.steamlink import Attach as steamlinkAttach
+from .steamlink import Steam
+from .steamlink import Attach as steamlinkAttach
 
-from steamlink.web import WebApp
+from .web import WebApp
 
-from steamlink.util import (
+from .util import (
 	getargs,
 	loadconfig,
 	createconfig,
@@ -44,9 +44,9 @@ from steamlink.util import (
 	write_pid,
 )
 
-from steamlink.testdata import TestData
+from .testdata import TestData
 
-from steamlink.const import (
+from .const import (
 	PROJECT_PACKAGE_NAME,
 	INDEX_HTML,
 	__version__,
@@ -209,7 +209,15 @@ def steamlink_main() -> int:
 	conf_general = conf['general']
 	conf_console = conf['console']
 	conf_steam = conf['Steam']
-	conf_broker = conf['mqtt_broker']
+	broker_c = conf_general.get('mqtt_broker', None)
+	if broker_c is None:
+		conf_broker = None
+	else:
+		conf_broker = conf.get(broker_c, None)
+		if conf_broker is None:
+			logger.error("mqtt broker section '%s' does not exist", broker_c)
+			sys.exit(1)
+	
 	conf_mqtt = conf['mqtt']
 
 	namespace = conf_steam['namespace']
@@ -255,9 +263,6 @@ def steamlink_main() -> int:
 	logger.debug("startup: create Steam")
 	steam = Steam(conf_steam)
 
-#	logger.debug("startup: start steam")
-#	aioloop.run_until_complete(steam.start())
-
 	coros = []
 	if cl_args.testdata:
 		testconfigs = conf['tests']
@@ -273,6 +278,9 @@ def steamlink_main() -> int:
 
 	ll = logging.getLogger('asyncio_socket')
 	ll.setLevel(logging.WARN)
+
+	if logging.DBG == 0:		# N.B. reduce noise when debuging, i.e. no heartbeat
+		coros.append(steam.start())
 
 	coros.append(webapp.qstart())
 	logger.debug("startup: starting coros")
