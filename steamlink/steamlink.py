@@ -14,6 +14,8 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+from .util  import phex
+
 from .linkage import (
 	registry,
 	Room,
@@ -108,7 +110,9 @@ class SL_NodeCfgStruct:
 			self.radio_params = radio_params		# B
 
 		else:			# deconstruct
-#			assert struct.calcsize(SL_NodeCfgStruct.sfmt) == len(pkt)
+			if  struct.calcsize(SL_NodeCfgStruct.sfmt) != len(pkt):
+				logger.error("NodeCfgStruct: packed messages length incorrect, wanted %s, got %s", struct.calcsize(SL_NodeCfgStruct.sfmt), len(pkt))
+				return
 			self.slid, name, description, self.gps_lat, self.gps_lon, self.altitude, self.max_silence, sleeps, pingable, battery_powered, self.radio_params = struct.unpack(SL_NodeCfgStruct.sfmt, pkt)
 			self.name = name.decode().strip('\0')
 			self.description = description.decode().strip('\0')
@@ -139,6 +143,7 @@ class SL_NodeCfgStruct:
 			'radio_params': self.radio_params
 		}
 		return json.dumps(d)
+
 
 
 #
@@ -391,8 +396,8 @@ class Node(Item):
 		sl_op = sl_pkt.sl_op
 
 		if sl_op == SL_OP.ON:
-			logger.debug('post_data: slid 0x%0x ONLINE', self.key)
-			self.nodecfg = SL_NodeCfgStruct(pkg=sl_pkt.bpayload)
+			logger.debug('post_data: slid 0x%0x ONLINE', int(self.key))
+			self.nodecfg = SL_NodeCfgStruct(pkt=sl_pkt.bpayload)
 
 		elif sl_op == SL_OP.DS:
 			logger.debug('post_data: slid 0x%0x status %s', self.key,sl_pkt.payload)
@@ -482,7 +487,6 @@ class Packet(Item):
 		self.payload = None
 
 		super().__init__('Pkt', Packet.Number )
-#X??		self.my_rooms = [str(Room("Pkt", self.key)), str(Room("Pkt", "*"))]
 
 		logger.debug("Packet created: %s", self.name)
 
@@ -553,7 +557,7 @@ class Packet(Item):
 					self.sl_op, slid, self.rssi, self.qos, self.bpayload = struct.unpack(sfmt, pkt)
 					self.via.append(slid)
 					pkt = self.bpayload
-					logger.debug("pkg encap BS, len %s\n%s", len(pkt), "\n".join(phex(pkt, 4)))
+					logger.debug("pkt encap BS, len %s\n%s", len(pkt), "\n".join(phex(pkt, 4)))
 				self.rssi = self.rssi - 256
 #				self.payload = self.bpayload.decode('utf8')
 
@@ -564,7 +568,7 @@ class Packet(Item):
 			elif pkt[0] == SL_OP.ON:
 				sfmt = '<BL%is' % (len(pkt) - 5)
 				self.sl_op, self.slid, self.bpayload = struct.unpack(sfmt, pkt)
-				self.payload = self.bpayload.decode('utf8')
+				self.payload = None
 			elif pkt[0] in [SL_OP.AK, SL_OP.NK]:
 				sfmt = '<BL'
 				self.sl_op, self.slid = struct.unpack(sfmt, pkt)
