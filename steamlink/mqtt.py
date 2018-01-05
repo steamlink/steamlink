@@ -11,7 +11,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 from .linkage import registry
-from .steamlink import Packet, Node
+from .steamlink import Packet
 
 #
 # Mqtt
@@ -128,20 +128,15 @@ class Mqtt:
 
 
 	def on_data_msg(self, client, userdata, msg):
-		logger.debug("mqtt: on_data_msg: %s", str(msg))
+		# msg has  topic, payload, qos, retain
 		topic_parts = msg.topic.split('/', 2)
 		try:
 			sl_pkt = Packet(pkt=msg.payload)
 		except Exception as e:
 			logger.warning("mqtt: pkt not parsed: '%s', cause %s", msg.payload, e)
 			return
-
-		sl_id = sl_pkt.slid
-		node = registry.find_by_id('Node', sl_id)
-		if node is None:
-			logger.warning("Mqtt new node with sl_id 0x%0x", sl_id)
-			node = Node(sl_id)
-		node.post_data(sl_pkt)
+		logger.info("mqtt incoming packet %s", sl_pkt)
+		sl_pkt.post_data()
 
 
 	def publish(self, firsthop, pkt, qos=0, retain=False, sub="control"):
