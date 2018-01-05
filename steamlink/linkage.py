@@ -34,10 +34,8 @@ class Registry:
 
 	def register(self, item):
 		if logging.DBG > 2: logger.debug("Registry: register %s", item)
-		if logging.DBG > 2: logger.debug("Registry: 0 registered %s", item)
 		self.name_idx[item.itype][item.name] = item
 		self.id_idx[item.itype][item.key] = item
-		if logging.DBG > 2: logger.debug("Registry: registered %s", item)
 
 	def unregister(self, item):
 		if logging.DBG > 2: logger.debug("Registry: unregister %s", item)
