@@ -23,12 +23,12 @@ from .linkage import (
 )
 
 
-_BROKER = None
+_MQTT = None
 
-def Attach(broker):
-	global _BROKER
-	_BROKER = broker
-	logger.debug("steamlink: Attached broker '%s'", _BROKER.name)
+def Attach(mqtt):
+	global _MQTT
+	_MQTT = mqtt
+	logger.debug("steamlink: Attached mqtt client '%s'", _MQTT.name)
 
 
 TODO = """
@@ -203,8 +203,8 @@ class Steam(Item):
 			source = Steam.console_fields[label]
 			try:
 				v = eval(source)
-			except:
-				v = "*UNK*"
+			except Exception as e:
+				v = "*%s*" % e
 			data[label] = v
 		return data
 
@@ -220,7 +220,7 @@ class Steam(Item):
 			n_process_time = time.process_time()
 			n_now = time.time()
 
-			delta = n_now - now 
+			delta = n_now - now
 			wait = 1 - (n_now % 1)
 			self.load = ((n_process_time - process_time) / delta ) * 100.0
 			now = n_now
@@ -229,6 +229,12 @@ class Steam(Item):
 
 	def heartbeat(self):
 		self.schedule_update()
+
+
+	def ping(self):
+		self.pingtime = time.time()
+		self.send_get_status()
+
 
 #
 # Mesh
@@ -247,6 +253,8 @@ class Mesh(Item):
 		logger.debug("Mesh creating: %s", mesh_id)
 		self.packets_sent = 0
 		self.packets_received = 0
+		self.desc = "Description for mesh %s" % mesh_id
+
 		super().__init__('Mesh', mesh_id)
 		self.desc = "Description for %s" % self.name
 		logger.debug("Mesh created: %s", self.name)
@@ -262,8 +270,8 @@ class Mesh(Item):
 			source = Mesh.console_fields[label]
 			try:
 				v = eval(source)
-			except:
-				v = "*UNK*"
+			except Exception as e:
+				v = "*%s*" % e
 			data[label] = v
 		return data
 
@@ -273,35 +281,39 @@ class Mesh(Item):
 class Node(Item):
 	console_fields = {
  	 "Name": "self.nodecfg.name",
-	 "Description": "self.nodecfg.desc",
+	 "Description": "self.nodecfg.description",
+	 "State": "self.state",
 	 "Packets sent": "self.packets_sent",
 	 "Packets received": "self.packets_received",
-	 "SL ID": "self.key",
+	 "SL ID": "self.slid",
 	}
-	""" a node in the test set """
-	def __init__(self, sl_id, nodecfg = None):
-		logger.debug("Node createing : %s" % sl_id)
+	""" a node in a mesh set """
+	def __init__(self, slid, nodecfg = None):
+		logger.debug("Node createing : %s" % slid)
 		if nodecfg is None:
-			self.nodecfg = SL_NodeCfgStruct(sl_id, "Node%08x" % sl_id)
+			self.nodecfg = SL_NodeCfgStruct(slid, "Node%08x" % slid)
+			logger.debug("Node config is %s", self.nodecfg)
 		else:
 			self.nodecfg = nodecfg
 			self.name = nodecfg.name
 		self.response_q = queue.Queue(maxsize=1)
 
-		self.mesh_id = (sl_id >> 8)
+		self.slid = slid
+		self.mesh_id = (slid >> 8)
 		self.packets_sent = 0
 		self.packets_received = 0
-		self.state = "DOWN"
+		self.state = "FAILED"
+		self.last_packet_ts = 0
 		self.status = []
 		self.tr = {}		# dict of sending nodes, each holds a list of (pktno, rssi)
 		self.packet_log = TimeLog(MAX_NODE_LOG_LEN)
 
-		super().__init__('Node', sl_id, None, key_in_parent=self.mesh_id)
-
 		self.mesh = registry.find_by_id('Mesh', self.mesh_id)
 		if self.mesh is None:		# Auto-create Mesh
-			logger.debug("Node %s:  mesh  %s autocreated", self.key, self.mesh_id)
+			logger.debug("Node %s:  mesh  %s autocreated", self.slid, self.mesh_id)
 			self.mesh = Mesh(self.mesh_id)
+
+		super().__init__('Node', slid, None, key_in_parent=self.mesh_id)
 
 		logger.debug("Node created: %s" % self.name)
 
@@ -326,12 +338,12 @@ class Node(Item):
 			self.state = new_state
 			logger.info("node %s state %s", self.key, self.state)
 #			sl_log.log_state(self.key, "ONLINE" if self.state == "UP" else "offline")
-			self.schedule_update()
+#??			self.schedule_update()
 
 
 
 	def is_up(self):
-		return self.state == "UP"
+		return self.state == "OK"
 
 
 	def publish_pkt(self, sl_pkt, sub="control"):
@@ -339,7 +351,7 @@ class Node(Item):
 		self.packets_sent += 1
 		self.schedule_update()
 		self.mesh.packets_sent += 1
-		_BROKER.publish(self.get_firsthop(), sl_pkt, sub=sub)
+		_MQTT.publish(self.get_firsthop(), sl_pkt, sub=sub)
 		self.mesh.schedule_update()
 
 
@@ -357,7 +369,7 @@ class Node(Item):
 
 
 	def send_set_radio_param(self, radio):
-		if self.state != "UP": return SL_OP.NC
+		if not self.is_up(): return SL_OP.NC
 		lorainit = struct.pack('<BLB', 0, 0, radio)
 		logger.debug("send_set_radio_param: len %s, pkt %s", len(lorainit), lorainit)
 		sl_pkt = Packet(slnode=self, sl_op=SL_OP.SR, payload=lorainit)
@@ -368,7 +380,7 @@ class Node(Item):
 
 
 	def send_testpacket(self, pkt):
-		if self.state != "UP": return SL_OP.NC
+		if not self.is_up(): return SL_OP.NC
 		sl_pkt = Packet(slnode=self, sl_op=SL_OP.TD, payload=pkt)
 		self.publish_pkt(sl_pkt)
 		rc = self.get_response(timeout=SL_RESPONSE_WAIT_SEC)
@@ -384,35 +396,36 @@ class Node(Item):
 		""" handle incoming messages on the ../data topic """
 		self.log_pkt(sl_pkt)
 		self.packets_received += 1
-		self.schedule_update()
 		self.mesh.packets_received += 1
-		self.mesh.schedule_update()
+		self.last_packet_ts = time.time()
 
 		logger.info("post_data %s", sl_pkt)
 
 		# any pkt from node indicates it's up
-		self.set_state('UP')
+		if not self.is_up():
+			self.set_state('TRANSMITTING')
 
 		sl_op = sl_pkt.sl_op
 
 		if sl_op == SL_OP.ON:
 			logger.debug('post_data: slid 0x%0x ONLINE', int(self.key))
 			self.nodecfg = SL_NodeCfgStruct(pkt=sl_pkt.bpayload)
+			logger.debug("Node config is %s", self.nodecfg)
 
 		elif sl_op == SL_OP.DS:
-			logger.debug('post_data: slid 0x%0x status %s', self.key,sl_pkt.payload)
+			logger.debug('post_data: slid 0x%0x status %s', int(self.key),sl_pkt.payload)
 			self.status = sl_pkt.payload.split(',')
 
 		elif sl_op == SL_OP.SS:
-			logger.debug('post_data: slid 0x%0x status %s', self.key,sl_pkt.payload)
-			a
+			logger.debug('post_data: slid 0x%0x status %s', int(self.key),sl_pkt.payload)
+			self.set_state(sl_pkt.payload)
 
 		elif sl_op in [SL_OP.AK, SL_OP.NK]:
-			logger.debug('post_data: slid 0x%0x answer %s', self.key, SL_OP.code(sl_op))
+			logger.debug('post_data: slid 0x%0x answer %s', int(self.key), SL_OP.code(sl_op))
 			try:
 				self.response_q.put(sl_op, block=False)
 			except queue.Full:
-				logger.warning('post_data: node %s queue, dropping: %s', self.key, sl_pkt)
+				logger.warning('post_data: node %s queue, dropping: %s', int(self.key), sl_pkt)
 		elif sl_op == SL_OP.TR:
 			logger.debug('post_data: node %s test msg', sl_pkt.payload)
 
@@ -429,6 +442,9 @@ class Node(Item):
 			self.tr[test_pkt.pkt['slid']].append((test_pkt.pkt['pktno'], test_pkt.pkt['rssi']))
 #			sl_log.post_incoming(test_pkt)
 
+		self.schedule_update()
+		self.mesh.schedule_update()
+
 
 	def get_response(self, timeout):
 		try:
@@ -444,8 +460,8 @@ class Node(Item):
 			source = Node.console_fields[label]
 			try:
 				v = eval(source)
-			except:
-				v = "*UNK*"
+			except Exception as e:
+				v = "*%s*" % e
 			data[label] = v
 		return data
 
@@ -475,144 +491,166 @@ class Node(Item):
 #
 class Packet(Item):
 	Number = 0
+	console_fields = {
+ 	 "op": "SL_OP.code(self.sl_op)",
+	 "rssi": "self.rssi",
+	 "via": "self.via",
+	 "payload": "self.payload",
+	 "ts": "time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(self.ts))",
+	}
 	def __init__(self, slnode = None, sl_op = None, rssi = 0, payload = None, pkt = None):
 		Packet.Number += 1
 
-		self.sl_op = None
-		self.slid = None
 		self.rssi = 0
 		self.qos = 0
-		self.pkt = None
 		self.via = []
 		self.payload = None
+		self.itype = "Pkt"
+		self.ts = time.time()
 
-		super().__init__('Pkt', Packet.Number )
+		if pkt is not None:					# deconstruct pkt
+			self.deconstruct(pkt)
+		else:								# donstruct pkt
+			self.construct(slnode, sl_op, rssi, payload)
+
+		self.node = registry.find_by_id('Node', self.slid)
+		logger.debug("Packet %s:  for node  %s ", Packet.Number, self.node)
+		if self.node is None:		# Auto-create node
+			logger.debug("Packet %s:  node  %s autocreated", Packet.Number, self.slid)
+			self.node = Node(self.slid)
+
+		super().__init__('Pkt', Packet.Number, key_in_parent=self.slid )
 
 		logger.debug("Packet created: %s", self.name)
 
-		if pkt is None:						# construct pkt
-			self.slid = int(slnode.key)
-			self.sl_op = sl_op
-			self.rssi = rssi + 256
-			self.payload = payload
-			logger.debug("SteamLinkPaktet payload = %s", payload);
-			if self.payload is not None:
-				if type(self.payload) == type(b''):
-					self.bpayload = self.payload
-				else:
-					self.bpayload = self.payload.encode('utf8')
-			else:
-				self.bpayload = b''
 
-			if sl_op == SL_OP.DS:
-				sfmt = '<BLB%is' % len(self.bpayload)
-				self.pkt = struct.pack(sfmt, self.sl_op, self.slid, self.qos, self.bpayload)
-			elif sl_op == SL_OP.BS:
-				sfmt = '<BLBB%is' % len(self.bpayload)
-				self.pkt = struct.pack(sfmt, self.sl_op, self.slid, self.rssi, self.qos, self.bpayload)
-			elif sl_op == SL_OP.ON:
+	def construct(self, slnode, sl_op, rssi, payload):
+		self.slid = int(slnode.key)
+		self.sl_op = sl_op
+		self.rssi = rssi + 256
+		self.payload = payload
+		logger.debug("SteamLinkPaktet payload = %s", payload);
+		if self.payload is not None:
+			if type(self.payload) == type(b''):
+				self.bpayload = self.payload
+			else:
+				self.bpayload = self.payload.encode('utf8')
+		else:
+			self.bpayload = b''
+
+		if sl_op == SL_OP.DS:
+			sfmt = '<BLB%is' % len(self.bpayload)
+			self.pkt = struct.pack(sfmt, self.sl_op, self.slid, self.qos, self.bpayload)
+		elif sl_op == SL_OP.BS:
+			sfmt = '<BLBB%is' % len(self.bpayload)
+			self.pkt = struct.pack(sfmt, self.sl_op, self.slid, self.rssi, self.qos, self.bpayload)
+		elif sl_op == SL_OP.ON:
+			sfmt = '<BL%is' % len(self.bpayload)
+			self.pkt = struct.pack(sfmt, self.sl_op, self.slid, self.bpayload)
+		elif sl_op in [SL_OP.AK, SL_OP.NK]:
+			sfmt = '<BL'
+			self.pkt = struct.pack(sfmt, self.sl_op, self.slid)
+		elif sl_op == SL_OP.TR:
+			sfmt = '<BLB%is' % len(self.bpayload)
+			self.pkt = struct.pack(sfmt, self.sl_op, self.slid, self.rssi, self.bpayload)
+		elif sl_op == SL_OP.SS:
+			sfmt = '<BL%is' % len(self.bpayload)
+			self.sl_op, self.slid, self.bpayload = struct.unpack(sfmt, self.pkt)
+			self.payload = self.bpayload.decode('utf8')
+
+		elif sl_op == SL_OP.DN:
+			sfmt = '<BLB%is' % len(self.bpayload)
+			self.pkt = struct.pack(sfmt, self.sl_op, self.slid, self.qos, self.rssi, self.bpayload)
+		elif sl_op in [SL_OP.GS, SL_OP.BC, SL_OP.BR]:
+			sfmt = '<B'
+			self.pkt = struct.pack(sfmt, self.sl_op)
+		elif sl_op == SL_OP.TD:
+			sfmt = '<B%is' % len(self.bpayload)
+			self.pkt = struct.pack(sfmt, self.sl_op, self.bpayload)
+		elif sl_op == SL_OP.SR:
+			sfmt = '<B%is' % len(bpayload)
+			self.pkt = struct.pack(sfmt, self.sl_op, self.bpayload)
+
+		else:
+			logger.error("Packet unknown sl_op in pkt %s", self.pkt)
+
+		self.via = [] #N.B. node_routes[self.slid].via
+		if len(self.via) > 0:
+			for via in [self.slid]+self.via[::-1][:-1]:
+				self.bpayload = self.pkt
 				sfmt = '<BL%is' % len(self.bpayload)
-				self.pkt = struct.pack(sfmt, self.sl_op, self.slid, self.bpayload)
-			elif sl_op in [SL_OP.AK, SL_OP.NK]:
-				sfmt = '<BL'
-				self.pkt = struct.pack(sfmt, self.sl_op, self.slid)
-			elif sl_op == SL_OP.TR:
-				sfmt = '<BLB%is' % len(self.bpayload)
-				self.pkt = struct.pack(sfmt, self.sl_op, self.slid, self.rssi, self.bpayload)
-			elif sl_op == SL_OP.SS:
-				sfmt = '<BL%is' % len(self.bpayload)
-				self.sl_op, self.slid, self.bpayload = struct.unpack(sfmt, self.pkt)
+				self.pkt = struct.pack(sfmt, SL_OP.BN, via, self.bpayload)
+
+
+	def deconstruct(self, pkt):
+		self.pkt = pkt
+		for l in phex(pkt, 4):
+			logger.debug("pkt:   %s", l)
+
+		if pkt[0] == SL_OP.BS:		# un-ecap all
+			while pkt[0] == SL_OP.BS:
+				sfmt = '<BLBB%is' % (len(pkt) - 7)
+				self.sl_op, slid, self.rssi, self.qos, self.bpayload = struct.unpack(sfmt, pkt)
+				self.via.append(slid)
+				pkt = self.bpayload
+				logger.debug("pkt encap BS, len %s\n%s", len(pkt), "\n".join(phex(pkt, 4)))
+			self.rssi = self.rssi - 256
+#			self.payload = self.bpayload.decode('utf8')
+
+		if pkt[0] == SL_OP.DS:
+			sfmt = '<BLB%is' % (len(pkt) - 6)
+			self.sl_op, self.slid, self.qos, self.bpayload = struct.unpack(sfmt, pkt)
+			self.payload = self.bpayload.decode('utf8')
+		elif pkt[0] == SL_OP.ON:
+			sfmt = '<BL%is' % (len(pkt) - 5)
+			self.sl_op, self.slid, self.bpayload = struct.unpack(sfmt, pkt)
+			self.payload = None
+		elif pkt[0] in [SL_OP.AK, SL_OP.NK]:
+			sfmt = '<BL'
+			self.sl_op, self.slid = struct.unpack(sfmt, pkt)
+			self.payload = None
+		elif pkt[0] == SL_OP.TR:
+			sfmt = '<BLB%is' % (len(pkt) - 6)
+			self.sl_op, self.slid, self.rssi, self.bpayload = struct.unpack(sfmt, pkt)
+			self.rssi = self.rssi - 256
+			try:
 				self.payload = self.bpayload.decode('utf8')
+			except Exception as e:
+				logger.error("cannot decode paket: %s %s", e, pkt);
+				raise
+		elif pkt[0] == SL_OP.SS:
+			sfmt = '<BL%is' % (len(pkt) - 5)
+			self.sl_op, self.slid, self.bpayload = struct.unpack(sfmt, pkt)
+			self.payload = self.bpayload.decode('utf8')
 
-			elif sl_op == SL_OP.DN:
-				sfmt = '<BLB%is' % len(self.bpayload)
-				self.pkt = struct.pack(sfmt, self.sl_op, self.slid, self.qos, self.rssi, self.bpayload)
-			elif sl_op in [SL_OP.GS, SL_OP.BC, SL_OP.BR]:
-				sfmt = '<B'
-				self.pkt = struct.pack(sfmt, self.sl_op)
-			elif sl_op == SL_OP.TD:
-				sfmt = '<B%is' % len(self.bpayload)
-				self.pkt = struct.pack(sfmt, self.sl_op, self.bpayload)
-			elif sl_op == SL_OP.SR:
-				sfmt = '<B%is' % len(bpayload)
-				self.pkt = struct.pack(sfmt, self.sl_op, self.bpayload)
+		elif pkt[0] == SL_OP.DN:
+			sfmt = '<BLB%is' % (len(pkt) - 6)
+			self.sl_op, self.slid, self.qos, self.bpayload = struct.unpack(sfmt, pkt)
+			self.payload = self.bpayload.decode('utf8')
+		elif pkt[0] == SL_OP.BN:
+			sfmt = '<BL%is' % (len(pkt) - 5)
+			self.sl_op, self.slid, self.bpayload = struct.unpack(sfmt, pkt)
+			self.payload = self.bpayload.decode('utf8')
+		elif pkt[0] in [SL_OP.GS, SL_OP.BC, SL_OP.BR]:
+			sfmt = '<B'
+			self.sl_op = struct.unpack(sfmt, pkt)
+			self.payload = None
+		elif pkt[0] == SL_OP.TD:
+			sfmt = '<B%is' % (len(pkt) - 1)
+			self.sl_op, self.bpayload = struct.unpack(sfmt, pkt)
+			self.payload = self.bpayload.decode('utf8')
+		elif pkt[0] == SL_OP.SR:
+			sfmt = '<B%is' % (len(pkt) - 1)
+			self.sl_op, self.bpayload = struct.unpack(sfmt, pkt)
+			self.payload = self.bpayload.decode('utf8')
+		else:
+			logger.error("Packet unknown sl_op in pkt %s", pkt)
 
-			else:
-				logger.error("Packet unknown sl_op in pkt %s", self.pkt)
+		if (pkt[0] & 0x01) == 1: 	# Data
+			self.via.append(self.slid)
 
-			self.via = [] #N.B. node_routes[self.slid].via
-			if len(self.via) > 0:
-				for via in [self.slid]+self.via[::-1][:-1]:
-					self.bpayload = self.pkt
-					sfmt = '<BL%is' % len(self.bpayload)
-					self.pkt = struct.pack(sfmt, SL_OP.BN, via, self.bpayload)
-
-		else:								# deconstruct pkt
-			self.pkt = pkt
-			logger.debug("pkt\n%s", "\n".join(phex(pkt, 4)))
-
-			if pkt[0] == SL_OP.BS:		# un-ecap all
-				while pkt[0] == SL_OP.BS:
-					sfmt = '<BLBB%is' % (len(pkt) - 7)
-					self.sl_op, slid, self.rssi, self.qos, self.bpayload = struct.unpack(sfmt, pkt)
-					self.via.append(slid)
-					pkt = self.bpayload
-					logger.debug("pkt encap BS, len %s\n%s", len(pkt), "\n".join(phex(pkt, 4)))
-				self.rssi = self.rssi - 256
-#				self.payload = self.bpayload.decode('utf8')
-
-			if pkt[0] == SL_OP.DS:
-				sfmt = '<BLB%is' % (len(pkt) - 6)
-				self.sl_op, self.slid, self.qos, self.bpayload = struct.unpack(sfmt, pkt)
-				self.payload = self.bpayload.decode('utf8')
-			elif pkt[0] == SL_OP.ON:
-				sfmt = '<BL%is' % (len(pkt) - 5)
-				self.sl_op, self.slid, self.bpayload = struct.unpack(sfmt, pkt)
-				self.payload = None
-			elif pkt[0] in [SL_OP.AK, SL_OP.NK]:
-				sfmt = '<BL'
-				self.sl_op, self.slid = struct.unpack(sfmt, pkt)
-				self.payload = None
-			elif pkt[0] == SL_OP.TR:
-				sfmt = '<BLB%is' % (len(pkt) - 6)
-				self.sl_op, self.slid, self.rssi, self.bpayload = struct.unpack(sfmt, pkt)
-				self.rssi = self.rssi - 256
-				try:
-					self.payload = self.bpayload.decode('utf8')
-				except Exception as e:
-					logger.error("cannot decode paket: %s %s", e, pkt);
-					raise
-			elif pkt[0] == SL_OP.SS:
-				sfmt = '<BL%is' % (len(pkt) - 5)
-				self.sl_op, self.slid, self.bpayload = struct.unpack(sfmt, pkt)
-				self.payload = self.bpayload.decode('utf8')
-
-			elif pkt[0] == SL_OP.DN:
-				sfmt = '<BLB%is' % (len(pkt) - 6)
-				self.sl_op, self.slid, self.qos, self.bpayload = struct.unpack(sfmt, pkt)
-				self.payload = self.bpayload.decode('utf8')
-			elif pkt[0] == SL_OP.BN:
-				sfmt = '<BL%is' % (len(pkt) - 5)
-				self.sl_op, self.slid, self.bpayload = struct.unpack(sfmt, pkt)
-				self.payload = self.bpayload.decode('utf8')
-			elif pkt[0] in [SL_OP.GS, SL_OP.BC, SL_OP.BR]:
-				sfmt = '<B'
-				self.sl_op = struct.unpack(sfmt, pkt)
-				self.payload = None
-			elif pkt[0] == SL_OP.TD:
-				sfmt = '<B%is' % (len(pkt) - 1)
-				self.sl_op, self.bpayload = struct.unpack(sfmt, pkt)
-				self.payload = self.bpayload.decode('utf8')
-			elif pkt[0] == SL_OP.SR:
-				sfmt = '<B%is' % (len(pkt) - 1)
-				self.sl_op, self.bpayload = struct.unpack(sfmt, pkt)
-				self.payload = self.bpayload.decode('utf8')
-			else:
-				logger.error("Packet unknown sl_op in pkt %s", pkt)
-
-			if (pkt[0] & 0x01) == 1: 	# Data
-				self.via.append(self.slid)
-
+	def post_data(self):
+		self.node.post_data(self)
 
 	def o__str__(self):
 		if self.slid is None:
@@ -628,6 +666,19 @@ class Packet(Item):
 			s += " payload %s" % (self.payload)
 		s += ")"
 		return s
+
+
+	def gen_console_data(self):
+		data = {}
+		for label in Packet.console_fields:
+			source = Packet.console_fields[label]
+			try:
+				v = eval(source)
+			except Exception as e:
+				v = "*%s*" % e
+			data[label] = v
+		return data
+
 
 
 
@@ -710,8 +761,8 @@ class LogData:
 		self.nodes_online = 0
 
 
-	def log_state(self, sl_id, new_state):
-		logger.debug("logdata node 0x%0x %s", sl_id, new_state)
+	def log_state(self, slid, new_state):
+		logger.debug("logdata node 0x%0x %s", slid, new_state)
 		self.nodes_online += 1 if new_state == "ONLINE" else -1
 
 
