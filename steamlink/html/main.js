@@ -158,7 +158,7 @@ window.onload = function(){
         el: '#app',
         data: {
             curHeaderRoom: 'Steam_0',
-            headerRoomType: 'home_id',
+            curHeaderRoomType: 'home_id',
             curTileRoom: 'Mesh_*',
             tileRoomType: 'mesh_all',
             tiles: [],
@@ -175,10 +175,10 @@ window.onload = function(){
                 var newTileRoomType;
                 var newHeaderRoomType;
 
-                console.log("in  room " + this.headerRoomType);
+                console.log("in  room " + this.curHeaderRoomType);
 
-//                if (this.headerRoomType === "mesh_all") {
-                if (this.headerRoomType === "home_id") {
+//                if (this.curHeaderRoomType === "mesh_all") {
+                if (this.curHeaderRoomType === "home_id") {
                     // We want to go to a specific mesh display
                     // The header will be description for the mesh
                     // Tiles will be all the nodes
@@ -188,7 +188,7 @@ window.onload = function(){
                     newHeaderRoomType = "mesh_id";                   
                 }
 
-                if (this.headerRoomType === "node_all") {
+                if (this.curHeaderRoomType === "node_all") {
                     // We want to go to a specific node display
                     // The header will be description for the node
                     // Tiles will be all the pkts
@@ -198,7 +198,7 @@ window.onload = function(){
                     newHeaderRoomType = "node_id";                                      
                 }
                 
-                if (this.headerRoomType === "mesh_id") {
+                if (this.curHeaderRoomType === "mesh_id") {
                     // We want to go to a specific node display
                     // The header will be description for the node
                     // Tiles will be all the pkts
