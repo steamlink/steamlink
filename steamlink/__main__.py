@@ -13,15 +13,14 @@ import random
 import asyncio
 import socketio
 import signal
+import yaml
 from collections import  Mapping, OrderedDict
-
-from .linkage import SetRegistry
-SetRegistry(['Steam', 'Mesh', 'Node', 'Pkt', 'Room'])
-
-from .linkage import Attach as linkageAttach
 
 import logging
 logger = logging.getLogger()
+
+from .linkage import OpenRegistry, CloseRegistry, registry
+from .linkage import Attach as linkageAttach
 
 # SteamLink project imports
 from .mqtt import (
@@ -30,7 +29,7 @@ from .mqtt import (
 )
 
 
-from .steamlink import Steam
+from .steamlink import Steam, Mesh, Node, SL_NodeCfgStruct
 from .steamlink import Attach as steamlinkAttach
 
 from .web import WebApp
@@ -48,7 +47,6 @@ from .testdata import TestData
 
 from .const import (
 	PROJECT_PACKAGE_NAME,
-	INDEX_HTML,
 	__version__,
 	DEFAULT_CONFIG_FILE,
 )
@@ -61,6 +59,7 @@ class GracefulExit(SystemExit):
 def raise_graceful_exit():
 	raise GracefulExit()
 
+home = str(pathlib.Path.home())	
 
 #
 # Default config
@@ -69,6 +68,7 @@ DEFAULT_CONF = OrderedDict({
  	'general': OrderedDict({
 		'mqtt_broker': 'mqtt_broker',
 		'ping_timeout': 30,
+		'working_dir': home + '/.steamlink'
 	}),
 	'Steam': OrderedDict({
 		'id': 0,
@@ -106,7 +106,7 @@ DEFAULT_CONF = OrderedDict({
 		'namespace': '/sl',
 		'prefix': 'SteamLinkWeb',
 		'minupdinterval': 1.0,
-		'index': INDEX_HTML,           # root page
+		'index': "",           # root page
         'ssl_certificate': None,
         'ssl_key': None,
 	}),
@@ -135,6 +135,46 @@ DEFAULT_CONF = OrderedDict({
 })
 
 
+#
+# 
+#
+def save_to_cache(fname):
+	
+	meshes = {}
+	for mesh in registry.get_all('Mesh'):
+		meshes[mesh.key] = mesh.save()
+	nodes = {}
+	for node in registry.get_all('Node'):
+		nodes[node.key] = node.save()
+	r = {'Mesh': meshes, 'Node': nodes }
+
+	with open(fname, 'w') as outfile:
+		yaml.dump(r, outfile, default_flow_style=False)
+
+
+def load_from_cache(fname):
+	if not os.path.exists(fname):
+		return
+
+	with open(fname, "r") as infile:
+		stream = "".join(infile.readlines())
+	data = yaml.load(stream)
+	if data is None or not 'Mesh' in data or not 'Node' in data:
+		logger.error("load_from_cache: cache file corrupt, ignoring")
+		return
+
+	for mesh in data['Mesh']:
+		m = Mesh(data['Mesh'][mesh]['key'])
+		logger.info("restored mesh %s", m)
+
+	for node in data['Node']:
+		if 'nodecfg' in data['Node'][node]:
+			nodecfg = SL_NodeCfgStruct(**data['Node'][node]['nodecfg'])
+		else:
+			nodecfg = None
+		n = Node(data['Node'][node]['slid'], nodecfg)
+		n.via = data['Node'][node]['via']
+		logger.info("restored node %s", n)
 
 #
 # Main
@@ -156,9 +196,10 @@ def steamlink_main() -> int:
 	FORMAT = '%(asctime)-15s: %(levelname)s %(module)s %(message)s'
 	logging.basicConfig(format=FORMAT, filename=cl_args.logfile)
 	logger.setLevel(loglevel)
-	logging.DBG = cl_args.debug
+	DBG = cl_args.debug
+	logging.DBG = DBG
 
-	if logging.DBG >= 2:
+	if DBG >= 2:
 		logger.info("DBG: logging all warnings")
 		import warnings
 		warnings.simplefilter("always")
@@ -166,9 +207,7 @@ def steamlink_main() -> int:
 
 	logger.info("%s version %s" % (PROJECT_PACKAGE_NAME, __version__))
 
-
 	if cl_args.config is None:
-		home = str(pathlib.Path.home())	
 		conff = home + "/" + DEFAULT_CONFIG_FILE
 	else:
 		conff = cl_args.config
@@ -182,6 +221,14 @@ def steamlink_main() -> int:
 	conf = loadconfig(DEFAULT_CONF, conff)
 	if conf['mqtt']['clientid'] is None:
 		conf['mqtt']['clientid'] = "clie"+"%04i" % int(random.random() * 10000)
+
+	conf_general = conf['general']
+	conf_working_dir = conf_general['working_dir']
+	if not os.path.exists(conf_working_dir):
+		os.mkdir(conf_working_dir)
+
+	conf_console = conf['console']
+	conf_steam = conf['Steam']
 
 	# Daemon functions
 	if cl_args.pid_file:
@@ -197,7 +244,7 @@ def steamlink_main() -> int:
 
 	# N.B. no asyncio before daemon!
 	aioloop = asyncio.get_event_loop()
-	if logging.DBG >= 2:
+	if DBG >= 2:
 		aioloop.set_debug(enabled=True)
 
 	try:
@@ -206,9 +253,9 @@ def steamlink_main() -> int:
 	except NotImplementedError:  # pragma: no cover
 		logger.error("main: failed to trap signals")
 
-	conf_general = conf['general']
-	conf_console = conf['console']
-	conf_steam = conf['Steam']
+#	OpenRegistry(None)
+	OpenRegistry(conf_working_dir+"/steamlink.reg")
+
 	broker_c = conf_general.get('mqtt_broker', None)
 	if broker_c is None:
 		conf_broker = None
@@ -254,14 +301,15 @@ def steamlink_main() -> int:
 
 	logger.debug("startup: create WebApp")
 	webapp = WebApp(namespace, sio, conf_console, loop=aioloop)
-	logger.debug("startup: start webapp")
-	aioloop.run_until_complete(webapp.start())
 
 	linkageAttach(webapp)
 	steamlinkAttach(mqtt)
 
-	logger.debug("startup: create Steam")
+	logger.debug("startup: start webapp")
+	aioloop.run_until_complete(webapp.start())
 	steam = Steam(conf_steam)
+	logger.debug("startup: create Steam")
+	load_from_cache(conf_working_dir+"/steamlink.cache")
 
 	coros = []
 	if cl_args.testdata:
@@ -279,7 +327,7 @@ def steamlink_main() -> int:
 	ll = logging.getLogger('asyncio_socket')
 	ll.setLevel(logging.WARN)
 
-	if logging.DBG == 0:		# N.B. reduce noise when debuging, i.e. no heartbeat
+	if DBG == 0:		# N.B. reduce noise when debuging, i.e. no heartbeat
 		coros.append(steam.start())
 
 	coros.append(webapp.qstart())
@@ -298,10 +346,12 @@ def steamlink_main() -> int:
 	if TestTask:
 		logger.debug("stopping TestTask")
 		TestTask.stop()
+	save_to_cache(conf_working_dir+"/steamlink.cache")
 
 	aioloop.run_until_complete(mqtt.stop())
 	if not conf_broker is None:
 		aioloop.run_until_complete(mqtt_broker.stop())
+	CloseRegistry()
 
 	logger.info("done")
 

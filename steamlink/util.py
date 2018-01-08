@@ -17,7 +17,6 @@ _mapping_tag = yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG
 def dict_representer(dumper, data):
     return dumper.represent_dict(data.items())
 
-
 def dict_constructor(loader, node):
     return OrderedDict(loader.construct_pairs(node))
 

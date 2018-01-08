@@ -1,86 +1,135 @@
 
 import asyncio
+import shelve
+import os
+import socket
 
 import logging
 logger = logging.getLogger()
 
-
-
 # Globals, initialized by attach
 _WEBAPP = None
+DBG = 0
 
 def Attach(app):
-	global _WEBAPP
+	global _WEBAPP, DBG
 	if _WEBAPP is not None:
 		logger.error("Linkage: Attach already done")
 		return
 	_WEBAPP = app
-	logger.debug("linkage: Attached webapp '%s'", _WEBAPP.name)
+	DBG = logging.DBG
 
-registry = None
+	logger.debug("linkage: Attached webapp '%s', DBG=%s", _WEBAPP.name, DBG)
+
+
+import yaml
+from yaml import Loader, Dumper
 
 #
 # Registry
 #
 class Registry:
-	def __init__(self, ItemTypes):
-		self.ItemTypes = ItemTypes
-		self.name_idx = {}
-		for itype in self.ItemTypes:
-			self.name_idx[itype] = {}
-		self.id_idx = {}
-		for itype in self.ItemTypes:
-			self.id_idx[itype] = {}
+	def __init__(self):
+		logger.debug("Registry: instance")
+
+
+	def open(self, fname):
+		# Note: load from file not implememted, only save
+		logger.debug("Registry: open")
+		self.fname = fname
+		if fname is None:
+			self.reg = {'name_idx': {}, 'id_idx': {}, 'ItemTypes': []}
+		else:
+			self.reg = self.load()
+
+
+	def close(self):
+		if self.fname is None:
+			return
+		data = self.save()
+		if DBG > 2:
+			import pprint
+			pp = pprint.PrettyPrinter(indent=4)
+			pp.pprint(data)
+		with open(self.fname, 'w') as outfile:
+			yaml.dump(data, outfile, default_flow_style=False)
+
+
+	def load(self):
+		r =  {'name_idx': {}, 'id_idx': {}, 'ItemTypes': []}
+		return r
+
 
 	def register(self, item):
-		if logging.DBG > 2: logger.debug("Registry: register %s", item)
-		self.name_idx[item.itype][item.name] = item
-		self.id_idx[item.itype][item.key] = item
+		if not item.itype in self.reg['ItemTypes']:
+			self.reg['ItemTypes'].append(item.itype)
+			self.reg['name_idx'][item.itype] = {}
+			self.reg['id_idx'][item.itype] = {}
+		if DBG > 2: logger.debug("Registry: register %s", item)
+		self.reg['name_idx'][item.itype][item.name] = item
+		self.reg['id_idx'][item.itype][item.key] = item
+
 
 	def unregister(self, item):
-		if logging.DBG > 2: logger.debug("Registry: unregister %s", item)
-		del self.name_idx[item.itype][item.name]
-		del self.id_idx[item.itype][item.key]
+		if DBG > 2: logger.debug("Registry: unregister %s", item)
+		del self.reg['name_idx'][item.itype][item.name]
+		del self.reg['id_idx'][item.itype][item.key]
 
 
 	def get_parent_type(self, itype):
 		try:
-			i = self.ItemTypes.index(itype)
+			i = self.reg['ItemTypes'].index(itype)
 		except:
 			return None
 		if i == 0:
 			return None
-		return self.ItemTypes[i-1]
+		return self.reg['ItemTypes'][i-1]
 
 
 	def get_all(self, itype):
 		r = []
-		for key in self.id_idx[itype]:
-			r.append(self.id_idx[itype][key])
+		for key in self.reg['id_idx'][itype]:
+			r.append(self.reg['id_idx'][itype][key])
 		return r
 
 
 	def find_by_name(self, itype, name):
-#		t = self.name_idx.get(itype, None)
-#		if t is None:
-#			return None
-		t = self.name_idx[itype].get(name, None)
+		t = self.reg['name_idx'][itype].get(name, None)
 		return t
 
+
 	def find_by_id(self, itype, Id):
-#		t = self.id_idx.get(itype, None)
-#		if t is None:
-#			return None
-		t = self.id_idx[itype].get(str(Id), None)
-		if logging.DBG > 2: logger.debug("find_by_id %s %s = %s", itype, Id, str(t))
+		try:
+			t = self.reg['id_idx'][itype].get(str(Id), None)
+		except KeyError as e:
+			logger.warning("find_by_id: %s not in id_idx", e)
+			t = None
+			
+		if DBG > 2: logger.debug("find_by_id %s %s = %s", itype, Id, str(t))
 		return t
+
+
+	def save(self):
+		r = {}
+		for itype in self.reg['ItemTypes']:
+			kd = {}
+			for k in self.reg['id_idx'][itype]:
+				kd[k] = self.reg['id_idx'][itype][k].save()
+			r[itype] = kd		
+		
+		return r
 
 
 #
-def SetRegistry(ItemTypes):
-	global registry
-	registry = Registry(ItemTypes)
+# Registry linkage
+#
+registry = Registry()
 
+def OpenRegistry(fname):
+	registry.open(fname)
+
+def CloseRegistry():
+	registry.close()
 
 
 #
@@ -119,6 +168,10 @@ class BaseItem:
 	def __str__(self):
 		return "%s %s(%s)" % (self.itype, self.name, self.key)
 
+
+	def save(self):
+		r = self.__dict__.copy()
+		return r
 
 #
 # Item
@@ -170,7 +223,7 @@ class Item(BaseItem):
 			p = None
 		else:
 			p = registry.find_by_id(ptype, key_in_parent)
-		if logging.DBG > 1: logger.debug("Item: get_parent %s): %s", self, str(p))
+		if DBG > 1: logger.debug("Item: get_parent %s): %s", self, str(p))
 		return p
 
 
@@ -187,9 +240,9 @@ class Item(BaseItem):
 
 
 	def schedule_update(self):
-		logger.debug("Item %s: schedule_update", self.name)
+		if DBG > 2: logger.debug("Item %s: schedule_update", self.name)
 		for room in self.my_room_list:
-			logger.debug("Item: schedule_update for item %s in room %s", self, room.name)
+			if DBG > 2: logger.debug("Item: schedule_update for item %s in room %s", self, room.name)
 			room.roomitems[self.key].schedule_update(False)
 
 
@@ -213,6 +266,15 @@ class Item(BaseItem):
 		if self.parent is not None:
 			rooms.append( "%s_%s_*" % (self.parent.itype, self.parent.key))
 		return rooms
+
+
+	def save(self):
+		r = super().save()
+		if self.parent:
+			r['parent'] = self.parent.key
+		if self.children:
+			r['children'] = list(self.children.keys())
+		return r
 
 #
 # RoomItem
@@ -238,6 +300,16 @@ class RoomItem:
 		self.upd_in_progress = False
 
 
+	def __getstate__(self):
+		r = self.__dict__.copy()
+#		r = {'room': self.room.key, 'item': self.item.key}
+		r['room'] = self.room.key 
+		r['item'] = self.item.key
+		return r
+
+	def __repr__(self):
+		return str(self.__getstate__())
+
 	def console_update(self, force):
 		if self.deleted:
 			data_to_emit = {}
@@ -247,7 +319,7 @@ class RoomItem:
 			data_to_emit = self.item.gen_console_data()
 			self.cache = data_to_emit
 		self.pack['display_vals'] = data_to_emit
-		logger.debug("console_update ROOM %s ITEM %s DATA %s", self.room, self.item, self.pack)
+		if DBG > 2: logger.debug("console_update ROOM %s ITEM %s DATA %s", self.room, self.item, self.pack)
 		return self.pack
 
 
@@ -258,11 +330,8 @@ class RoomItem:
 
 
 	def schedule_update(self, force, sroom = None):
-		if self.upd_in_progress:
+		if self.upd_in_progress or _WEBAPP is None:
 			return
-#		if not _WEBAPP:
-#			logger.warning("RoomItem: update before _WEBAPP")
-#			return
 		next_update = (self.last_update + _WEBAPP.minupdinterval) - _WEBAPP.loop.time()
 		if not force and next_update > 0:
 			if not self.future_update:
@@ -411,17 +480,20 @@ class Room(BaseItem):
 
 
 	def schedule_update(self, rsid = None):
-		for roomitem in self.roomitems:
+		limit = 50		# XXX todo: make variable
+		for roomitem in self.get_roomitem_keys():
 			self.roomitems[roomitem].schedule_update(True, rsid)
 			for sid in self.members:
 				if self.is_private(sid) and self.members[sid].has_roomitem(roomitem):
 					self.roomitems[roomitem].schedule_update(True, sid)
+			limit -= 1
+			if limit == 0:
+				break
 					
 
 			
-	def mkdsroom(self):
+	def mksroom(self):
 		if not self.detail is None:
 			return "%s_%s_%s" % (self.ritype, self.rkey, self.detail)
 		return "%s_%s" % (self.ritype, self.rkey)
-
 

@@ -12,3 +12,6 @@
 	
 
 - in c++ code, change ON opcode to transmit a SL_NodeCfgStruct packet
+
+
+fixit: Adafruit MQTT library always sets 'retain' flag

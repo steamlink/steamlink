@@ -11,6 +11,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 from .linkage import registry
+
 from .steamlink import Packet
 
 #
@@ -42,28 +43,32 @@ class Mqtt:
 		self.connected = asyncio.Event(loop=loop)
 		self.subscribed = asyncio.Event(loop=loop)
 		self.disconnected = asyncio.Event(loop=loop)
+		self.mq = self.set_mq()
+		self.subscription_list = [self.data_topic]
+		self.running = True
 
-		self.mq = aiomqtt.Client(client_id=self.clientid, loop=loop)
-		self.mq.loop_start()
-#		self.mq.enable_logger(logger)
+	def set_mq(self):
+
+		mq = aiomqtt.Client(client_id=self.clientid, loop=self.loop)
+		mq.loop_start()
+#		mq.enable_logger(logger)
 		if self.ssl_certificate:
 			logger.debug("%s: using cert %s", self.name, self.ssl_certificate)
 			try:
-				self.mq.tls_set(self.ssl_certificate)
+				mq.tls_set(self.ssl_certificate)
 			except FileNotFoundError as e:
 				logger.error("Mqtt: tls_set certificate %s: %s", self.ssl_certificate, e)
 				sys.exit(1)
-			self.mq.tls_insecure_set(False)
+			mq.tls_insecure_set(False)
 		if self.username and self.password:
-			self.mq.username_pw_set(self.username, self.password)
-		self.mq.on_connect = self.on_connect
-		self.mq.on_subscribe = self.on_subscribe
-		self.mq.on_message = self.on_message
-		self.mq.on_disconnect = self.on_disconnect
-		self.running = True
+			mq.username_pw_set(self.username, self.password)
+		mq.on_connect = self.on_connect
+		mq.on_subscribe = self.on_subscribe
+		mq.on_message = self.on_message
+		mq.on_disconnect = self.on_disconnect
 
-		self.subscription_list = [self.data_topic]
-		self.mq.message_callback_add(self.data_topic, self.on_data_msg)
+		mq.message_callback_add(self.data_topic, self.on_data_msg)
+		return mq
 
 
 	async def start(self):
@@ -130,12 +135,12 @@ class Mqtt:
 	def on_data_msg(self, client, userdata, msg):
 		# msg has  topic, payload, qos, retain
 		topic_parts = msg.topic.split('/', 2)
-		try:
-			sl_pkt = Packet(pkt=msg.payload)
-		except Exception as e:
-			logger.warning("mqtt: pkt not parsed: '%s', cause %s", msg.payload, e)
-			return
-		logger.info("mqtt incoming packet %s", sl_pkt)
+		if logging.DBG > 2: logger.debug("on_data_msg  %s %s", msg.topic, msg.payload)
+#		try:
+		sl_pkt = Packet(pkt=msg.payload)
+#		except Exception as e:
+#			logger.warning("mqtt: pkt not processed: '%s', cause %s", msg.payload, e)
+#			return
 		sl_pkt.post_data()
 
 

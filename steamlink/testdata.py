@@ -10,6 +10,13 @@ from .steamlink import (
 	SL_OP,
 )
 
+from .linkage import (
+	registry,
+	Room,
+	Item,
+)
+
+
 import logging
 logger = logging.getLogger(__name__)
 
@@ -37,6 +44,12 @@ class TestData:
 
 
 	async def start(self):
+		await asyncio.sleep(self.conf.get('startwait',1))
+		await self.send_test(272, "TESTDATA")
+		logger.warning("test done")
+		return
+
+	async def old_start(self):
 		n_nodes = self.conf.get('nodes',1)
 		d_nodes = self.conf.get('del_nodes',0)
 		n_meshes = self.conf.get('meshes',1)
@@ -101,4 +114,16 @@ class TestData:
 		self.nodes[i].publish_pkt(p, data)
 
 
+	async def send_test(self, slid, data):
+		node = registry.find_by_id('Node', slid)
+		if node is None:
+			logger.error("no node %s", slid)
+			return
 
+		logger.warning("sending %s to node %s", data, node)
+		while not node.is_up(): 
+			logger.warning("node %s not up, waiting", node)
+			await asyncio.sleep(1) 
+		rc = node.send_testpacket(data)
+		logger.warning("testpkt sent to node %s, code %s", slid, rc)
+		

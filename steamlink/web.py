@@ -1,6 +1,8 @@
 import asyncio
 import socketio
 import signal
+import os
+import json
 
 from aiohttp import web
 from aiohttp.log import access_logger, web_logger
@@ -10,11 +12,6 @@ from .linkage import (
 	registry,
 	BaseItem,
 	Room,
-)
-
-from .const import (
-	LIB_DIR,
-	INDEX_HTML,
 )
 
 import logging
@@ -130,6 +127,27 @@ class WebNamespace(socketio.AsyncNamespace):
 			self.leave_room(sid, message['room'], namespace=self.namespace)
 		room.members[sid].set_position(key, count)
 		# return items in range?
+
+
+
+#
+#Inde
+def IndexMiddleware(index='index.html'):
+	async def middleware_factory(app, handler):
+		async def index_handler(request):
+			try:
+				filename = request.match_info['filename']
+				if not filename:
+					filename = index
+				if filename.endswith('/'):
+					filename += index
+				request.match_info['filename'] = filename
+			except KeyError:
+				pass
+			return await handler(request)
+		return index_handler
+	return middleware_factory
+
 #
 # WebApp
 #
@@ -143,12 +161,13 @@ class WebApp(object):
 		self.namespace = namespace
 		self.loop = loop
 		self.con_upd_q = asyncio.Queue(loop=self.loop)
-		self.app = web.Application()
+		self.app = web.Application(middlewares=[IndexMiddleware()])
 		self.app._set_loop(self.loop)
 		self.sio.attach(self.app)
 		self.app['websockets'] = []
-		self.app.router.add_static('/',LIB_DIR+"/html")
 		self.app.router.add_get('/config.json', self.config_json)
+		libdir = os.path.dirname(os.path.abspath(__file__))
+		self.app.router.add_static('/',libdir+"/html")
 		self.app.on_cleanup.append(self.web_on_cleanup)
 		self.app.on_shutdown.append(self.web_on_shutdown)
 		self.backlog = 128
@@ -166,7 +185,8 @@ class WebApp(object):
 	#	self._handler = None
 	#	self.server = None
 
-
+	def __getstate__(self):
+		return {'MyClass': 'WebApp'}
 
 	async def qstart(self):
 		logger.info("%s starting q handler", self.name)
@@ -206,12 +226,6 @@ class WebApp(object):
 		self.loop.run_until_complete(self.app.cleanup())
 
 
-	async def index(self, request):
-		index_html = self['index']
-		with open(index_html) as f:
-			return web.Response(text=f.read(), content_type='text/html')
-
-
 	async def config_json(self, request):
 		rj = json.dumps(self.conf)
 		return web.Response(text=rj, content_type='application/json')
@@ -227,7 +241,7 @@ class WebApp(object):
 
 
 	def schedule_update(self, roomitem, sroom, force):
-		logger.debug("webapp schedule_update for %s item %s", roomitem.room, roomitem.item)
+		if logging.DBG > 2: logger.debug("webapp schedule_update for %s item %s", roomitem.room, roomitem.item)
 		asyncio.ensure_future(self.con_upd_q.put([roomitem, sroom, force]), loop=self.loop)
 
 
