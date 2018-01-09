@@ -1,17 +1,17 @@
-- make a new release
-	cd ~/git/steamlink
-	vi steamlink/const.py   edit *_VERSION
-	git commit -a -m "version 0.7.1"
-	git push
-	git tag 0.7.1 -m "0.7.1"	
-	git push --tags origin master
 
-	. ~/sl/bin/activate
-	
-	python3 setup.py sdist upload -r pypi
-	
+ToDos/Dones:
+X node: pkt sequence numbers
+X store: track and report missing or packets
+X node: change ON opcode to transmit a SL_NodeCfgStruct packet
+- node/store: sign-on procedure
+X node: replace RadioHead driver with native driver (sandeepmistry/arduino-LoRa)
+- store: limit number of items in a room
+- store: protocol for paging through "old" items
 
-- in c++ code, change ON opcode to transmit a SL_NodeCfgStruct packet
+Bugs:
+fix: Adafruit MQTT library always sets 'retain' flag
+fix: mqtt client sometimes hangs on a 2nd or later connection attempt
+fix: 
 
 
-fixit: Adafruit MQTT library always sets 'retain' flag
+
