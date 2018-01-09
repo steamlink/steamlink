@@ -104,6 +104,7 @@ class Mqtt:
 	def on_connect(self, client, userdata, flags, result):
 		logger.info("%s connected %s", self.name, result)
 		if result == 0:
+			self.disconnected.clear()
 			self.connected.set()
 
 
@@ -136,8 +137,11 @@ class Mqtt:
 		# msg has  topic, payload, qos, retain
 		topic_parts = msg.topic.split('/', 2)
 		if logging.DBG > 2: logger.debug("on_data_msg  %s %s", msg.topic, msg.payload)
-#		try:
-		sl_pkt = Packet(pkt=msg.payload)
+		try:
+			sl_pkt = Packet(pkt=msg.payload)
+		except ValueError as e:
+			logger.warning("mqtt: pkt not processed: '%s', value error %s", msg.payload, e)
+			return
 #		except Exception as e:
 #			logger.warning("mqtt: pkt not processed: '%s', cause %s", msg.payload, e)
 #			return

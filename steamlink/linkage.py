@@ -9,17 +9,15 @@ logger = logging.getLogger()
 
 # Globals, initialized by attach
 _WEBAPP = None
-DBG = 0
 
 def Attach(app):
-	global _WEBAPP, DBG
+	global _WEBAPP
 	if _WEBAPP is not None:
 		logger.error("Linkage: Attach already done")
 		return
 	_WEBAPP = app
-	DBG = logging.DBG
 
-	logger.debug("linkage: Attached webapp '%s', DBG=%s", _WEBAPP.name, DBG)
+	logger.debug("linkage: Attached webapp '%s'", _WEBAPP.name)
 
 
 import yaml
@@ -47,7 +45,7 @@ class Registry:
 		if self.fname is None:
 			return
 		data = self.save()
-		if DBG > 2:
+		if logging.DBG > 2:
 			import pprint
 			pp = pprint.PrettyPrinter(indent=4)
 			pp.pprint(data)
@@ -65,13 +63,13 @@ class Registry:
 			self.reg['ItemTypes'].append(item.itype)
 			self.reg['name_idx'][item.itype] = {}
 			self.reg['id_idx'][item.itype] = {}
-		if DBG > 2: logger.debug("Registry: register %s", item)
+		if logging.DBG > 2: logger.debug("Registry: register %s", item)
 		self.reg['name_idx'][item.itype][item.name] = item
 		self.reg['id_idx'][item.itype][item.key] = item
 
 
 	def unregister(self, item):
-		if DBG > 2: logger.debug("Registry: unregister %s", item)
+		if logging.DBG > 2: logger.debug("Registry: unregister %s", item)
 		del self.reg['name_idx'][item.itype][item.name]
 		del self.reg['id_idx'][item.itype][item.key]
 
@@ -105,7 +103,7 @@ class Registry:
 			logger.warning("find_by_id: %s not in id_idx", e)
 			t = None
 			
-		if DBG > 2: logger.debug("find_by_id %s %s = %s", itype, Id, str(t))
+		if logging.DBG > 2: logger.debug("find_by_id %s %s = %s", itype, Id, str(t))
 		return t
 
 
@@ -145,20 +143,20 @@ class BaseItem:
 			self.name = name
 		self.parent = None
 		self.children = {}
-		logger.debug("BaseItem: created %s", self)
+		if logging.DBG > 2: logger.debug("BaseItem: created %s", self)
 		registry.register(self)
 
 
 	def __del__(self):
-		logger.debug("BaseItem: __del__ %s", self)
+		if logging.DBG > 2: logger.debug("BaseItem: __del__ %s", self)
 
 
 	def delete(self):
-		logger.debug("BaseItem %s: delete", self)
+		if logging.DBG > 2: logger.debug("BaseItem %s: delete", self)
 		if registry.find_by_id(self.itype, self.key) is not None:
 			registry.unregister(self)
 			self.parent = None
-			logger.debug("BaseItem: deleted %s", self)
+			if logging.DBG > 2: logger.debug("BaseItem: deleted %s", self)
 
 
 	def mkname(self):
@@ -186,7 +184,7 @@ class Item(BaseItem):
 
 		self.my_room_list = []
 		for r in self.get_room_list():
-			logger.debug("Item %s: add room %s", self, r)
+			if logging.DBG > 2: logger.debug("Item %s: add room %s", self, r)
 			room = registry.find_by_id('Room', r)
 			if room is None:
 				room = Room(sroom = r)
@@ -197,10 +195,10 @@ class Item(BaseItem):
 
 
 	def delete(self):
-		logger.debug("Item %s: delete", self)
+		if logging.DBG > 2: logger.debug("Item %s: delete", self)
 		if registry.find_by_id(self.itype, self.key) is not None: # recursive delete
 			for room in self.my_room_list:
-				logger.debug("Item %s: del room %s", self, room)
+				if logging.DBG > 2: logger.debug("Item %s: del room %s", self, room)
 				room.del_item(self)
 			if self.parent is not None:
 				self.parent.del_child(self)
@@ -223,26 +221,26 @@ class Item(BaseItem):
 			p = None
 		else:
 			p = registry.find_by_id(ptype, key_in_parent)
-		if DBG > 1: logger.debug("Item: get_parent %s): %s", self, str(p))
+		if logging.DBG > 1: logger.debug("Item: get_parent %s): %s", self, str(p))
 		return p
 
 
 	def add_child(self, item):
-		logger.debug("Item: child %s added to %s", item.key, self)
+		if logging.DBG > 2: logger.debug("Item: child %s added to %s", item.key, self)
 		self.children[item.key] = item
 		self.schedule_update()
 
 
 	def del_child(self, item):
-		logger.debug("Item: child %s delete from %s", item.key, self)
+		if logging.DBG > 2: logger.debug("Item: child %s delete from %s", item.key, self)
 		del self.children[item.key]
 		self.schedule_update()
 
 
 	def schedule_update(self):
-		if DBG > 2: logger.debug("Item %s: schedule_update", self.name)
+		if logging.DBG > 2: logger.debug("Item %s: schedule_update", self.name)
 		for room in self.my_room_list:
-			if DBG > 2: logger.debug("Item: schedule_update for item %s in room %s", self, room.name)
+			if logging.DBG > 2: logger.debug("Item: schedule_update for item %s in room %s", self, room.name)
 			room.roomitems[self.key].schedule_update(False)
 
 
@@ -319,7 +317,7 @@ class RoomItem:
 			data_to_emit = self.item.gen_console_data()
 			self.cache = data_to_emit
 		self.pack['display_vals'] = data_to_emit
-		if DBG > 2: logger.debug("console_update ROOM %s ITEM %s DATA %s", self.room, self.item, self.pack)
+		if logging.DBG > 2: logger.debug("console_update ROOM %s ITEM %s DATA %s", self.room, self.item, self.pack)
 		return self.pack
 
 

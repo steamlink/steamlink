@@ -327,8 +327,7 @@ def steamlink_main() -> int:
 	ll = logging.getLogger('asyncio_socket')
 	ll.setLevel(logging.WARN)
 
-	if DBG == 0:		# N.B. reduce noise when debuging, i.e. no heartbeat
-		coros.append(steam.start())
+	coros.append(steam.start())
 
 	coros.append(webapp.qstart())
 	logger.debug("startup: starting coros")

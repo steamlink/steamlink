@@ -232,12 +232,16 @@ class Steam(Item):
 
 
 	def heartbeat(self):
-		self.schedule_update()
-
-
-	def ping(self):
-		self.pingtime = time.time()
-		self.send_get_status()
+		for node in registry.get_all('Node'):
+			if node.is_overdue() and node.is_up():
+				node.set_state("OVERDUE")
+				node.schedule_update()
+			if not node.is_up() and node.nodecfg.pingable:
+				if node.last_packet_tx_ts + 60 < time.time():		# XXX var
+					node.send_get_status()
+		
+		if logging.DBG == 0:	# N.B. reduce noise when debuging, i.e. no heartbeat
+			self.schedule_update()
 
 
 	def save(self):
@@ -309,6 +313,7 @@ class Node(Item):
 	 "Packets received": "self.packets_received",
 	 "SL ID": "self.slid",
 	}
+	UPSTATES = ["OK", "UP", "TRANSMITTING"]
 
 
 	""" a node in a mesh set """
@@ -326,8 +331,9 @@ class Node(Item):
 		self.mesh_id = (slid >> 8)
 		self.packets_sent = 0
 		self.packets_received = 0
-		self.state = "FAILED"
-		self.last_packet_ts = 0
+		self.state = "UNKNOWN"
+		self.last_packet_rx_ts = 0
+		self.last_packet_tx_ts = 0
 		self.last_packet_num = 0
 		self.status = []
 		self.via = None		# not initiatized
@@ -371,22 +377,36 @@ class Node(Item):
 
 
 	def set_state(self, new_state):
-		if self.state != new_state:
-			self.state = new_state
-			logger.info("node %s state %s", self.key, self.state)
+		was_up = self.is_up()
+		old_state = self.state
+		self.state = new_state
+		is_up = self.is_up()
+	
+		if not was_up and is_up:
+			logger.info("node %s now online: %s -> %s", self, old_state, new_state)
+		elif was_up and not is_up:
+			logger.info("node %s now offline: %s -> %s", self, old_state, new_state)
+		if was_up != is_up:
+			# publish node state on some mqtt
+			pass
 
 
 	def is_up(self):
-		return self.state in ["OK", "UP", "TRANSMITTING"]
+		return self.state in Node.UPSTATES
+
+
+	def is_overdue(self):
+		return (self.last_packet_rx_ts + self.nodecfg.max_silence) <= time.time()
 
 
 	def publish_pkt(self, sl_pkt, sub="control"):
 		self.log_pkt(sl_pkt)
 		self.packets_sent += 1
-		self.schedule_update()
 		self.mesh.packets_sent += 1
 		logger.debug("publish_pkt %s to node %s", sl_pkt, self.get_firsthop())
 		_MQTT.publish(self.get_firsthop(), sl_pkt, sub=sub)
+		self.last_packet_tx_ts = time.time()
+		self.schedule_update()
 		self.mesh.schedule_update()
 
 
@@ -444,9 +464,9 @@ class Node(Item):
 			logger.error("Node %s: restarted with pkt 1", self)
 			return True
 
-		logger.error("Node %s: %s pkts missed before %s", self, pkt_num-(last_packet_num+1), sl_pkt)
+		logger.error("%s: %s pkts missed before %s", self, pkt_num-(last_packet_num+1), sl_pkt)
 		return True	#XXX
-		
+
 
 	def post_data(self, sl_pkt):
 		""" handle incoming messages on the ../data topic """
@@ -456,18 +476,14 @@ class Node(Item):
 				return	# duplicate
 		else:
 			logger.error("Node %s got control pkt %s", self, sl_pkt)
-				
+
 		self.packets_received += 1
 		self.mesh.packets_received += 1
-		self.last_packet_ts = sl_pkt.ts
+		self.last_packet_rx_ts = sl_pkt.ts
 
-		logger.info("post_data %s", sl_pkt)
+		logger.info("%s: received %s, op %s", self, sl_pkt, SL_OP.code(sl_pkt.sl_op))
 
-		# any pkt from node indicates it's up
-		if not self.is_up():
-			self.set_state('TRANSMITTING')
-
-		self.tr[sl_pkt.slid] = sl_pkt.rssi	
+		self.tr[sl_pkt.slid] = sl_pkt.rssi
 
 		sl_op = sl_pkt.sl_op
 
@@ -477,14 +493,15 @@ class Node(Item):
 #			logger.debug("Node config is %s", self.nodecfg)
 #
 		if sl_op == SL_OP.ON:
-			logger.debug('post_data: slid 0x%0x ONLINE', int(self.key))
+			logger.debug('post_data: slid 0x%0x UP', int(self.key))
 			self.nodecfg = SL_NodeCfgStruct(pkt=sl_pkt.bpayload)
+			self.set_state("UP")
 		elif sl_op == SL_OP.DS:
 			logger.debug('post_data: slid 0x%0x status %s', int(self.key),sl_pkt.payload)
 			self.status = sl_pkt.payload.split(',')
 
 		elif sl_op == SL_OP.SS:
-			logger.debug('post_data: slid 0x%0x status %s', int(self.key),sl_pkt.payload)
+			logger.debug("post_data: slid 0x%0x status '%s'", int(self.key),sl_pkt.payload)
 			self.set_state(sl_pkt.payload)
 
 		elif sl_op in [SL_OP.AK, SL_OP.NK]:
@@ -508,6 +525,10 @@ class Node(Item):
 				self.tr[test_pkt.pkt['slid']] = []
 			self.tr[test_pkt.pkt['slid']].append((test_pkt.pkt['pktno'], test_pkt.pkt['rssi']))
 #			sl_log.post_incoming(test_pkt)
+
+		# any pkt from node indicates it's up
+		if not self.is_up():
+			self.set_state('TRANSMITTING')
 
 		self.schedule_update()
 		self.mesh.schedule_update()
@@ -566,6 +587,7 @@ class Packet(Item):
 	 "payload": "self.payload",
 	 "ts": "time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(self.ts))",
 	}
+	PacketID = 0
 	data_header_fmt = '<BLHBB%is'		# op, slid, pkt_num, rssi, qos, payload"
 	control_header_fmt = '<BLHB%is'		# op, slid, pkt_num, qos, payload"
 
@@ -579,25 +601,27 @@ class Packet(Item):
 		self.nodecfg = None
 
 		if pkt is not None:					# deconstruct pkt
-			self.deconstruct(pkt)
+			if not self.deconstruct(pkt):
+				logger.error("deconstruct pkt to short: %s", len(pkt))
+				raise ValueError;
 		else:								# construct pkt
 			self.construct(slnode, sl_op, rssi, payload)
 
 		self.node = registry.find_by_id('Node', self.slid)
 		if self.node is None:		# Auto-create node
 			self.node = Node(self.slid, self.nodecfg)
-		logger.debug("pkt  %s: node %s: %s", self.pkt_num, self.node, SL_OP.code(self.sl_op))
-		super().__init__('Pkt', self.pkt_num, key_in_parent=self.slid )
+		Packet.PacketID += 1
+		super().__init__('Pkt', Packet.PacketID, key_in_parent=self.slid )
+		self.name = "N%s_P%s" % (self.slid, self.pkt_num)
+		logger.debug("pkt %s: node %s: %s", self,  self.node, SL_OP.code(self.sl_op))
 
 		if pkt is not None:					# deconstruct pkt
 			if self.node.via is None:
 				self.node.via = self.via
-		else:								# construct pkt
-			if len(self.node.via) > 0:
-				for via in self.node.via:
-					self.bpayload = self.pkt
-					sfmt = '<BL%is' % len(self.bpayload)
-					self.pkt = struct.pack(sfmt, SL_OP.BN, via, self.bpayload)
+			elif self.node.via != self.via:
+				logger.warning("node %s routing changed, was %s is now %s", \
+						self.node, self.node.via, self.via)
+				self.node.via = self.via
 
 
 
@@ -609,7 +633,7 @@ class Packet(Item):
 			logger.error("packet op not yet known")
 			raise TypeError
 		return (sl_op & 0x1) == 1
-		
+
 
 	def construct(self, slnode, sl_op, rssi, payload):
 		self.slid = int(slnode.key)
@@ -628,13 +652,25 @@ class Packet(Item):
 		if self.is_data():
 			Packet.pkt_count_data += 1
 			self.pkt_num = Packet.pkt_count_data
-			self.pkt = struct.pack(Packet.data_header_fmt,
+			sfmt = Packet.data_header_fmt % len(self.bpayload)
+			self.pkt = struct.pack(sfmt,
 					self.sl_op, self.slid, self.pkt_num, self.rssi, self.qos, self.bpayload)
 		else:
+			logger.debug("pkt %s for %s", SL_OP.code(self.sl_op), slnode)
 			Packet.pkt_count_control += 1
+			sfmt = Packet.control_header_fmt % len(self.bpayload)
 			self.pkt_num = Packet.pkt_count_control
-			self.pkt = struct.pack(Packet.control_header_fmt,
+			self.pkt = struct.pack(sfmt,
 					self.sl_op, self.slid, self.pkt_num, self.qos, self.bpayload)
+			if len(slnode.via) > 0:
+				for via in slnode.via:
+					if via == self.slid:
+						break
+					self.bpayload = self.pkt
+					sfmt = Packet.control_header_fmt % len(self.bpayload)
+					self.pkt = struct.pack(sfmt, SL_OP.BN, via, 0, self.qos, self.bpayload)
+			for l in phex(self.pkt, 4):
+				logger.debug("pkt c:  %s", l)
 
 
 
@@ -655,6 +691,9 @@ class Packet(Item):
 				logger.debug("pkt encap BS from %s, len %s rssi %s", slid, len(pkt), self.rssi)
 			self.rssi = self.rssi - 256
 
+		if len(pkt) < struct.calcsize(Packet.data_header_fmt % 0):
+			logger.error("deconstruct pkt to short: %s", len(pkt))
+			return False;
 		if self.is_data(pkt[0]):
 			payload_len = len(pkt) - struct.calcsize(Packet.data_header_fmt % 0)
 			sfmt = Packet.data_header_fmt % payload_len
@@ -673,13 +712,13 @@ class Packet(Item):
 
 		if len(self.bpayload) > 0:
 			try:
-				self.payload = self.bpayload.decode('utf8')
+				self.payload = self.bpayload.decode('utf8').strip('\0')
 			except Exception as e:
 				pass
 
 		if self.is_data():
 			self.via.append(self.slid)
-
+		return True
 
 	def save(self):
 #		r = super().save()
@@ -728,8 +767,8 @@ class Packet(Item):
 	def get_room_list(self):
 		rooms = []
 		rooms.append( "%s_*" % (self.itype))
-		# Packets don't have a 'header' room 
-#		rooms.append( "%s_%s" % (self.itype, self.key))	
+		# Packets don't have a 'header' room
+#		rooms.append( "%s_%s" % (self.itype, self.key))
 		if self.parent is not None:
 			rooms.append( "%s_%s_*" % (self.parent.itype, self.parent.key))
 		return rooms
