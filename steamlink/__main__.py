@@ -141,11 +141,13 @@ DEFAULT_CONF = OrderedDict({
 def save_to_cache(fname):
 	
 	meshes = {}
-	for mesh in registry.get_all('Mesh'):
-		meshes[mesh.key] = mesh.save()
+	if 'Mesh' in registry.get_itypes():
+		for mesh in registry.get_all('Mesh'):
+			meshes[mesh.key] = mesh.save()
 	nodes = {}
-	for node in registry.get_all('Node'):
-		nodes[node.key] = node.save()
+	if 'Node' in registry.get_itypes():
+		for node in registry.get_all('Node'):
+			nodes[node.key] = node.save()
 	r = {'Mesh': meshes, 'Node': nodes }
 
 	with open(fname, 'w') as outfile:
@@ -253,8 +255,8 @@ def steamlink_main() -> int:
 	except NotImplementedError:  # pragma: no cover
 		logger.error("main: failed to trap signals")
 
-#	OpenRegistry(None)
-	OpenRegistry(conf_working_dir+"/steamlink.reg")
+	OpenRegistry(None)
+#	OpenRegistry(conf_working_dir+"/steamlink.reg")
 
 	broker_c = conf_general.get('mqtt_broker', None)
 	if broker_c is None:
@@ -337,7 +339,7 @@ def steamlink_main() -> int:
 			))
 		aioloop.run_forever()
 	except (GracefulExit, KeyboardInterrupt):
-		logger.debug("terminating")
+		logger.info("terminating")
 	except hbmqtt.errors.NoDataException as e:
 		logger.notice("coros run_until: hbmqtt.errors.NoDataException: %s", e)
 

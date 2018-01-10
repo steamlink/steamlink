@@ -43,13 +43,13 @@ class TestData:
 			logger.debug("%s waiting for shutdown", self.name)
 
 
-	async def start(self):
+	async def send_test_start(self):
 		await asyncio.sleep(self.conf.get('startwait',1))
 		await self.send_test(272, "TESTDATA")
 		logger.warning("test done")
 		return
 
-	async def old_start(self):
+	async def start(self):
 		n_nodes = self.conf.get('nodes',1)
 		d_nodes = self.conf.get('del_nodes',0)
 		n_meshes = self.conf.get('meshes',1)
@@ -65,7 +65,9 @@ class TestData:
 
 		for mesh in range(n_meshes):
 			logger.debug("creating test mesh %s", mesh)
-			self.meshes[mesh] = Mesh(mesh)
+			self.meshes[mesh] =  registry.find_by_id('Mesh', mesh)
+			if self.meshes[mesh] is None:
+				self.meshes[mesh] = Mesh(mesh)
 
 
 		logger.info("%s doing %s nodes", self.name, n_nodes)
@@ -101,9 +103,11 @@ class TestData:
 
 	async def create_node(self, i):
 		logger.debug("creating test node %s", i)
-		self.nodes[i] = Node(i, nodecfg = None)
-		logger.debug("create packet %s", "ON")
-		p = Packet(self.nodes[i], sl_op = SL_OP.ON, payload="Online")
+		self.nodes[i] =  registry.find_by_id('Node', i)
+		if self.nodes[i] is None:
+			self.nodes[i] = Node(i, nodecfg = None)
+			logger.debug("create packet %s", "ON")
+		p = Packet(self.nodes[i], sl_op = SL_OP.ON)
 		logger.debug("sending ON pkt")
 		self.nodes[i].publish_pkt(p, "data")
 

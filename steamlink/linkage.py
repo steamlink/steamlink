@@ -44,11 +44,13 @@ class Registry:
 	def close(self):
 		if self.fname is None:
 			return
+		logger.info("saving registry")
 		data = self.save()
 		if logging.DBG > 2:
 			import pprint
 			pp = pprint.PrettyPrinter(indent=4)
 			pp.pprint(data)
+		logger.info("writing registry to %s", self.fname)
 		with open(self.fname, 'w') as outfile:
 			yaml.dump(data, outfile, default_flow_style=False)
 
@@ -82,6 +84,10 @@ class Registry:
 		if i == 0:
 			return None
 		return self.reg['ItemTypes'][i-1]
+
+
+	def get_itypes(self):
+		return self.reg['ItemTypes']
 
 
 	def get_all(self, itype):
@@ -127,7 +133,9 @@ def OpenRegistry(fname):
 	registry.open(fname)
 
 def CloseRegistry():
+	logger.info("closing registry")
 	registry.close()
+	logger.info("registry closed")
 
 
 #
@@ -149,6 +157,7 @@ class BaseItem:
 
 	def __del__(self):
 		if logging.DBG > 2: logger.debug("BaseItem: __del__ %s", self)
+		logger.info("BaseItem: __del__ %s", self)
 
 
 	def delete(self):

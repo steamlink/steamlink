@@ -36,6 +36,18 @@ TODO = """
 
 """
 
+
+#
+# Exception 
+#
+class SteamLinkError(Exception):
+    def __init__(self, message):
+
+        # Call the base class constructor with the parameters it needs
+        super().__init__(message)
+
+
+
 SL_RESPONSE_WAIT_SEC = 10
 MAX_NODE_LOG_LEN = 1000		# maximum packets stored in per node log
 
@@ -112,7 +124,7 @@ class SL_NodeCfgStruct:
 		else:			# deconstruct
 			if struct.calcsize(SL_NodeCfgStruct.sfmt) != len(pkt):
 				logger.error("NodeCfgStruct: packed messages length incorrect, wanted %s, got %s", struct.calcsize(SL_NodeCfgStruct.sfmt), len(pkt))
-				return
+				raise SteamLinkError("packed messages length incorrect")
 			self.slid, name, description, self.gps_lat, self.gps_lon, self.altitude, self.max_silence, sleeps, pingable, battery_powered, self.radio_params = struct.unpack(SL_NodeCfgStruct.sfmt, pkt)
 			self.name = name.decode().strip('\0')
 			self.description = description.decode().strip('\0')
@@ -128,8 +140,8 @@ class SL_NodeCfgStruct:
 	def __str__(self):
 		try:
 			return "NodeCFG: %s %s %s" % (self.slid, self.name, self.description)
-		except:
-			return "NodeCFG: undefined"
+		except Exception as e:
+			return "NodeCFG: undefined: %s" % e
 
 	def save(self):
 		d = {
@@ -229,9 +241,13 @@ class Steam(Item):
 			self.load = ((n_process_time - process_time) / delta ) * 100.0
 			now = n_now
 			process_time = n_process_time
+			if logging.DBG == 0:	# N.B. reduce noise when debuging, i.e. no heartbeat
+				self.schedule_update()
 
 
 	def heartbeat(self):
+		if not 'Node' in registry.get_itypes():
+			return
 		for node in registry.get_all('Node'):
 			if node.is_overdue() and node.is_up():
 				node.set_state("OVERDUE")
@@ -240,8 +256,6 @@ class Steam(Item):
 				if node.last_packet_tx_ts + 60 < time.time():		# XXX var
 					node.send_get_status()
 		
-		if logging.DBG == 0:	# N.B. reduce noise when debuging, i.e. no heartbeat
-			self.schedule_update()
 
 
 	def save(self):
@@ -274,7 +288,7 @@ class Mesh(Item):
 
 		super().__init__('Mesh', mesh_id)
 		self.desc = "Description for %s" % self.name
-		logger.debug("Mesh created: %s", self.name)
+		logger.info("Mesh created: %s", self)
 
 
 	def mkname(self):
@@ -331,12 +345,13 @@ class Node(Item):
 		self.mesh_id = (slid >> 8)
 		self.packets_sent = 0
 		self.packets_received = 0
+		self.pkt_numbers = {True: 0, False:  0}	# next pkt num for data, control pkts
 		self.state = "UNKNOWN"
 		self.last_packet_rx_ts = 0
 		self.last_packet_tx_ts = 0
 		self.last_packet_num = 0
 		self.status = []
-		self.via = None		# not initiatized
+		self.via = []		# not initiatized
 		self.tr = {}		# dict of sending nodes, each holds a list of (pktno, rssi)
 		self.packet_log = TimeLog(MAX_NODE_LOG_LEN)
 
@@ -347,7 +362,15 @@ class Node(Item):
 
 		super().__init__('Node', slid, None, key_in_parent=self.mesh_id)
 
-		logger.debug("Node created: %s" % self.name)
+		logger.info("Node created: %s" % self)
+
+
+	def set_pkt_number(self, pkt):
+		dc =  pkt.is_data()
+		self.pkt_numbers[dc] += 1
+		if self.pkt_numbers[dc] == 0:
+			self.pkt_numbers[dc] += 1	# skip 0
+		return self.pkt_numbers[dc]
 
 
 	def save(self):
@@ -578,8 +601,6 @@ class Node(Item):
 # Packet
 #
 class Packet(Item):
-	pkt_count_data = 1
-	pkt_count_control = 1
 	console_fields = {
  	 "op": "SL_OP.code(self.sl_op)",
 	 "rssi": "self.rssi",
@@ -603,7 +624,7 @@ class Packet(Item):
 		if pkt is not None:					# deconstruct pkt
 			if not self.deconstruct(pkt):
 				logger.error("deconstruct pkt to short: %s", len(pkt))
-				raise ValueError;
+				raise SteamLinkError("deconstruct pkt to short");
 		else:								# construct pkt
 			self.construct(slnode, sl_op, rssi, payload)
 
@@ -616,7 +637,7 @@ class Packet(Item):
 		logger.debug("pkt %s: node %s: %s", self,  self.node, SL_OP.code(self.sl_op))
 
 		if pkt is not None:					# deconstruct pkt
-			if self.node.via is None:
+			if self.node.via == []:
 				self.node.via = self.via
 			elif self.node.via != self.via:
 				logger.warning("node %s routing changed, was %s is now %s", \
@@ -631,7 +652,7 @@ class Packet(Item):
 			sl_op = self.sl_op
 		if sl_op is None:
 			logger.error("packet op not yet known")
-			raise TypeError
+			raise SteamLinkError("packet op not yet known");
 		return (sl_op & 0x1) == 1
 
 
@@ -649,17 +670,20 @@ class Packet(Item):
 		else:
 			self.bpayload = b''
 
+		if self.sl_op == SL_OP.ON:
+			self.nodecfg = SL_NodeCfgStruct(slid=self.slid)
+			logger.debug("Node config is %s", self.nodecfg)
+			self.bpayload = self.nodecfg.pack()
+
+		self.pkt_num = slnode.set_pkt_number(self)
 		if self.is_data():
-			Packet.pkt_count_data += 1
-			self.pkt_num = Packet.pkt_count_data
 			sfmt = Packet.data_header_fmt % len(self.bpayload)
+			logger.debug("pack: %s %s %s %s %s %s", self.sl_op, self.slid, self.pkt_num, self.rssi, self.qos, self.bpayload)
 			self.pkt = struct.pack(sfmt,
-					self.sl_op, self.slid, self.pkt_num, self.rssi, self.qos, self.bpayload)
+					self.sl_op, self.slid, self.pkt_num, 256 - self.rssi, self.qos, self.bpayload)
 		else:
 			logger.debug("pkt %s for %s", SL_OP.code(self.sl_op), slnode)
-			Packet.pkt_count_control += 1
 			sfmt = Packet.control_header_fmt % len(self.bpayload)
-			self.pkt_num = Packet.pkt_count_control
 			self.pkt = struct.pack(sfmt,
 					self.sl_op, self.slid, self.pkt_num, self.qos, self.bpayload)
 			if len(slnode.via) > 0:
@@ -671,6 +695,7 @@ class Packet(Item):
 					self.pkt = struct.pack(sfmt, SL_OP.BN, via, 0, self.qos, self.bpayload)
 			for l in phex(self.pkt, 4):
 				logger.debug("pkt c:  %s", l)
+
 
 
 
