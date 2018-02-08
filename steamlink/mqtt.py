@@ -119,7 +119,7 @@ class Mqtt:
 
 
 	def on_message(self, client, userdata, msg):
-		logger.info("%s got %s %s", self.name, msg,topic, json.loads(msg.payload.decode('utf-8')))
+		logger.info("%s got %s %s", self.name, msg.topic, json.loads(msg.payload.decode('utf-8')))
 
 
 	def mk_json_msg(self, msg):
