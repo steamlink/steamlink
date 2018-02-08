@@ -37,14 +37,15 @@ TODO = """
 """
 
 
+
 #
 # Exception 
 #
 class SteamLinkError(Exception):
-    def __init__(self, message):
+	def __init__(self, message):
 
-        # Call the base class constructor with the parameters it needs
-        super().__init__(message)
+		# Call the base class constructor with the parameters it needs
+		super().__init__(message)
 
 
 
@@ -208,8 +209,10 @@ class Steam(Item):
 
 	def __init__(self, conf):
 		self.desc = conf['description']
+		self.autocreate = conf['autocreate']
 		self.load = 0
 		super().__init__('Steam', conf['id'])
+		_MQTT.set_msg_callback(self.on_data_msg)
 
 
 	def gen_console_data(self):
@@ -222,6 +225,29 @@ class Steam(Item):
 				v = "*%s*" % e
 			data[label] = v
 		return data
+
+
+	def on_data_msg(self, client, userdata, msg):
+		# msg has  topic, payload, qos, retain
+		topic_parts = msg.topic.split('/', 2)
+		if logging.DBG > 2: logger.debug("on_data_msg  %s %s", msg.topic, msg.payload)
+		try:
+			sl_pkt = Packet(pkt=msg.payload)
+		except SteamLinkError as e:
+			logger.warning("mqtt: pkt dropped: '%s', steamlink error %s", msg.payload, e)
+			return
+		except ValueError as e:
+			logger.warning("mqtt: pkt dropped: '%s', value error %s", msg.payload, e)
+			return
+
+		node = registry.find_by_id('Node', sl_pkt.slid)
+		if node is None:		# Auto-create node
+			if not self.autocreate:
+				logger.warning("on_data_msg: no node for pkt %s", sl_pkt)
+				return
+			node = Node(sl_pkt.slid, sl_pkt.nodecfg)
+		sl_pkt.set_node(node)	
+		node.post_data(sl_pkt)
 
 
 	async def start(self):
@@ -286,7 +312,7 @@ class Mesh(Item):
 		self.packets_received = 0
 		self.desc = "Description for mesh %s" % mesh_id
 
-		super().__init__('Mesh', mesh_id)
+		super().__init__('Mesh', mesh_id, key_in_parent=0)
 		self.desc = "Description for %s" % self.name
 		logger.info("Mesh created: %s", self)
 
@@ -332,7 +358,7 @@ class Node(Item):
 
 	""" a node in a mesh set """
 	def __init__(self, slid, nodecfg = None):
-		logger.debug("Node createing : %s" % slid)
+		logger.debug("Node creating : %s" % slid)
 		if nodecfg is None:
 			self.nodecfg = SL_NodeCfgStruct(slid, "Node%08x" % slid)
 			logger.debug("Node config is %s", self.nodecfg)
@@ -374,7 +400,6 @@ class Node(Item):
 
 
 	def save(self):
-#		r = super().save()
 		r = {}
 		r['key'] = self.key
 		r['name'] = self.name
@@ -500,9 +525,23 @@ class Node(Item):
 		else:
 			logger.error("Node %s got control pkt %s", self, sl_pkt)
 
+		for slid in sl_pkt.via:		# set ts for all nodes on the route
+			node = registry.find_by_id('Node', slid)
+			if node:
+				node.last_packet_rx_ts = sl_pkt.ts
+			else:
+				logger.error("post_data: via node %s not on file", slid)
+
+		# check for routing changes
+		if self.via == []:
+			self.via = sl_pkt.via
+		elif self.via != sl_pkt.via:
+			logger.warning("node %s routing changed, was %s is now %s", \
+					self, self.via, sl_pkt.via)
+			self.via = sl_pkt.via
+
 		self.packets_received += 1
 		self.mesh.packets_received += 1
-		self.last_packet_rx_ts = sl_pkt.ts
 
 		logger.info("%s: received %s, op %s", self, sl_pkt, SL_OP.code(sl_pkt.sl_op))
 
@@ -510,18 +549,16 @@ class Node(Item):
 
 		sl_op = sl_pkt.sl_op
 
-#		if sl_op == SL_OP.ON:
-#			logger.debug('post_data: slid 0x%0x ONLINE', int(self.key))
-#			self.nodecfg = SL_NodeCfgStruct(pkt=sl_pkt.bpayload)
-#			logger.debug("Node config is %s", self.nodecfg)
-#
 		if sl_op == SL_OP.ON:
 			logger.debug('post_data: slid 0x%0x UP', int(self.key))
 			self.nodecfg = SL_NodeCfgStruct(pkt=sl_pkt.bpayload)
 			self.set_state("UP")
 		elif sl_op == SL_OP.DS:
 			logger.debug('post_data: slid 0x%0x status %s', int(self.key),sl_pkt.payload)
-			self.status = sl_pkt.payload.split(',')
+			try:
+				self.status = sl_pkt.payload.split(',')
+			except:
+				self.status = str(sl_pkt.payload)
 
 		elif sl_op == SL_OP.SS:
 			logger.debug("post_data: slid 0x%0x status '%s'", int(self.key),sl_pkt.payload)
@@ -530,7 +567,7 @@ class Node(Item):
 		elif sl_op in [SL_OP.AK, SL_OP.NK]:
 			logger.debug('post_data: slid 0x%0x answer %s', int(self.key), SL_OP.code(sl_op))
 			try:
-				self.response_q.put(sl_op, block=False)
+				self.response_q.put(sl_op)
 			except Full:
 				logger.warning('post_data: node %s queue, dropping: %s', int(self.key), sl_pkt)
 		elif sl_op == SL_OP.TR:
@@ -559,7 +596,7 @@ class Node(Item):
 
 	def get_response(self, timeout):
 		try:
-			data = self.response_q.get(block=True, timeout=timeout)
+			data = self.response_q.get(timeout=timeout)
 		except Empty:
 			data = SL_OP.NC
 		return data
@@ -619,6 +656,7 @@ class Packet(Item):
 		self.payload = None
 		self.itype = "Pkt"
 		self.ts = time.time()
+		self.node = None
 		self.nodecfg = None
 
 		if pkt is not None:					# deconstruct pkt
@@ -627,24 +665,17 @@ class Packet(Item):
 				raise SteamLinkError("deconstruct pkt to short");
 		else:								# construct pkt
 			self.construct(slnode, sl_op, rssi, payload)
-
-		self.node = registry.find_by_id('Node', self.slid)
-		if self.node is None:		# Auto-create node
-			self.node = Node(self.slid, self.nodecfg)
 		Packet.PacketID += 1
-		super().__init__('Pkt', Packet.PacketID, key_in_parent=self.slid )
+		super().__init__('Pkt', Packet.PacketID)
 		self.name = "N%s_P%s" % (self.slid, self.pkt_num)
 		logger.debug("pkt %s: node %s: %s", self,  self.node, SL_OP.code(self.sl_op))
-
-		if pkt is not None:					# deconstruct pkt
-			if self.node.via == []:
-				self.node.via = self.via
-			elif self.node.via != self.via:
-				logger.warning("node %s routing changed, was %s is now %s", \
-						self.node, self.node.via, self.via)
-				self.node.via = self.via
+		if pkt is None:
+			self.set_node(slnode)
 
 
+	def set_node(self, node):
+		self.node = node
+		self.set_parent(self.slid)
 
 
 	def is_data(self, sl_op = None):
@@ -732,7 +763,11 @@ class Packet(Item):
 		self.payload = None
 
 		if self.sl_op == SL_OP.ON:
-			self.nodecfg = SL_NodeCfgStruct(pkt=self.bpayload)
+			try:
+				self.nodecfg = SL_NodeCfgStruct(pkt=self.bpayload)
+			except SteamLinkError as e:
+				logger.error("deconstruct: %s", e)
+				return False
 			logger.debug("Node config is %s", self.nodecfg)
 
 		if len(self.bpayload) > 0:
@@ -744,6 +779,7 @@ class Packet(Item):
 		if self.is_data():
 			self.via.append(self.slid)
 		return True
+
 
 	def save(self):
 #		r = super().save()
