@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# Main program for a Stealink network
+# Main program for a Steamlink network
 
 import sys
 import os
@@ -75,6 +75,7 @@ DEFAULT_CONF = OrderedDict({
 		'name': 'sample1',
 		'description': 'SteamLink Sample',
 		'namespace': '/sl',
+		'autocreate': False,
 	}),
 	'tests': OrderedDict({
 		'test1': OrderedDict({

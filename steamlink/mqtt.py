@@ -66,9 +66,11 @@ class Mqtt:
 		mq.on_subscribe = self.on_subscribe
 		mq.on_message = self.on_message
 		mq.on_disconnect = self.on_disconnect
-
-		mq.message_callback_add(self.data_topic, self.on_data_msg)
 		return mq
+
+
+	def set_msg_callback(self, callback):
+		self.mq.message_callback_add(self.data_topic, callback)
 
 
 	async def start(self):
@@ -133,27 +135,11 @@ class Mqtt:
 		return jmsg
 
 
-	def on_data_msg(self, client, userdata, msg):
-		# msg has  topic, payload, qos, retain
-		topic_parts = msg.topic.split('/', 2)
-		if logging.DBG > 2: logger.debug("on_data_msg  %s %s", msg.topic, msg.payload)
-		try:
-			sl_pkt = Packet(pkt=msg.payload)
-		except ValueError as e:
-			logger.warning("mqtt: pkt not processed: '%s', value error %s", msg.payload, e)
-			return
-#		except Exception as e:
-#			logger.warning("mqtt: pkt not processed: '%s', cause %s", msg.payload, e)
-#			return
-		sl_pkt.post_data()
-
-
 	def publish(self, firsthop, pkt, qos=0, retain=False, sub="control"):
 		s = self.control_topic_x if sub == "control" else self.data_topic_x
 		topic = s % firsthop
 		logger.info("%s publish %s %s", self.name, topic, pkt)
 		self.mq.publish(topic, payload=pkt.pkt, qos=qos, retain=retain)
-
 
 
 

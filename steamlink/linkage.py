@@ -37,6 +37,10 @@ class Registry:
 		self.fname = fname
 		if fname is None:
 			self.reg = {'name_idx': {}, 'id_idx': {}, 'ItemTypes': []}
+			for itype in ['Steam', 'Mesh', 'Node', 'Pkt', 'RoomItem', 'Room']:
+				self.reg['ItemTypes'].append(itype)
+				self.reg['name_idx'][itype] = {}
+				self.reg['id_idx'][itype] = {}
 		else:
 			self.reg = self.load()
 
@@ -142,15 +146,13 @@ def CloseRegistry():
 # BaseItem
 #
 class BaseItem:
-	def __init__(self, itype, key, name = None, key_in_parent = 0):
+	def __init__(self, itype, key, name = None):
 		self.itype = itype
 		self.key = str(key)		# assure type identity
 		if name is None:
 			self.name = self.mkname()
 		else:
 			self.name = name
-		self.parent = None
-		self.children = {}
 		if logging.DBG > 2: logger.debug("BaseItem: created %s", self)
 		registry.register(self)
 
@@ -173,7 +175,10 @@ class BaseItem:
 
 
 	def __str__(self):
-		return "%s %s(%s)" % (self.itype, self.name, self.key)
+		try:
+			return "%s %s(%s)" % (self.itype, self.name, self.key)
+		except:
+			return "SomeBaseItem"
 
 
 	def save(self):
@@ -184,14 +189,20 @@ class BaseItem:
 # Item
 #
 class Item(BaseItem):
-	def __init__(self, itype, key, name = None, key_in_parent = 0):
+	def __init__(self, itype, key, name = None, key_in_parent = None):
+		self.parent = None
+		self.children = {}
+		self.my_room_list = []
 		super().__init__(itype, key, name)
+		if not key_in_parent is None:
+			self.set_parent(key_in_parent)
 
+
+	def set_parent(self, key_in_parent):
 		self.parent = self.get_parent(key_in_parent)
 		if self.parent is not None:
 			self.parent.add_child(self)
 
-		self.my_room_list = []
 		for r in self.get_room_list():
 			if logging.DBG > 2: logger.debug("Item %s: add room %s", self, r)
 			room = registry.find_by_id('Room', r)
@@ -224,13 +235,13 @@ class Item(BaseItem):
 		return registry.get_parent_type(self.itype)
 
 
-	def get_parent(self, key_in_parent = 0):
+	def get_parent(self, key_in_parent):
 		ptype = self.get_parent_type()
 		if ptype is None:
 			p = None
 		else:
 			p = registry.find_by_id(ptype, key_in_parent)
-		if logging.DBG > 1: logger.debug("Item: get_parent %s): %s", self, str(p))
+		if logging.DBG > 1: logger.debug("Item: get_parent (%s) %s: %s", self, ptype, str(p))
 		return p
 
 
