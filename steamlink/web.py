@@ -180,11 +180,13 @@ class WebApp(object):
 		self.static_dir = self.libdir+'/html/static'
 		self.templates_dir = self.libdir+'/html/templates'
 
+		self.app.router.add_route('GET', '/', self.route_handler)
+
 		self.app.router.add_static('/static', self.static_dir)
 		self.app.on_cleanup.append(self.web_on_cleanup)
 		self.app.on_shutdown.append(self.web_on_shutdown)
 		self.backlog = 128
-
+		
 		aiohttp_jinja2.setup(self.app, loader=jinja2.FileSystemLoader(self.templates_dir))
 
 		self.shutdown_timeout = self.conf['shutdown_timeout']
@@ -211,13 +213,14 @@ class WebApp(object):
 	async def start(self):
 		logger.info("%s starting, server %s port %s", self.name, self.host,  self.port)
 		self.sio.register_namespace(WebNamespace(self))
+		self.runner = web.AppRunner(self.app)
+		await self.runner.setup()
+		self.site = web.TCPSite(self.runner, 'localhost', self.port)
+		await self.site.start()
 
-		await self.app.startup()
 		logger.debug("%s: app started", self.name)
 
 		scheme = 'https' if self.ssl_context else 'http'
-		base_url = URL.build(scheme=scheme, host='localhost', port=self.port)
-		uri = str(base_url.with_host(self.host).with_port(self.port))
 
 		make_handler_kwargs = dict()
 		if self.access_log_format is not None:
@@ -238,7 +241,7 @@ class WebApp(object):
 		self.loop.run_until_complete(self.server.wait_closed())
 		self.loop.run_until_complete(self.app.shutdown())
 		self.loop.run_until_complete(self.handler.shutdown(self.shutdown_timeout))
-		self.loop.run_until_complete(self.app.cleanup())
+		self.loop.run_until_complete(self.runner.cleanup())
 
 
 	async def config_json(self, request):
@@ -281,11 +284,11 @@ class WebApp(object):
 		logger.debug("console_update_loop done")
 
 
-	async def handler(request):
-		if request.rel_url == '/':
-			filename = 'index'
+	async def route_handler(self, request):
+		if request.rel_url.path == '/':
+			file_name = 'index'
 		else:
-			file_name = request.rel_url.rstrip('/')
+			file_name = str(request.rel_url).path.rstrip('/')
 		dc = DisplayConfiguration(self.templates_dir + '/' + file_name + '.yaml')
 		if logging.DBG > 0: logger.debug("webapp handler %s", dc.data)
 		context = dc.row_wise()
