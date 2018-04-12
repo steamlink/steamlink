@@ -291,9 +291,7 @@ class WebApp(object):
 			file_name = str(request.rel_url).path.rstrip('/')
 		dc = DisplayConfiguration(self.templates_dir + '/' + file_name + '.yaml')
 		if logging.DBG > 0: logger.debug("webapp handler %s", dc.data)
-		context = dc.row_wise()
-		response = self.aiohttp_jinja2.render_template(file_name + '.html',
-											  request,
-											  context)
+		context = { 'context' : dc.row_wise()}
+		response = aiohttp_jinja2.render_template(file_name + '.html', request, context)
 #		response.headers['Content-Language'] = 'en'
 		return response
