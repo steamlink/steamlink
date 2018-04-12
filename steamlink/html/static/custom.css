@@ -1,0 +1,30 @@
+.dashboard > .container > .row > .columns {
+    margin-bottom: 2em;
+}
+
+.partial {
+    border-radius: 6px;
+    border: 1px solid #eee;
+    padding: 8px;
+}
+
+.page-title {
+    color:#008080;
+}
+
+.logo-image {
+    text-align: center;
+    max-width: 50px;
+    width: 100%;
+    height: auto;
+}
+
+.hero {
+    background-color: #F7F7F5;
+    width: 100%;
+    margin-bottom: 2rem;
+}
+
+a {
+    text-decoration: none;
+}
