@@ -1,0 +1,47 @@
+<div class="{{ partial_item.grid_columns }} columns">
+    <style>
+        /* */
+    </style>
+    <h4 class="bar-partial partial-heading">
+            {{ partial_item.title }}
+    </h4>
+    <div class="bar-partial partial" id="{{ partial_item.name }}" style="overflow: scroll; height:{{ partial_item.grid_rows * 50}}px;">
+        <canvas id="{{ partial_item.name }}_canvas" width="100%" height="100%"></canvas>
+    </div>
+</div>
+
+<script type="text/javascript">
+    $(function () {
+        var ctx = $("#{{ partial_item.name }}_canvas");
+        var labels = {{ partial_item.labels|tojson|safe }};
+        var data = {
+            datasets: [{
+                data: {{ partial_item.defaultData|tojson|safe }},
+                backgroundColor: {{ partial_item.backgroundColor|tojson|safe }}
+            }],
+            // These labels appear in the legend and in the tooltips when hovering different arcs
+            labels: labels
+        };
+        var chart = new Chart(ctx,{
+            type: 'pie',
+            data: data
+        });
+
+        socket.on("{{ partial_item.name }}", function (msg) {
+            console.log("Received data!");
+            console.log(msg);
+            if (msg.display_vals) {
+                chart.data.datasets.forEach((dataset) => {
+                    var data = dataset.data;
+                    labels.forEach(function(l, index){
+                        if(msg.display_vals[l]) {
+                            data[index] = msg.display_vals[l];
+                        }
+                    });
+                    dataset.data.push(data);
+                });
+                chart.update();
+            }
+        });
+    });
+</script>

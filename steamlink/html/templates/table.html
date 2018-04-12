@@ -1,0 +1,51 @@
+<div class="{{ partial_item.grid_columns }} columns">
+    <style>
+        .table-partial > table > thead > tr, tbody {
+            display:block;
+        }
+        .table-partial > table > tbody > tr:hover { 
+            background: #F7F7F5;
+            cursor: pointer;
+        }
+    </style>
+    <h4 class="table-partial partial-heading">
+        {{ partial_item.title }}
+    </h4>
+    <div class="table-partial partial" id="{{ partial_item.name }}" style="height:{{ partial_item.grid_rows * 50}}px;">
+        <table>
+            <thead>
+                {% for header in partial_item.headers %}
+                <th>{{ header }}</th>
+                {% endfor %}
+            </thead>
+            <tbody style="overflow:scroll; height:{{ (partial_item.grid_rows - 1)* 50}}px">
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script type="text/javascript">
+    $(function () {
+        var headers = {{ partial_item.headers|tojson|safe }};
+        socket.on("{{ partial_item.name }}", function (msg) {
+            console.log("Received data!");
+            console.log(msg);
+            if (msg.display_vals) {
+                var htmlString = "<tr>";
+                headers.forEach(function(h){
+                    if(msg.display_vals[h]) {
+                        htmlString += "<td>" + msg.display_vals[h] + "</td>";
+                    } else {
+                        htmlString += "<td></td>";   
+                    }
+                });
+                htmlString += "</tr>";
+                $('#{{ partial_item.name }} > table > tbody:last-child').append(htmlString);
+                var scrolled_element = $('#{{ partial_item.name }} > table > tbody')[0];
+                if ( Math.abs(scrolled_element.scrollTop - scrolled_element.scrollHeight) < 300) {
+                    scrolled_element.scrollTop = scrolled_element.scrollHeight;
+                }
+            }
+        });
+    });
+</script>

@@ -1,0 +1,42 @@
+<div class="{{ partial_item.grid_columns }} columns">
+    <style>
+        .tile-partial > ul {
+            list-style: none;
+        }
+        .tile-partial.partial:hover {
+            background: #F7F7F5;
+            cursor: pointer;   
+        }
+    </style>
+    <h4 class="tile-partial partial-heading">
+        {{ partial_item.title }}
+    </h4>
+    <div class="tile-partial partial" id="{{ partial_item.name }}" style="overflow: scroll; height: {{ partial_item.grid_rows * 50}}px;">
+       <ul>
+            {% for header in partial_item.headers %}
+            <li>
+                <strong>{{ header }}</strong> : <em class="tile-entry"></em>
+            </li>
+            {% endfor %}
+        </ul>
+   </div>
+</div>
+
+<script type="text/javascript">
+    $(function () {
+        var headers = {{ partial_item.headers|tojson|safe }};
+        socket.on("{{ partial_item.name }}", function (msg) {
+            console.log("Received data!");
+            console.log(msg);
+            if (msg.display_vals) {
+                headers.forEach(function(h, index){
+                    var htmlString = "";
+                    if(msg.display_vals[h]) {
+                        htmlString = msg.display_vals[h];
+                    }
+                    $('#{{ partial_item.name }} > ul > li > .tile-entry')[index].innerHTML = htmlString;
+                });
+            }
+        });
+    });
+</script>

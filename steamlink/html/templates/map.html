@@ -1,0 +1,142 @@
+<div class="{{ partial_item.grid_columns }} columns">
+    <style>
+        /* */
+        .map-popup {
+            background-color: white;
+            border-radius: 6px;
+            border: 1px solid #eee;
+            padding: 5px;
+        }
+        .map-popup:hover {
+            background: #F7F7F5;
+            cursor: pointer;   
+        }
+        .map-popup > p {
+            margin-bottom: 0;
+        }
+    </style>
+    <h4 class="map-partial partial-heading">
+            {{ partial_item.title }}
+    </h4>
+    <div class="map-partial partial" id="{{ partial_item.name }}" style="overflow: scroll; height:{{ partial_item.grid_rows * 50}}px;">
+            <div class="map-popup" id="{{ partial_item.name }}_popup"></div>
+    </div>
+</div>
+
+<script type="text/javascript">
+    $(function () {
+
+        var vectorSource = new ol.source.Vector({
+            features: []
+        });
+        
+        var vectorLayer = new ol.layer.Vector({
+            source: vectorSource
+        });
+
+        var map = new ol.Map({
+            target: '{{ partial_item.name }}',
+            layers: [
+                new ol.layer.Tile({
+                    source: new ol.source.OSM()
+                }),
+                vectorLayer
+            ],
+            view: new ol.View({
+                center: ol.proj.fromLonLat({{ partial_item.center|tojson|safe }}),
+                zoom: {{ partial_item.zoom|tojson|safe }}
+            })
+        });
+
+        var popupElement = document.getElementById("{{ partial_item.name }}_popup");
+
+        var popup = new ol.Overlay({
+            element: popupElement,
+            positioning: 'bottom-center',
+            stopEvent: false,
+            offset: [0, -10]
+        });
+
+        map.addOverlay(popup);
+
+        // display popup on click
+        map.on('click', function(evt) {
+            var feature = map.forEachFeatureAtPixel(evt.pixel,
+                function(feature) {
+                    return feature;
+                });
+            if (feature) {
+                var coordinates = feature.getGeometry().getCoordinates();
+                popup.setPosition(coordinates);
+                var innerHTML = "";
+                
+                // innerHTML = feature.get('vals');
+                var vals = feature.get('vals');
+                for (var k in vals) {
+                    innerHTML += "<p>" + k + " : " + vals[k] + "</p>";
+                }
+                popupElement.innerHTML = innerHTML;
+                $(popupElement).show();
+            } else {
+                popupElement.innerHTML = "";
+                $(popupElement).hide();
+            }
+        });
+
+        // change mouse cursor when over marker
+        map.on('pointermove', function(e) {
+            if (e.dragging) {
+                popupElement.innerHTML = "";
+                $(popupElement).hide();
+                return;
+            }
+            var pixel = map.getEventPixel(e.originalEvent);
+            var hit = map.hasFeatureAtPixel(pixel);
+            // map.getTarget().style.cursor = hit ? 'pointer' : '';
+        });
+
+        // on new message
+        socket.on("{{ partial_item.name }}", function (msg) {
+            console.log("Received data!");
+            console.log(msg);
+
+            if (msg.display_vals) {
+                if (msg.display_vals.id) {
+                    // check if this feature exists
+                    var features = vectorSource.getFeatures();
+                    var found = false;
+                    features.forEach(function(el){
+                         if (el.get('id') == msg.display_vals.id){
+                             el.setGeometry(new ol.geom.Point(ol.proj.fromLonLat(msg.display_vals.lonlat)));
+                             el.set('vals', msg.display_vals)
+                            found = true;
+                         }
+                    });
+                
+                    if (found == false) {
+                        // create feature and add it
+                        var iconFeature = new ol.Feature(
+                            {
+                                geometry: new ol.geom.Point(ol.proj.fromLonLat(msg.display_vals.lonlat)),
+                                id: msg.display_vals.id,
+                                vals: msg.display_vals
+                            }
+                        );
+
+                        var iconStyle = new ol.style.Style({
+                            image: new ol.style.Icon(/** @type {olx.style.IconOptions} */ ({
+                                src: 'https://openlayers.org/en/v4.6.5/examples/data/dot.png'
+                            }))
+                        });
+
+                        iconFeature.setStyle(iconStyle);
+            
+                        console.log("Adding Feature");
+                        console.log(msg.display_vals.lonlat);
+                        vectorSource.addFeature(iconFeature);
+                    }
+                }
+            }
+        });
+    });
+</script>

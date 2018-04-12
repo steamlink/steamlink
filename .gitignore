@@ -7,6 +7,12 @@ Icon
 # Logs
 *.log
 
+# Python env stuff
+env
+
+# Workspace settings
+.vscode 
+
 # Thumbnails
 ._*
 

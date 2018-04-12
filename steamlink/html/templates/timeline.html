@@ -1,0 +1,66 @@
+<div class="{{ partial_item.grid_columns }} columns">
+    <style>
+        /* */
+    </style>
+    <h4 class="timeline-partial partial-heading">
+            {{ partial_item.title }}
+    </h4>
+    <div class="timeline-partial partial" id="{{ partial_item.name }}" style="overflow: scroll; height:{{ partial_item.grid_rows * 50}}px;">
+        <canvas id="{{ partial_item.name }}_canvas" width="100%" height="100%"></canvas>
+    </div>
+</div>
+
+<script type="text/javascript">
+    $(function () {
+        var ctx = $("#{{ partial_item.name }}_canvas");
+        var data = {
+            datasets: [],
+            labels: []
+        };
+        var chart = new Chart(ctx,{
+            type: 'line',
+            data: data,            
+            options: {
+                scales: {
+                    xAxes: [{
+                        time: {
+                            unit: 'second'
+                        }
+                    }]
+                }
+            }
+        });
+        
+        var backgroundColors = {{ partial_item.backgroundColors|tojson|safe }};
+        
+        console.log(backgroundColors);
+        socket.on("{{ partial_item.name }}", function (msg) {
+            console.log("Received data!");
+            console.log(msg);
+            if (msg.display_vals) {
+                var found = false;
+                chart.data.datasets.forEach((dataset) => {
+                    if (msg.display_vals.label == dataset.label) {
+                        // we found the right data set.
+                        found = true;
+                        dataset.data.push({ x: msg.display_vals.time, y: msg.display_vals.value});
+                        chart.data.labels.push(msg.display_vals.time)
+                    }
+                })
+                if (found == false) {
+                    // if we havn't found the right dataset
+                    chart.data.datasets.push(
+                        {
+                            label: msg.display_vals.label,
+                            data: [{ x: msg.display_vals.time, y: msg.display_vals.value}],
+                            backgroundColor: backgroundColors[chart.data.datasets.length]
+                        }
+                    );
+                    chart.data.labels.push(msg.display_vals.time);
+                }
+                console.log(chart.data.datasets);
+                chart.update();
+            }
+        });
+    });
+</script>
