@@ -16,9 +16,6 @@ env
 # Thumbnails
 ._*
 
-# configs
-*.yaml
-
 # GITHUB Proposed Python stuff:
 *.py[cod]
 
