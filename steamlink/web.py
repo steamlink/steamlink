@@ -5,6 +5,7 @@ import os
 import json
 import aiohttp_jinja2
 import jinja2
+import yaml
 
 from aiohttp import web
 from aiohttp.log import access_logger, web_logger
@@ -20,6 +21,30 @@ import logging
 logger = logging.getLogger(__name__)
 
 from yarl import URL
+
+
+
+class DisplayConfiguration:   
+
+	def __init__(self, file_name):
+		self.data = {}
+		f = open(file_name)
+		self.data = yaml.load(f)
+		f.close()
+
+	def row_wise(self):
+		rows = {}
+		for item in self.data:
+			try:
+				if item['row'] not in rows:
+					rows[item['row']] = []
+				rows[item['row']].append(item)
+			except KeyError:
+				print("No key found")
+		return rows
+
+
+
 
 
 #
@@ -152,14 +177,16 @@ class WebApp(object):
 		self.app['websockets'] = []
 		self.app.router.add_get('/config.json', self.config_json)
 
-		libdir = os.path.dirname(os.path.abspath(__file__))
-		self.app.router.add_static('/', libdir+'/html')
+		self.libdir = os.path.dirname(os.path.abspath(__file__))
+		self.static_dir = self.libdir+'/html/static'
+		self.templates_dir = self.libdir+'/html/templates'
+
+		self.app.router.add_static('/static', self.static_dir)
 		self.app.on_cleanup.append(self.web_on_cleanup)
 		self.app.on_shutdown.append(self.web_on_shutdown)
 		self.backlog = 128
 
-		self.aiohttp_jinja2.setup(self.app,
-		    loader=jinja2.FileSystemLoader(libdir+'/html/templates'))
+		self.aiohttp_jinja2.setup(self.app, loader=jinja2.FileSystemLoader(self.templates_dir))
 
 		self.shutdown_timeout = self.conf['shutdown_timeout']
 	#	self.api_password = conf['api_password']
@@ -255,3 +282,16 @@ class WebApp(object):
 		logger.debug("console_update_loop done")
 
 
+	async def handler(request):
+		if request.rel_url == '/':
+			filename = 'index'
+		else:
+			file_name = request.rel_url.rstrip('/')
+		dc = DisplayConfiguration(self.templates_dir + '/' + file_name + '.yaml')
+		if logging.DBG > 0: logger.debug("webapp handler %s", dc.data)
+		context = dc.row_wise()
+		response = self.aiohttp_jinja2.render_template(file_name + '.html',
+											  request,
+											  context)
+#		response.headers['Content-Language'] = 'en'
+		return response

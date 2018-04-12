@@ -20,6 +20,8 @@ REQUIRES = [
 	'python-socketio>=1.8.4',
 	'paho-mqtt>=1.3.1,<2',
 	'hbmqtt==0.8.0',
+	'jinja2==2.10',
+	'aiohttp-jinja2>=1.0.0'
 ]
 
 setup(

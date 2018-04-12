@@ -15,13 +15,13 @@ from yaml.representer import SafeRepresenter
 _mapping_tag = yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG
 
 def dict_representer(dumper, data):
-    return dumper.represent_dict(data.items())
+	return dumper.represent_dict(data.items())
 
 def dict_constructor(loader, node):
-    return OrderedDict(loader.construct_pairs(node))
+	return OrderedDict(loader.construct_pairs(node))
 
 def represent_none(self, data):
-    return self.represent_scalar(u'tag:yaml.org,2002:null', u'')
+	return self.represent_scalar(u'tag:yaml.org,2002:null', u'')
 
 Dumper.add_representer(OrderedDict, dict_representer)
 Dumper.add_representer(type(None), represent_none)
