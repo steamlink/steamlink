@@ -1,6 +1,5 @@
 import asyncio
 import socketio
-import signal
 import os
 import json
 import aiohttp_jinja2
@@ -186,7 +185,7 @@ class WebApp(object):
 		self.app.on_shutdown.append(self.web_on_shutdown)
 		self.backlog = 128
 
-		self.aiohttp_jinja2.setup(self.app, loader=jinja2.FileSystemLoader(self.templates_dir))
+		aiohttp_jinja2.setup(self.app, loader=jinja2.FileSystemLoader(self.templates_dir))
 
 		self.shutdown_timeout = self.conf['shutdown_timeout']
 	#	self.api_password = conf['api_password']

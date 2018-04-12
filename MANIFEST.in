@@ -4,4 +4,5 @@ include steamlink/html/static
 include steamlink/html/static/*
 include steamlink/html/templates
 include steamlink/html/templates/*
-recursive-exclude * *.py[co] __pycache__ *.swp *.yaml
+exclude *.yaml
+recursive-exclude * *.py[co] __pycache__ *.swp 
