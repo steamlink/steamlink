@@ -3,6 +3,8 @@ import socketio
 import signal
 import os
 import json
+import aiohttp_jinja2
+import jinja2
 
 from aiohttp import web
 from aiohttp.log import access_logger, web_logger
@@ -131,25 +133,6 @@ class WebNamespace(socketio.AsyncNamespace):
 		# return items in range?
 
 
-
-#
-#Index
-def IndexMiddleware(index='index.html'):
-	async def middleware_factory(app, handler):
-		async def index_handler(request):
-			try:
-				filename = request.match_info['filename']
-				if not filename:
-					filename = index
-				if filename.endswith('/'):
-					filename += index
-				request.match_info['filename'] = filename
-			except KeyError:
-				pass
-			return await handler(request)
-		return index_handler
-	return middleware_factory
-
 #
 # WebApp
 #
@@ -163,16 +146,20 @@ class WebApp(object):
 		self.namespace = namespace
 		self.loop = loop
 		self.con_upd_q = asyncio.Queue(loop=self.loop)
-		self.app = web.Application(middlewares=[IndexMiddleware()])
+		self.app = web.Application()
 		self.app._set_loop(self.loop)
 		self.sio.attach(self.app)
 		self.app['websockets'] = []
 		self.app.router.add_get('/config.json', self.config_json)
+
 		libdir = os.path.dirname(os.path.abspath(__file__))
-		self.app.router.add_static('/',libdir+"/html")
+		self.app.router.add_static('/', libdir+'/html')
 		self.app.on_cleanup.append(self.web_on_cleanup)
 		self.app.on_shutdown.append(self.web_on_shutdown)
 		self.backlog = 128
+
+		self.aiohttp_jinja2.setup(self.app,
+		    loader=jinja2.FileSystemLoader(libdir+'/html/templates'))
 
 		self.shutdown_timeout = self.conf['shutdown_timeout']
 	#	self.api_password = conf['api_password']
