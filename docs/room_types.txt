@@ -37,12 +37,26 @@
 |node                           |
 ---------------------------------
 
+## Websocket Protocol 
 
-
-query:
+### Set the stream
+Front-end emits `setstream` with a json that includes the following fields:
 - record_type: steam, mesh, node, pkt
-- record_key: 
+- start_key: 
 - key_field: slid (if left blank, return native)
-- count:
+- count: 
+- end_key:
 - return_children: boolean
+- stream_tag: (front-end handle for the stream)
+- force: [optional] resend all data in the range.
 
+NB: one of count or end_key must be present.
+
+### Acknowledgement
+Back-end responds with ack: 
+- [optional] error:
+- record_type:
+- start_key:
+- end_key:
+
+### Front-end listens on stream_tag AEW?
