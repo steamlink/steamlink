@@ -54,9 +54,13 @@ NB: one of count or end_key must be present.
 
 ### Acknowledgement
 Back-end responds with ack: 
+- key_field:
 - [optional] error:
 - record_type:
-- start_key:
-- end_key:
 
 ### Front-end listens on stream_tag AEW?
+Front-end expects a json structure including the following protocol fields:
+- _del_key: key to delete
+- _stream_tag: AEW?
+
+and the rest of the record data fields.
