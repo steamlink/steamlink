@@ -2,6 +2,8 @@ var socketNamespace = "/sl";
 
 function Stream(sock, config, on_new_message) {
 
+  console.log("Creating stream");
+
   this.config = config;
   this.record_type = {};
   this.key_field = {};
@@ -10,6 +12,8 @@ function Stream(sock, config, on_new_message) {
   this.cache = [];
 
   this.startStream = function() {
+    console.log("Starting stream with config:");
+    console.log(this.config);
     sock.emit("startstream", {
       record_type: this.config.record_type,
       start_key: this.config.start_key,
@@ -19,7 +23,7 @@ function Stream(sock, config, on_new_message) {
       return_children: this.config.return_children,
       stream_tag: this.config.stream_tag,
       force: this.config.force
-    }, (data) => { // on ack
+    }, function(data){ // on ack
       if (data.error) {
         console.log("Err: " + data.error);
       } else { // store key field and record type
@@ -27,7 +31,7 @@ function Stream(sock, config, on_new_message) {
         this.key_field = data.key_field;
       }
     });
-  }
+  };
 
   this.newStreamData = function(data) {
     // back-end can ask for either an add, modify, or delete
@@ -65,7 +69,7 @@ function Stream(sock, config, on_new_message) {
     }
     on_new_message(data);
   }
-  sock.on(this.config.stream_tag, newStreamData);
+  sock.on(this.config.stream_tag, this.newStreamData);
 }
 
 // On Document Ready
