@@ -213,9 +213,9 @@ class WebNamespace(socketio.AsyncNamespace):
 
 	async def on_startstream(self, sid, message):
 		logger.debug("WebNamespace on_startstream %s", message)
-		if not 'room' in message:
-			logger.error("join: message without room: %s", str(message))
-			return "NAK"
+#		if not 'room' in message:
+#			logger.error("join: message without room: %s", str(message))
+#			return "NAK"
 
 		sroom, stream_tag = mk_roomid(message)
 #		sroom=message['room']
@@ -404,7 +404,8 @@ class WebApp(object):
 #				continue
 		
 #			await self.sio.emit('data_full', 
-			await self.sio.emit(upd_sroom.stream_tag, 
+			if upd_roomitem.room.stream_tag != None:
+				await self.sio.emit(upd_roomitem.room.stream_tag, 
 						data = upd_roomitem.console_update(upd_force),
 						namespace = self.namespace,
 						room = upd_sroom)	

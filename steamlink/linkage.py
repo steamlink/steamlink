@@ -420,6 +420,7 @@ class MemberRoom:
 class Room(BaseItem):
 	def __init__(self, ritype = None, rkey = None, detail = None, sroom = None):
 
+		self.stream_tag = None
 		if sroom is not None:
 			l = sroom.split('_')
 			if len(l) < 2 or len(l) > 3:
