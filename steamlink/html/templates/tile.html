@@ -18,6 +18,8 @@
 <script type="text/javascript">
     $(function () {
 
+        var tileDiv = $('#{{ partial_item.name }}');
+
         var streamConfig = {
             record_type: '{{ partial_item.record_type }}',
             start_key: 1, // TODO: update from params
@@ -29,11 +31,13 @@
             force: '{{ partial_item.force|tojson|safe }}'
         };
 
-        var tileStream = new Stream(socket, streamConfig, function(data) {
-            console.log(data);
-            console.log(tileStream.cache);
-        });
-        console.log(tileStream);
+        var tileStream = new Stream(socket, streamConfig, (data) => {
+            var innerHTML = "<ul>";
+            for (key in data) {
+                innerHTML += "<li> <strong>" + key + ": </strong><em>" + data.key+ "</em></li>";
+            }
+            innerHTML += "</ul>";
+        }); 
         tileStream.startStream();
     });
 </script>

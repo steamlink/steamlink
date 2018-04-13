@@ -5,7 +5,7 @@
   record_type: Mesh
   start_key: params
   key_field: "null"
-  count: 1
+  count: 0
   end_key: "null"
   return_children: false
   stream_tag: tile_header
