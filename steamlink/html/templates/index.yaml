@@ -1,21 +1,17 @@
 - name: tile_header
   type: tile
-  title: params
+  title: Mesh
   # Query information
-  query: params
+  record_type: mesh
+  start_key: params
+  key_field: "null"
+  count: 1
+  end_key: "null"
+  return_children: false
+  stream_tag: tile_header
+  force: false
   # Layout
   row: 1
   grid_columns: 'twelve'
   grid_rows: 4
   template: 'tile.html'
-
-- name: table_item_area
-  type: table
-  title: params
-  # Query informatiom
-  query: params
-  # Layout
-  row: 1
-  grid_columns: 'twelve'
-  grid_rows: 4
-  template: 'table.html'
