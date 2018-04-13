@@ -27,6 +27,8 @@ function Stream(sock, config, on_new_message) {
       if (data.error) {
         console.log("Err: " + data.error);
       } else { // store key field and record type
+        console.log("Ack rcvd");
+        console.log(data);
         this.record_type = data.record_type;
         this.key_field = data.key_field;
       }
@@ -34,6 +36,8 @@ function Stream(sock, config, on_new_message) {
   };
 
   this.newStreamData = function(data) {
+    console.log("New websocket data");
+    console.log(data);
     // back-end can ask for either an add, modify, or delete
     // first see if we have record in cache
     var foundIndex = this.cache.findIndex(function(e){
