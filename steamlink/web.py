@@ -206,9 +206,9 @@ class WebNamespace(socketio.AsyncNamespace):
 		# message: { record_type:.., key_field:.., start_key:.., stream_tag:..,
 		#				count: .., end_key:..., return_children:..,  force: .. }
 		if message['count'] == 0:
-			sroom = "%s_%s" % message['record_type'], message['start_key']
+			sroom = "%s_%s" % (message['record_type'], message['start_key'])
 		else:
-			sroom = "%s_%s_*" % message['record_type'], message['start_key']
+			sroom = "%s_%s_*" % (message['record_type'], message['start_key'])
 		return (sroom, stream_tag)
 
 
