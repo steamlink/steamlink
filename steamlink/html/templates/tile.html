@@ -21,14 +21,14 @@
         var tileDiv = $('#{{ partial_item.name }}')[0];
 
         var streamConfig = {
-            record_type: '{{ partial_item.record_type }}',
-            start_key: 1, // TODO: update from params
-            key_field: '{{ partial_item.key_field }}',
-            count: '{{ partial_item.count|tojson|safe }}',
-            end_key: '{{ partial_item.end_key }}',
-            return_children: '{{ partial_item.return_children|tojson|safe }}',
-            stream_tag: "{{ partial_item.stream_tag }}",
-            force: '{{ partial_item.force|tojson|safe }}'
+            record_type: {{ partial_item.record_type|tojson|safe }},
+            start_key: 2, // TODO: update from params
+            key_field: {{ partial_item.key_field|tojson|safe }},
+            count: {{ partial_item.count|tojson|safe }},
+            end_key: {{ partial_item.end_key|tojson|safe }},
+            return_children: {{ partial_item.return_children|tojson|safe }},
+            stream_tag: {{ partial_item.stream_tag|tojson|safe }},
+            force: {{ partial_item.force|tojson|safe }}
         };
 
         var tileStream = new Stream(socket, streamConfig, (data) => {

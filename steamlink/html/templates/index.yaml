@@ -2,8 +2,8 @@
   type: tile
   title: Mesh
   # Query information
-  record_type: Mesh
-  start_key: params
+  record_type: 
+  start_key: param
   key_field: "null"
   count: 0
   end_key: "null"
@@ -15,3 +15,28 @@
   grid_columns: 'twelve'
   grid_rows: 4
   template: 'tile.html'
+
+- name: table_item_area
+  type: table
+  title: Nodes
+  # Query information
+  record_type: Mesh
+  start_key: params
+  key_field: "null"
+  count: 20
+  end_key: "null"
+  return_children: true
+  stream_tag: table_item_area
+  force: false
+  # Fields
+  headers:
+    - "Name"
+    - "Description"
+    - "State"
+    - "Packets sent"
+    - "Packets received"
+    - "key"
+  row: 1
+  grid_columns: 'twelve'
+  grid_rows: 4
+  template: 'table.html'
