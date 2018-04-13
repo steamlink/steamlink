@@ -36,3 +36,13 @@
 |mesh                           |
 |node                           |
 ---------------------------------
+
+
+
+query:
+- record_type: steam, mesh, node, pkt
+- record_key: 
+- key_field: slid (if left blank, return native)
+- count:
+- return_children: boolean
+
