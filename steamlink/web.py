@@ -403,7 +403,8 @@ class WebApp(object):
 #				logger.debug("console_update_loop empty room %s", upd_roomitem.room)
 #				continue
 		
-			await self.sio.emit('data_full', 
+#			await self.sio.emit('data_full', 
+			await self.sio.emit(upd_sroom.stream_tag, 
 						data = upd_roomitem.console_update(upd_force),
 						namespace = self.namespace,
 						room = upd_sroom)	
