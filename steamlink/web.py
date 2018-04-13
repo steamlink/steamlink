@@ -405,11 +405,16 @@ class WebApp(object):
 #				continue
 		
 #			await self.sio.emit('data_full', 
-			if upd_roomitem.room.stream_tag != None:
+			data = upd_roomitem.console_update(upd_force)
+			if upd_roomitem.room.stream_tag == None:
+				logger.info("console_update_loop: stream_tag is None: %s", data)
+			else:
 				await self.sio.emit(upd_roomitem.room.stream_tag, 
-						data = upd_roomitem.console_update(upd_force),
+						data = data,
 						namespace = self.namespace,
 						room = upd_sroom)	
+				logger.debuf("console_update_loop: data sent to stream_tag %s: %s", \
+						upd_roomitem.room.stream_tag, data)
 			upd_roomitem.update_sent()
 			self.con_upd_q.task_done()
 
