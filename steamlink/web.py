@@ -209,7 +209,7 @@ class WebNamespace(socketio.AsyncNamespace):
 			sroom = "%s_%s" % (message['record_type'], message['start_key'])
 		else:
 			sroom = "%s_%s_*" % (message['record_type'], message['start_key'])
-		return (sroom, stream_tag)
+		return (sroom, message['stream_tag'])
 
 
 	async def on_startstream(self, sid, message):
