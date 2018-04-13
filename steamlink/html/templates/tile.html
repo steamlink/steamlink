@@ -18,7 +18,7 @@
 <script type="text/javascript">
     $(function () {
 
-        var tileDiv = $('#{{ partial_item.name }}');
+        var tileDiv = $('#{{ partial_item.name }}')[0];
 
         var streamConfig = {
             record_type: '{{ partial_item.record_type }}',
@@ -32,8 +32,6 @@
         };
 
         var tileStream = new Stream(socket, streamConfig, (data) => {
-            console.log("adding to tile: ");
-            console.log(data);
             var innerHTML = "<ul>";
             for (var key in data) {
                 innerHTML += "<li> <strong>" + key + ": </strong><em>" + data[key]+ "</em></li>";

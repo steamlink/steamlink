@@ -38,13 +38,8 @@ function Stream(sock, config, on_new_message) {
   };
 
   this.newStreamData = function(data) {
-    console.log("New websocket data");
-    console.log(data);
     // back-end can ask for either an add, modify, or delete
     // first see if we have record in cache
-    console.log();
-    console.log("Cache is:");
-    console.log(self.cache);
     var foundIndex = self.cache.findIndex(function(e){
       return e[self.key_field] === data[self.key_field];
     });
