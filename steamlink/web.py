@@ -202,7 +202,7 @@ class WebNamespace(socketio.AsyncNamespace):
 		return "ACK"
 
 
-	def mk_roomid(messages):
+	def mk_roomid(self, messages):
 		# messages: { record_type:.., key_field:.., start_key:.., stream_tag:..,
 		#				count: .., end_key:..., return_children:..,  force: .. }
 		if message['count'] == 0:
@@ -210,6 +210,7 @@ class WebNamespace(socketio.AsyncNamespace):
 		else:
 			sroom = "%s_%s_*" % message['record_type'], message['start_key']
 		return (sroom, stream_tag)
+
 
 	async def on_startstream(self, sid, message):
 		logger.debug("WebNamespace on_startstream %s", message)
