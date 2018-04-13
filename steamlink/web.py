@@ -212,7 +212,7 @@ class WebNamespace(socketio.AsyncNamespace):
 		return (sroom, stream_tag)
 
 	async def on_startstream(self, sid, message):
-		logger.debug("WebNamespace on_join %s", message)
+		logger.debug("WebNamespace on_startstream %s", message)
 		if not 'room' in message:
 			logger.error("join: message without room: %s", str(message))
 			return "NAK"
