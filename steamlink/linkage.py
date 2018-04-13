@@ -185,6 +185,11 @@ class BaseItem:
 		r = self.__dict__.copy()
 		return r
 
+
+	def getkeyfield(self):
+		return "key"	#CU
+
+
 #
 # Item
 #
@@ -261,7 +266,7 @@ class Item(BaseItem):
 		if logging.DBG > 2: logger.debug("Item %s: schedule_update", self.name)
 		for room in self.my_room_list:
 			if logging.DBG > 2: logger.debug("Item: schedule_update for item %s in room %s", self, room.name)
-			room.roomitems[self.key].schedule_update(False)
+			room.roomitems[self.key].push_update(False)
 
 
 	def gen_console_data(self):
@@ -307,13 +312,13 @@ class RoomItem:
 
 		self.last_update = 0		# roomitem's last update time stamp
 		self.future_update = False	
-		self.pack = {
-			'name': self.item.name,		#XXX? extra fields
-			'type': self.item.itype,
-			'id': self.item.key,
-			'header': self.room.is_header(),
-		 	'display_vals': {},
-		}
+#		self.pack = {
+#			'name': self.item.name,		#XXX? extra fields
+#			'type': self.item.itype,
+#			'id': self.item.key,
+#			'header': self.room.is_header(),
+#		 	'display_vals': {},
+#		}
 		self.cache = {}
 		self.upd_in_progress = False
 
@@ -336,7 +341,8 @@ class RoomItem:
 		else:
 			data_to_emit = self.item.gen_console_data()
 			self.cache = data_to_emit
-		self.pack['display_vals'] = data_to_emit
+#		self.pack['display_vals'] = data_to_emit
+		self.pack = data_to_emit
 		if logging.DBG > 2: logger.debug("console_update ROOM %s ITEM %s DATA %s", self.room, self.item, self.pack)
 		return self.pack
 
@@ -344,10 +350,10 @@ class RoomItem:
 	async def schedule_future_update(self, wait):
 		await asyncio.sleep(wait)
 		self.future_update = False
-		self.schedule_update(False)
+		self.push_update(False)
 
 
-	def schedule_update(self, force, sroom = None):
+	def push_update(self, force, sroom = None):
 		if self.upd_in_progress or _WEBAPP is None:
 			return
 		next_update = (self.last_update + _WEBAPP.minupdinterval) - _WEBAPP.loop.time()
@@ -360,7 +366,7 @@ class RoomItem:
 		if sroom is None:
 			sroom = self.room.sroom
 		self.upd_in_progress = True
-		_WEBAPP.schedule_update(self, sroom, True)
+		_WEBAPP.queue_item_update(self, sroom, True)
 
 
 	def update_sent(self):
@@ -403,7 +409,7 @@ class MemberRoom:
 				logger.debug("set_position: key %s start %s end %s", key, start, end)
 			# send out the item
 			for k in self.m_roomitem_keys:
-				self.m_room.roomitems[k].schedule_update(False, self.m_sid)
+				self.m_room.roomitems[k].push_update(False, self.m_sid)
 
 	def has_roomitem(self, key):
 		return key in self.m_roomitem_keys
@@ -500,10 +506,10 @@ class Room(BaseItem):
 	def schedule_update(self, rsid = None):
 		limit = 50		# XXX todo: make variable
 		for roomitem in self.get_roomitem_keys():
-			self.roomitems[roomitem].schedule_update(True, rsid)
+			self.roomitems[roomitem].push_update(True, rsid)
 			for sid in self.members:
 				if self.is_private(sid) and self.members[sid].has_roomitem(roomitem):
-					self.roomitems[roomitem].schedule_update(True, sid)
+					self.roomitems[roomitem].push_update(True, sid)
 			limit -= 1
 			if limit == 0:
 				break

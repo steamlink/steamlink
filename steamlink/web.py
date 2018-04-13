@@ -39,11 +39,124 @@ class DisplayConfiguration:
 					rows[item['row']] = []
 				rows[item['row']].append(item)
 			except KeyError:
-				print("No key found")
+				logger.error("DisplayConfiguration: No key found")
 		return rows
 
+XXX = """
+#
+# ItemPartialMap
+#
+class ItemPartialMap:
+#	 track all partials per item 
+	def __init__(self, rectype):
+		self.itype = 'ItemPartialMap'
+		self.key = rectype
+		self.name = rectype		# remo
+		self.map = {}		# key is item key, value is Instance of Partial
+		if logging.DBG > 2: logger.debug("ItemPartialMap: created %s", name)
+		registry.register(self)
 
 
+	def add(self, itemkey, partial):
+		if not itemkey in self.map:
+			self.map[itemkey] = []
+		self.map[itemkey] += [parial]
+
+
+	def del(self, partial, itemkey):
+		if not itemkey in self.map:
+			logger.error("ItemPartialMap del: item %s not in map", itemkey)
+			return
+		try:
+			idx = self.map.find(partial)
+		except:
+			logger.error("ItemPartialMap del: partial %s not in mapentry for %s", partial, itemkey)
+			return
+		del self.map[idx]
+
+
+irectypes = ['Steam', 'Mesh', 'Node', 'Pkt']
+
+#
+# Partial
+#
+class Partial:
+	def __init__(self, stream_tag, rectype, key_field, start_key, count, return_children):
+		self.itype = 'Partial'
+		self.key = stream_tag
+		self.name = stream_tag
+		registry.register(self)
+
+		self.return_children = return_children 		
+
+		self.item = registry.find_by_id(rectype, start_key)	
+		if self.return_children:		# find the correct rectype
+			self.items_source = self.item.children
+			idx = irectypes.index(rectype)
+			rectype = irectypes[idx + 1]
+			if count > 0:
+				start_key = self.items_source[0].key
+			else:
+				start_key = self.items_source[-1].key
+		else:
+			count = 1
+			self.items_source = [self.item]
+
+
+		self.rectype = rectype
+		if key_field != None:
+			self.key_field = key_field
+		else:
+			self.key_field = self.item.getkeyfield()
+
+		self.setstream(start_key, count, end_key, force)
+
+		self.ItemPatialMap = registry.find_by_name('ItemPartialMap', self.rectype)
+		if self.ItemPatialMap == None:
+			self.ItemPatialMap = ItemPartialMap(self.rectype)
+
+		self.items = {}
+
+
+	def __del__(self):	
+		for item in self.items[]:
+			self.ItemPatialMap.del(self, item)
+
+
+	def setstream(self, start_key, count, end_key, force):
+		self.start_key = start_key
+		self.end_key = end_key
+		self.count = count
+		if 
+
+
+	def additem(self, item):
+		self.items[item.key] = item
+		self.ItemPatialMap.add(item.key, self)
+
+
+	def delitem(self, item):
+		del self.items[item.key] 
+		self.ItemPatialMap.del(item.key, self)
+
+
+#
+# Web Session
+#
+class WebSession:
+	def __init__(self, sid):
+		self.sid = sid
+		self.partials = {}
+		
+
+
+	def add_partial(self, stream_tag, partial ):
+		self.partials[stream_tag] = partial
+
+
+
+class 
+"""
 
 
 #
@@ -89,23 +202,37 @@ class WebNamespace(socketio.AsyncNamespace):
 		return "ACK"
 
 
-	async def on_join(self, sid, message):
+	def mk_roomid(messages):
+		# messages: { record_type:.., key_field:.., start_key:.., stream_tag:..,
+		#				count: .., end_key:..., return_children:..,  force: .. }
+		if message['count'] == 0:
+			sroom = "%s_%s" % message['record_type'], message['start_key']
+		else:
+			sroom = "%s_%s_*" % message['record_type'], message['start_key']
+		return (sroom, stream_tag)
+
+	async def on_startstream(self, sid, message):
 		logger.debug("WebNamespace on_join %s", message)
 		if not 'room' in message:
 			logger.error("join: message without room: %s", str(message))
 			return "NAK"
-		# messages:  { room:..  cnt:.. anc:.. }
-		sroom=message['room']
+
+		sroom, stream_tag = mk_roomid(message)
+#		sroom=message['room']
 		room = registry.find_by_id('Room', sroom)
 		if room is None:
 			room = Room(sroom=sroom) 	
 			logger.debug("join: auto create room: %s", str(message))
 
+		room.stream_tag = stream_tag
 		self.enter_room(sid, sroom, namespace=self.namespace)
 		room.add_member(sid)
 		logger.debug("WebNamespace items_to_send %s", room.name)
 		room.schedule_update(sid)	# update all items in the room for this sid only
-		return "ACK"
+		res = { 'key_field': 'key',
+				'record_type': 'XXX'
+			  }
+		return res
 
 
 	async def on_leave(self, sid, message):
@@ -113,7 +240,8 @@ class WebNamespace(socketio.AsyncNamespace):
 		if not 'room' in message:
 			logger.error("leave: message without room: %s", str(message))
 			return "NAK"
-		sroom=message['room']
+#		sroom=message['room']
+		sroom, stream_tag = mk_roomid(message)
 		room = registry.find_by_id('Room', sroom)
 		if room is None:
 			return "NAK"
@@ -128,7 +256,8 @@ class WebNamespace(socketio.AsyncNamespace):
 		if not 'room' in message:
 			logger.error("on_move: message without room: %s", str(message))
 			return "NAK"
-		sroom=message['room']	
+#		sroom=message['room']
+		sroom, stream_tag = mk_roomid(message)
 		# default anchor is ID, sort key later?
 		key = message.get('key', '')
 		count = message.get('count', '')
@@ -258,8 +387,8 @@ class WebApp(object):
 			await ws.close(code=WSCloseCode.GOING_AWAY, message='Server shutdown')
 
 
-	def schedule_update(self, roomitem, sroom, force):
-		if logging.DBG > 2: logger.debug("webapp schedule_update for %s item %s", roomitem.room, roomitem.item)
+	def queue_item_update(self, roomitem, sroom, force):
+		if logging.DBG > 2: logger.debug("webapp queue_item_update for %s item %s", roomitem.room, roomitem.item)
 		asyncio.ensure_future(self.con_upd_q.put([roomitem, sroom, force]), loop=self.loop)
 
 
