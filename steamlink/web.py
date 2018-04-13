@@ -217,7 +217,7 @@ class WebNamespace(socketio.AsyncNamespace):
 #			logger.error("join: message without room: %s", str(message))
 #			return "NAK"
 
-		sroom, stream_tag = mk_roomid(message)
+		sroom, stream_tag = self.mk_roomid(message)
 #		sroom=message['room']
 		room = registry.find_by_id('Room', sroom)
 		if room is None:
@@ -241,7 +241,7 @@ class WebNamespace(socketio.AsyncNamespace):
 			logger.error("leave: message without room: %s", str(message))
 			return "NAK"
 #		sroom=message['room']
-		sroom, stream_tag = mk_roomid(message)
+		sroom, stream_tag = self.mk_roomid(message)
 		room = registry.find_by_id('Room', sroom)
 		if room is None:
 			return "NAK"
@@ -257,7 +257,7 @@ class WebNamespace(socketio.AsyncNamespace):
 			logger.error("on_move: message without room: %s", str(message))
 			return "NAK"
 #		sroom=message['room']
-		sroom, stream_tag = mk_roomid(message)
+		sroom, stream_tag = self.mk_roomid(message)
 		# default anchor is ID, sort key later?
 		key = message.get('key', '')
 		count = message.get('count', '')
