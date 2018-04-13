@@ -40,6 +40,7 @@ function Stream(sock, config, on_new_message) {
     console.log(data);
     // back-end can ask for either an add, modify, or delete
     // first see if we have record in cache
+    console.log(this);
     console.log("Cache is:");
     console.log(this.cache);
     var foundIndex = this.cache.findIndex(function(e){
@@ -74,8 +75,10 @@ function Stream(sock, config, on_new_message) {
       }  
     }
     on_new_message(data);
-  }
-  sock.on(this.config.stream_tag, this.newStreamData);
+  };
+
+  var self = this;
+  sock.on(this.config.stream_tag, self.newStreamData);
 }
 
 // On Document Ready
