@@ -202,8 +202,8 @@ class WebNamespace(socketio.AsyncNamespace):
 		return "ACK"
 
 
-	def mk_roomid(self, messages):
-		# messages: { record_type:.., key_field:.., start_key:.., stream_tag:..,
+	def mk_roomid(self, message):
+		# message: { record_type:.., key_field:.., start_key:.., stream_tag:..,
 		#				count: .., end_key:..., return_children:..,  force: .. }
 		if message['count'] == 0:
 			sroom = "%s_%s" % message['record_type'], message['start_key']
