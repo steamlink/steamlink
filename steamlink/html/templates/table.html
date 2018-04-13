@@ -32,7 +32,7 @@
 
         var streamConfig = {
             record_type: {{ partial_item.record_type|tojson|safe }},
-            start_key: 2, // TODO: update from params
+            start_key: 1, // TODO: update from params
             key_field: {{ partial_item.key_field|tojson|safe }},
             count: {{ partial_item.count|tojson|safe }},
             end_key: {{ partial_item.end_key|tojson|safe }},

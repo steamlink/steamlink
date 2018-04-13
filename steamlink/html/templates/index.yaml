@@ -2,7 +2,7 @@
   type: tile
   title: Mesh
   # Query information
-  record_type: 
+  record_type: Mesh
   start_key: param
   key_field: "null"
   count: 0
