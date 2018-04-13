@@ -413,7 +413,7 @@ class WebApp(object):
 						data = data,
 						namespace = self.namespace,
 						room = upd_sroom)	
-				logger.debuf("console_update_loop: data sent to stream_tag %s: %s", \
+				logger.debug("console_update_loop: data sent to stream_tag %s: %s", \
 						upd_roomitem.room.stream_tag, data)
 			upd_roomitem.update_sent()
 			self.con_upd_q.task_done()

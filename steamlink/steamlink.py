@@ -298,6 +298,7 @@ class Steam(Item):
 #
 class Mesh(Item):
 	console_fields = {
+     "key": "self.key",
  	 "Name": "self.name",
 	 "Description": "self.desc",
 	 "Total Nodes": "len(self.children)",
@@ -351,7 +352,7 @@ class Node(Item):
 	 "State": "self.state",
 	 "Packets sent": "self.packets_sent",
 	 "Packets received": "self.packets_received",
-	 "SL ID": "self.slid",
+	 "key": "self.slid",
 	}
 	UPSTATES = ["OK", "UP", "TRANSMITTING"]
 
