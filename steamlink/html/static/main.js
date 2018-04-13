@@ -48,7 +48,7 @@ function Stream(sock, config, on_new_message) {
     var foundIndex = self.cache.findIndex(function(e){
       return e[self.key_field] === data[self.key_field];
     });
-    if (_del_key in data) { // if delete:
+    if ('_del_key' in data) { // if delete:
       if (foundIndex >= 0) { // if key exists in cache
         self.cache.splice(foundIndex, 1); 
       } else { // key doesn't exist in cache:
