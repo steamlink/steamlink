@@ -1,88 +1,21 @@
-- name: alert_example_1
-  type: alert
-  row: 0
-  template: 'alert.html'
-
-- name: table_example_1
-  type: table
+- name: tile_header
+  type: tile
+  title: params
+  # Query information
+  query: params
+  # Layout
   row: 1
-  grid_columns: 'five'
-  title: 'Log Messages'
-  headers:
-    - name
-    - type
-    - description
+  grid_columns: 'twelve'
+  grid_rows: 4
+  template: 'tile.html'
+
+- name: table_item_area
+  type: table
+  title: params
+  # Query informatiom
+  query: params
+  # Layout
+  row: 1
+  grid_columns: 'twelve'
   grid_rows: 4
   template: 'table.html'
-
-- name: tile_example_1
-  type: tile
-  row: 1
-  grid_columns: 'seven'
-  title: 'Node Number 1'
-  headers:
-    - name
-    - type
-    - description
-  grid_rows: 4
-  template: 'tile.html'
-  
-- name: tile_example_2
-  type: tile
-  row: 2
-  grid_columns: 'seven'
-  title: 'Last Packet'
-  headers:
-    - name
-    - type
-    - description
-  grid_rows: 5
-  template: 'tile.html'
-
-- name: pie_example_1
-  type: pie
-  row: 2
-  grid_columns: 'five'
-  title: 'Node Status'
-  labels:
-    - active
-    - dead
-    - unknown
-  defaultData:
-    - 0
-    - 0
-    - 0
-  backgroundColor:
-    - rgba(255, 99, 132, 0.2)
-    - rgba(54, 162, 235, 0.2)
-    - rgba(255, 206, 86, 0.2)
-  grid_rows: 8
-  template: 'pie.html'
-
-- name: map_example_1
-  type: map
-  row: 3
-  grid_columns: 'six'
-  grid_rows: 8
-  title: 'Node Locations'
-  center:
-    - -79.3894
-    - 43.6575
-  zoom: 13
-  template: 'map.html'
-
-- name: timeline_example_1
-  type: timeline
-  row: 3
-  grid_columns: 'six'
-  title: 'Temperature'
-  grid_rows: 8
-  backgroundColors:
-      - 'rgba(255, 99, 132, 0.2)'
-      - 'rgba(54, 162, 235, 0.2)'
-      - 'rgba(255, 206, 86, 0.2)'
-      - 'rgba(75, 192, 192, 0.2)'
-      - 'rgba(153, 102, 255, 0.2)'
-      - 'rgba(255, 159, 64, 0.2)'
-  template: 'timeline.html'
-  
