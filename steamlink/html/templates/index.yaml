@@ -1,27 +1,29 @@
-- name: tile_header
+mesh:
+  name: mesh
   type: tile
-  title: Mesh
+  title: Mesh Summary
   # Query information
   record_type: Mesh
-  start_key: param
+  start_key: 1
   key_field: "null"
   count: 0
   end_key: "null"
   return_children: false
-  stream_tag: tile_header
+  stream_tag: mesh_header
   force: false
   # Layout
   row: 1
   grid_columns: 'twelve'
   grid_rows: 4
   template: 'tile.html'
-
-- name: table_item_area
+  
+nodes:
+  name: nodes
   type: table
-  title: Nodes
+  title: Nodes in the Mesh
   # Query information
   record_type: Mesh
-  start_key: params
+  start_key: 1
   key_field: "null"
   count: 20
   end_key: "null"
@@ -36,7 +38,7 @@
     - "Packets sent"
     - "Packets received"
     - "key"
-  row: 1
+  row: 2
   grid_columns: 'twelve'
   grid_rows: 4
   template: 'table.html'

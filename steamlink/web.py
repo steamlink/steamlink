@@ -427,6 +427,18 @@ class WebApp(object):
 		else:
 			file_name = str(request.rel_url).path.rstrip('/')
 		dc = DisplayConfiguration(self.templates_dir + '/' + file_name + '.yaml')
+
+		for qk in request.query:
+			try:
+				partial, key = qk.split('.', 1)
+			except:
+				logger.info("web route_handler: Query key with no '.' : %s", qk)
+				continue
+			if not partial in dc.data:
+				logger.info("web route_handler: partial not in yaml : %s", partial)
+				continue
+			dc.data[partial].key = request.query[qk]
+
 		if logging.DBG > 0: logger.debug("webapp handler %s", dc.data)
 		context = { 'context' : dc.row_wise()}
 		response = aiohttp_jinja2.render_template(file_name + '.html', request, context)
