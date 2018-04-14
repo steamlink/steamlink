@@ -17,25 +17,51 @@
 
 <script type="text/javascript">
     $(function () {
+
         
         var alertWrapper = $('#{{ partial_item.name }}');
         var alertElement =  $('#{{ partial_item.name }} > .alert-msg')[0];
         var alertCloseElement = $('#{{ partial_item.name }} > a')[0];
-        
-        socket.on("{{ partial_item.name }}", function (msg) {
-            if (msg.display_vals) {
-                if(msg.display_vals.msg) {
-                    alertElement.innerHTML = msg.display_vals.msg;
-                }
+
+        var streamConfig = {
+            record_type: {{ partial_item.record_type|tojson|safe }},
+            start_key: {{ partial_item.start_key|tojson|safe }},
+            key_field: {{ partial_item.key_field|tojson|safe }},
+            count: {{ partial_item.count|tojson|safe }},
+            end_key: {{ partial_item.end_key|tojson|safe }},
+            return_children: {{ partial_item.return_children|tojson|safe }},
+            stream_tag: {{ partial_item.stream_tag|tojson|safe }},
+            force: {{ partial_item.force|tojson|safe }}
+        };
+
+        var alertStream = new Stream(socket, streamConfig, (data) => {
+            if ('alert' in data) {
+                alertElement.innerHTML = data['alert']
                 alertCloseElement.innerHTML = "[ ✕ ]"; 
-                if(msg.display_vals.color) {
-                    $(alertWrapper).css({"background-color": msg.display_vals.color})
-                }   
                 $(alertWrapper).show();
-            }
-        });
+            } 
+            if ('alertcolor' in data) {
+                $(alertWrapper).css({"background-color": data['alertcolor']})
+            } 
+        }); 
+        
+        alertStream.startStream();
+
         $(alertCloseElement).click(function(){
             $(alertWrapper).hide();
         });
+
+        socket.on("disconnect", () => {
+            alertElement.innerHTML = "Websocket disconnected..."
+            alertCloseElement.innerHTML = "[ ✕ ]"; 
+            $(alertWrapper).css({"color": "white"})
+            $(alertWrapper).css({"background-color": "red"})
+            $(alertWrapper).show();
+        });
+
+        socket.on("connect", () => {
+            $(alertWrapper).hide();
+        });
+
     });
 </script>
