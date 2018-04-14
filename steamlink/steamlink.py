@@ -373,7 +373,7 @@ class Node(Item):
 		self.packets_sent = 0
 		self.packets_received = 0
 		self.pkt_numbers = {True: 0, False:  0}	# next pkt num for data, control pkts
-		self.state = "UNKNOWN"
+		self.state = "INITIAL"
 		self.last_packet_rx_ts = 0
 		self.last_packet_tx_ts = 0
 		self.last_packet_num = 0
@@ -641,6 +641,7 @@ class Node(Item):
 class Packet(Item):
 	console_fields = {
  	 "op": "SL_OP.code(self.sl_op)",
+	 "key": "self.key",
 	 "rssi": "self.rssi",
 	 "via": "self.via",
 	 "payload": "self.payload",
