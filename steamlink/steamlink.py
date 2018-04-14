@@ -352,6 +352,8 @@ class Node(Item):
 	 "State": "self.state",
 	 "Packets sent": "self.packets_sent",
 	 "Packets received": "self.packets_received",
+	 "gps_lat": "self.nodecfg.gps_lat",
+	 "gps_lon": "self.nodecfg.gps_lon",
 	 "key": "self.slid",
 	}
 	UPSTATES = ["OK", "UP", "TRANSMITTING"]
