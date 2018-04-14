@@ -356,6 +356,7 @@ def steamlink_main() -> int:
 		logger.notice("coros run_until: hbmqtt.errors.NoDataException: %s", e)
 
 	# Shutdown
+	aioloop.run_until_complete(db.stop())
 	if TestTask:
 		logger.debug("stopping TestTask")
 		TestTask.stop()

@@ -336,8 +336,9 @@ class WebApp(object):
 		self.ssl_certificate = conf['ssl_certificate']
 		self.ssl_key = conf['ssl_key']
 		self.ssl_context = None
-		self.access_log_format = None
+		self.access_log_format = 'XXX %a %t "%r" %s %b "%{Referer}i" "%{User-Agent}i"'
 		self.access_log = access_logger
+		access_logger.setLevel(logging.WARN)	# N.B. set in config
 
 		self.host = conf['host']
 		self.port = conf['port']
@@ -365,12 +366,10 @@ class WebApp(object):
 		scheme = 'https' if self.ssl_context else 'http'
 
 		make_handler_kwargs = dict()
-		if self.access_log_format is not None:
-			make_handler_kwargs['access_log_format'] = self.access_log_format
+		make_handler_kwargs['access_log_format'] = self.access_log_format
+		make_handler_kwargs['access_log'] = self.access_log
 
-		self.handler = self.app.make_handler(loop=self.loop,
-						access_log=self.access_log,
-						**make_handler_kwargs)
+		self.handler = self.app.make_handler(loop=self.loop, **make_handler_kwargs)
 
 		self.server = await self.loop.create_server(
 						self.handler, self.host, self.port,
@@ -419,13 +418,13 @@ class WebApp(object):
 #			await self.sio.emit('data_full', 
 			data = upd_roomitem.console_update(upd_force)
 			if upd_roomitem.room.stream_tag == None:
-				logger.info("console_update_loop: stream_tag is None: %s", data)
+				if logging.DBG > 2: logger.debug("console_update_loop: stream_tag is None: %s", data)
 			else:
 				await self.sio.emit(upd_roomitem.room.stream_tag, 
 						data = data,
 						namespace = self.namespace,
 						room = upd_sroom)	
-				logger.debug("console_update_loop: data sent to stream_tag %s: %s", \
+				if logging.DBG > 2: logger.debug("console_update_loop: data sent to stream_tag %s: %s", \
 						upd_roomitem.room.stream_tag, data)
 			upd_roomitem.update_sent()
 			self.con_upd_q.task_done()

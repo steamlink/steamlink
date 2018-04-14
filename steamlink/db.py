@@ -1,6 +1,10 @@
 
 import asyncio
 from tinydb import TinyDB, Query
+from tinydb.storages import JSONStorage
+from tinydb.storages import MemoryStorage
+from tinydb.middlewares import CachingMiddleware
+
 
 import logging
 logger = logging.getLogger()
@@ -15,8 +19,14 @@ class DB:
 
 	async def start(self):
 		logger.info("opening DB %s", self.conf['db_filename'])
-		self.db = TinyDB(self.conf['db_filename'])
+		self.db = TinyDB(self.conf['db_filename'], \
+				sort_keys=True, indent=4, separators=(',', ': '), \
+				storage=CachingMiddleware(JSONStorage))
 		self.table = self.db.table('pkt')
+
+	async def stop(self):
+		logger.debug("closing db")
+		self.db.close()
 
 
 	def insert(self, rec):

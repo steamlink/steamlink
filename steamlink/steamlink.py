@@ -354,6 +354,7 @@ class Node(Item):
 	 "State": "self.state",
 	 "Packets sent": "self.packets_sent",
 	 "Packets received": "self.packets_received",
+	 "Packets cached": "len(self.children)",
 	 "gps_lat": "self.nodecfg.gps_lat",
 	 "gps_lon": "self.nodecfg.gps_lon",
 	 "key": "self.slid",
@@ -679,10 +680,10 @@ class Packet(Item):
 		Packet.PacketID += 1
 		super().__init__('Pkt', Packet.PacketID)
 		self.pno = Packet.PacketID
-		self.name = "N%s_P%s" % (self.slid, self.pkt_num)
-		logger.debug("pkt %s: node %s: %s", self,  self.node, SL_OP.code(self.sl_op))
+		self.name = "N%s_P%s_%s" % (self.slid, self.pkt_num, SL_OP.code(self.sl_op))
 		if pkt is None:
 			self.set_node(slnode)
+		logger.debug("pkt %s: node %s: %s", self,  self.node, SL_OP.code(self.sl_op))
 
 
 	def set_node(self, node):
@@ -704,7 +705,7 @@ class Packet(Item):
 		self.sl_op = sl_op
 		self.rssi = rssi + 256
 		self.payload = payload
-		logger.debug("SteamLinkPacket payload = %s", payload);
+		if logging.DBG > 2: logger.debug("SteamLinkPacket payload = %s", payload);
 		if self.payload is not None:
 			if type(self.payload) == type(b''):
 				self.bpayload = self.payload
