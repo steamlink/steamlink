@@ -14,3 +14,17 @@
 	
 	python3 setup.py sdist upload -r pypi
 	
+## TODOs:
+
+- HTTP route:
+	- '/config'
+
+- Security
+	- Default:
+		- run on localhost without password
+- Configurable via GUI:
+	- Working directory
+	- MQTT broker selection
+		- default: we'll fire up our own
+			- customize local broker
+		- options: configure an external broker
