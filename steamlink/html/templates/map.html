@@ -26,6 +26,20 @@
 <script type="text/javascript">
     $(function () {
 
+        var streamConfig = {
+            record_type: {{ partial_item.record_type|tojson|safe }},
+            start_key: {{ partial_item.start_key|tojson|safe }},
+            key_field: {{ partial_item.key_field|tojson|safe }},
+            count: {{ partial_item.count|tojson|safe }},
+            end_key: {{ partial_item.end_key|tojson|safe }},
+            return_children: {{ partial_item.return_children|tojson|safe }},
+            stream_tag: {{ partial_item.stream_tag|tojson|safe }},
+            force: {{ partial_item.force|tojson|safe}}
+        };
+
+        var record_link = "{{ partial_item.record_link }}";
+
+
         var vectorSource = new ol.source.Vector({
             features: []
         });
@@ -68,10 +82,11 @@
             if (feature) {
                 var coordinates = feature.getGeometry().getCoordinates();
                 popup.setPosition(coordinates);
-                var innerHTML = "";
+                var vals = feature.get('vals');
+                var innerHTML = "<a href=" + window.format(record_link, vals) +">";
                 
                 // innerHTML = feature.get('vals');
-                var vals = feature.get('vals');
+                
                 for (var k in vals) {
                     innerHTML += "<p>" + k + " : " + vals[k] + "</p>";
                 }
@@ -95,48 +110,28 @@
             // map.getTarget().style.cursor = hit ? 'pointer' : '';
         });
 
-        // on new message
-        socket.on("{{ partial_item.name }}", function (msg) {
-            console.log("Received data!");
-            console.log(msg);
 
-            if (msg.display_vals) {
-                if (msg.display_vals.id) {
-                    // check if this feature exists
-                    var features = vectorSource.getFeatures();
-                    var found = false;
-                    features.forEach(function(el){
-                         if (el.get('id') == msg.display_vals.id){
-                             el.setGeometry(new ol.geom.Point(ol.proj.fromLonLat(msg.display_vals.lonlat)));
-                             el.set('vals', msg.display_vals)
-                            found = true;
-                         }
-                    });
-                
-                    if (found == false) {
-                        // create feature and add it
-                        var iconFeature = new ol.Feature(
-                            {
-                                geometry: new ol.geom.Point(ol.proj.fromLonLat(msg.display_vals.lonlat)),
-                                id: msg.display_vals.id,
-                                vals: msg.display_vals
-                            }
-                        );
+        var mapStream = new Stream(socket, streamConfig, (data) => {
+            console.log(mapStream.cache);
+            vectorSource.clear()
+            mapStream.cache.forEach((item) => {
+                var iconFeature = new ol.Feature(
+                        {
+                            geometry: new ol.geom.Point(ol.proj.fromLonLat([item.gps_lon, item.gps_lat])),
+                            id: item.key,
+                            vals: item
+                        }
+                );
+                var iconStyle = new ol.style.Style({
+                        image: new ol.style.Icon(/** @type {olx.style.IconOptions} */ ({
+                        src: 'https://openlayers.org/en/v4.6.5/examples/data/dot.png'
+                        }))
+                });
+                iconFeature.setStyle(iconStyle);
+                vectorSource.addFeature(iconFeature);
 
-                        var iconStyle = new ol.style.Style({
-                            image: new ol.style.Icon(/** @type {olx.style.IconOptions} */ ({
-                                src: 'https://openlayers.org/en/v4.6.5/examples/data/dot.png'
-                            }))
-                        });
-
-                        iconFeature.setStyle(iconStyle);
-            
-                        console.log("Adding Feature");
-                        console.log(msg.display_vals.lonlat);
-                        vectorSource.addFeature(iconFeature);
-                    }
-                }
-            }
+            });
         });
+        mapStream.startStream();
     });
 </script>
