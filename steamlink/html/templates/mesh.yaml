@@ -13,9 +13,34 @@ mesh:
   force: false
   # Layout
   row: 1
-  grid_columns: 'twelve'
-  grid_rows: 4
+  grid_columns: 'six'
+  grid_rows: 8
   template: 'tile.html'
+
+nodes_map:
+  name: nodes_map
+  type: map
+  title: Node Locations
+  # Query information
+  record_type: Mesh
+  start_key: 1
+  key_field: "null"
+  count: 20
+  end_key: "null"
+  return_children: true
+  stream_tag: map_item_area
+  force: false
+  # Fields
+  center:
+    - -79.3894
+    - 43.6575
+  zoom: 13
+  row: 1
+  grid_columns: 'six'
+  grid_rows: 8
+  template: 'map.html'
+  record_link: "/node?node.start_key={key}&packets.start_key={key}"
+
 
 nodes:
   name: nodes
