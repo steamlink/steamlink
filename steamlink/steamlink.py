@@ -523,9 +523,9 @@ class Node(Item):
 
 	def store_data(self, sl_pkt):
 		if sl_pkt.sl_op != SL_OP.DS:		# actual data
-			logger.warning("post_data NOT storing non-DS data: %s", sl_pkt.sl_op)
+			logger.warning("store_data NOT storing non-DS data: %s", sl_pkt.sl_op)
 			return
-		logger.debug("post_data inserting into db")
+		if logging.DBG > 2: logger.debug("store_data inserting into db")
 
 		_DB.insert(sl_pkt.db_form())
 
@@ -538,11 +538,15 @@ class Node(Item):
 				return	# duplicate
 		else:
 			logger.error("Node %s got control pkt %s", self, sl_pkt)
+			return # NotForUs
 
-		for slid in sl_pkt.via:		# set ts for all nodes on the route
+		# set ts for all nodes on the route
+		for slid in sl_pkt.via + [sl_pkt.slid]:
 			node = registry.find_by_id('Node', slid)
 			if node:
 				node.last_packet_rx_ts = sl_pkt.ts
+				if not node.is_up():
+					self.set_state('TRANSMITTING')
 			else:
 				logger.error("post_data: via node %s not on file", slid)
 
@@ -557,26 +561,26 @@ class Node(Item):
 		self.packets_received += 1
 		self.mesh.packets_received += 1
 
-		logger.info("%s: received %s, op %s", self, sl_pkt, SL_OP.code(sl_pkt.sl_op))
+		logger.info("%s: received %s", self, sl_pkt)
 
 		self.tr[sl_pkt.slid] = sl_pkt.rssi
 
 		sl_op = sl_pkt.sl_op
 
 		if sl_op == SL_OP.ON:
-			logger.debug('post_data: slid 0x%0x UP', int(self.key))
+			logger.debug('post_data: slid %d UP', int(self.key))
 			self.nodecfg = SL_NodeCfgStruct(pkt=sl_pkt.bpayload)
 			self.set_state("UP")
 		elif sl_op == SL_OP.DS:
-			logger.debug('post_data: slid 0x%0x status %s', int(self.key),sl_pkt.payload)
+#			logger.debug('post_data: slid %d status %s', int(self.key),sl_pkt.payload)
 			self.store_data(sl_pkt)
 
 		elif sl_op == SL_OP.SS:
-			logger.debug("post_data: slid 0x%0x status '%s'", int(self.key),sl_pkt.payload)
+#			logger.debug("post_data: slid %d status '%s'", int(self.key),sl_pkt.payload)
 			self.set_state(sl_pkt.payload)
 
 		elif sl_op in [SL_OP.AK, SL_OP.NK]:
-			logger.debug('post_data: slid 0x%0x answer %s', int(self.key), SL_OP.code(sl_op))
+			logger.debug('post_data: slid %d answer %s', int(self.key), SL_OP.code(sl_op))
 			try:
 				self.response_q.put(sl_op)
 			except Full:
@@ -668,7 +672,7 @@ class Packet(Item):
 		self.payload = None
 		self.itype = "Pkt"
 		self.ts = time.time()
-		self.node = None
+#		self.node = None
 		self.nodecfg = None
 
 		if pkt is not None:					# deconstruct pkt
@@ -682,13 +686,14 @@ class Packet(Item):
 		self.pno = Packet.PacketID
 		if pkt is None:
 			self.set_node(slnode)
-			logger.debug("pkt %s: node %s: %s", self,  self.node, SL_OP.code(self.sl_op))
-		else:
-			logger.debug("pkt %s: node %s: %s", self,  self.node, SL_OP.code(self.sl_op))
+
+
+	def __str__(self):
+		return "Pkt N%s(%s)%s" % ( self.slid, self.pkt_num,  SL_OP.code(self.sl_op))
 
 
 	def set_node(self, node):
-		self.node = node
+#		self.node = node
 		self.set_parent(self.slid)
 
 
@@ -756,7 +761,7 @@ class Packet(Item):
 
 				self.via.append(slid)
 				pkt = self.bpayload
-				logger.debug("pkt encap BS from %s, len %s rssi %s", slid, len(pkt), self.rssi)
+				logger.debug("pkt un-cap BS from %s, len %s rssi %s", slid, len(pkt), 256-self.rssi)
 			self.rssi = self.rssi - 256
 
 		if len(pkt) < struct.calcsize(Packet.data_header_fmt % 0):
@@ -823,9 +828,9 @@ class Packet(Item):
 		if self.slid is None:
 			via = "-%s-" % self.key
 		else:
-			via = "0x%0x" % self.slid
+			via = "%d" % self.slid
 		if len(self.via) > 0:
-			for v in self.via[::-1]: via += "->0x%0x" % v
+			for v in self.via[::-1]: via += "->%d" % v
 		s = "SL(op %s, id %s" % (SL_OP.code(self.sl_op), via)
 		if self.rssi is not None:
 			s += " rssi %s" % (self.rssi)
@@ -921,7 +926,7 @@ class NodeRoutes:
 		svia = ""
 		for v in self.via:
 			svia += "->0x%02x" % v
-		return "VIA(0x%0x: %s" % (self.dest, svia)
+		return "VIA(%d: %s" % (self.dest, svia)
 
 
 #
@@ -937,7 +942,7 @@ class LogData:
 
 
 	def log_state(self, slid, new_state):
-		logger.debug("logdata node 0x%0x %s", slid, new_state)
+		logger.debug("logdata node %d %s", slid, new_state)
 		self.nodes_online += 1 if new_state == "ONLINE" else -1
 
 
