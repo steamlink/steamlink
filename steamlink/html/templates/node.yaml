@@ -1,15 +1,15 @@
-mesh:
-  name: mesh
+node:
+  name: node
   type: tile
-  title: Mesh Summary
+  title: Node Summary
   # Query information
-  record_type: Mesh
+  record_type: Node
   start_key: 1
   key_field: "null"
   count: 0
   end_key: "null"
   return_children: false
-  stream_tag: mesh_header
+  stream_tag: node_header
   force: false
   # Layout
   row: 1
@@ -17,12 +17,12 @@ mesh:
   grid_rows: 4
   template: 'tile.html'
 
-nodes:
-  name: nodes
+packets:
+  name: packets
   type: table
-  title: Nodes in the Mesh
+  title: Packets in the Node
   # Query information
-  record_type: Mesh
+  record_type: Pkt
   start_key: 1
   key_field: "null"
   count: 20
@@ -32,14 +32,14 @@ nodes:
   force: false
   # Fields
   headers:
-    - "Name"
-    - "Description"
-    - "State"
-    - "Packets sent"
-    - "Packets received"
+    - "op"
+    - "rssi"
+    - "via"
+    - "payload"
+    - "ts"
     - "key"
   row: 2
   grid_columns: 'twelve'
   grid_rows: 4
   template: 'table.html'
-  record_link: "/nodes?node.start_key={key}"
+  record_link: "/packet?packet.start_key={key}"

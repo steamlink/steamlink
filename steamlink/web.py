@@ -21,8 +21,6 @@ logger = logging.getLogger(__name__)
 
 from yarl import URL
 
-
-
 class DisplayConfiguration:   
 
 	def __init__(self, file_name):
@@ -33,9 +31,11 @@ class DisplayConfiguration:
 
 	def row_wise(self):
 		rows = {}
-		for item in self.data:
+		for key in self.data:
+			item = self.data[key]
 			try:
 				if item['row'] not in rows:
+					logger.debug("web rowise: itemrow %s ", item['row'])
 					rows[item['row']] = []
 				rows[item['row']].append(item)
 			except KeyError:
@@ -309,8 +309,8 @@ class WebApp(object):
 		self.libdir = os.path.dirname(os.path.abspath(__file__))
 		self.static_dir = self.libdir+'/html/static'
 		self.templates_dir = self.libdir+'/html/templates'
-
 		self.app.router.add_route('GET', '/', self.route_handler)
+		self.app.router.add_route('GET', '/{file_name}', self.route_handler)
 
 		self.app.router.add_static('/static', self.static_dir)
 		self.app.on_cleanup.append(self.web_on_cleanup)
@@ -425,10 +425,13 @@ class WebApp(object):
 		if request.rel_url.path == '/':
 			file_name = 'index'
 		else:
-			file_name = str(request.rel_url).path.rstrip('/')
+			file_name = request.match_info['file_name']
+			# file_name = str(request.rel_url.path).rstrip('/')
+		logger.info("web route_handler: filename: %s, request.rel_url %s", file_name, request.rel_url)
 		dc = DisplayConfiguration(self.templates_dir + '/' + file_name + '.yaml')
 
 		for qk in request.query:
+			logger.debug("web route_handler: Query' : %s =%s", qk, request.query[qk])
 			try:
 				partial, key = qk.split('.', 1)
 			except:
@@ -437,7 +440,16 @@ class WebApp(object):
 			if not partial in dc.data:
 				logger.info("web route_handler: partial not in yaml : %s", partial)
 				continue
-			dc.data[partial].key = request.query[qk]
+			logger.info("web route_handler: dc.data[partial] : %s", dc.data[partial])
+			i = request.query[qk]
+			try:
+				i = int(i)
+			except:
+				pass
+			dc.data[partial][key] = i
+
+
+
 
 		if logging.DBG > 0: logger.debug("webapp handler %s", dc.data)
 		context = { 'context' : dc.row_wise()}

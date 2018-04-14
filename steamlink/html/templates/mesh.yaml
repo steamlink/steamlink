@@ -42,4 +42,4 @@ nodes:
   grid_columns: 'twelve'
   grid_rows: 4
   template: 'table.html'
-  record_link: "/nodes?node.start_key={key}"
+  record_link: "/node?node.start_key={key}&packets.start_key={key}"

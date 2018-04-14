@@ -1,0 +1,18 @@
+packet:
+  name: packet
+  type: tile
+  title: Packet Summary
+  # Query information
+  record_type: Pkt
+  start_key: 1
+  key_field: "null"
+  count: 0
+  end_key: "null"
+  return_children: false
+  stream_tag: pkt_header
+  force: false
+  # Layout
+  row: 1
+  grid_columns: 'twelve'
+  grid_rows: 4
+  template: 'tile.html'
