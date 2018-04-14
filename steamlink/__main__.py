@@ -33,6 +33,7 @@ from .steamlink import Steam, Mesh, Node, SL_NodeCfgStruct
 from .steamlink import Attach as steamlinkAttach
 
 from .web import WebApp
+from .db import DB
 
 from .util import (
 	getargs,
@@ -132,6 +133,9 @@ DEFAULT_CONF = OrderedDict({
 				'auth_anonymous',
 			]
 		})
+	}),
+	'DB':  OrderedDict({
+		'db_filename': home + '/.steamlink/steamlink.json',
 	})
 })
 
@@ -232,6 +236,7 @@ def steamlink_main() -> int:
 
 	conf_console = conf['console']
 	conf_steam = conf['Steam']
+	conf_db = conf['DB']
 
 	# Daemon functions
 	if cl_args.pid_file:
@@ -302,11 +307,17 @@ def steamlink_main() -> int:
 		engineio_logger = ll,
 	)
 
+	logger.debug("startup: open DB")
+	db = DB(conf_db, loop=aioloop)
+
 	logger.debug("startup: create WebApp")
 	webapp = WebApp(namespace, sio, conf_console, loop=aioloop)
 
-	linkageAttach(webapp)
-	steamlinkAttach(mqtt)
+	linkageAttach(webapp, db)
+	steamlinkAttach(mqtt, db)
+
+	logger.debug("startup: start db")
+	aioloop.run_until_complete(db.start())
 
 	logger.debug("startup: start webapp")
 	aioloop.run_until_complete(webapp.start())
