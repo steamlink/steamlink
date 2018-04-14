@@ -9,15 +9,17 @@ logger = logging.getLogger()
 
 # Globals, initialized by attach
 _WEBAPP = None
+_DB = None
 
-def Attach(app):
-	global _WEBAPP
+def Attach(app, db):
+	global _WEBAPP, _DB
 	if _WEBAPP is not None:
 		logger.error("Linkage: Attach already done")
 		return
 	_WEBAPP = app
+	_DB = db
 
-	logger.debug("linkage: Attached webapp '%s'", _WEBAPP.name)
+	logger.debug("linkage: Attached apps '%s, %s'", _WEBAPP.name, _DB.name)
 
 
 import yaml

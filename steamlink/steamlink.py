@@ -24,11 +24,13 @@ from .linkage import (
 
 
 _MQTT = None
+_DB = None
 
-def Attach(mqtt):
-	global _MQTT
+def Attach(mqtt, db):
+	global _MQTT, _DB
 	_MQTT = mqtt
-	logger.debug("steamlink: Attached mqtt client '%s'", _MQTT.name)
+	_DB = db
+	logger.debug("steamlink: Attached apps '%s, %s'", _MQTT.name, _DB.name)
 
 
 TODO = """
@@ -379,7 +381,6 @@ class Node(Item):
 		self.last_packet_rx_ts = 0
 		self.last_packet_tx_ts = 0
 		self.last_packet_num = 0
-		self.status = []
 		self.via = []		# not initiatized
 		self.tr = {}		# dict of sending nodes, each holds a list of (pktno, rssi)
 		self.packet_log = TimeLog(MAX_NODE_LOG_LEN)
@@ -519,6 +520,15 @@ class Node(Item):
 		return True	#XXX
 
 
+	def store_data(self, sl_pkt):
+		if sl_pkt.sl_op != SL_OP.DS:		# actual data
+			logger.warning("post_data NOT storing non-DS data: %s", sl_pkt.sl_op)
+			return
+		logger.debug("post_data inserting into db")
+
+		_DB.insert(sl_pkt.db_form())
+
+
 	def post_data(self, sl_pkt):
 		""" handle incoming messages on the ../data topic """
 		self.log_pkt(sl_pkt)
@@ -558,10 +568,7 @@ class Node(Item):
 			self.set_state("UP")
 		elif sl_op == SL_OP.DS:
 			logger.debug('post_data: slid 0x%0x status %s', int(self.key),sl_pkt.payload)
-			try:
-				self.status = sl_pkt.payload.split(',')
-			except:
-				self.status = str(sl_pkt.payload)
+			self.store_data(sl_pkt)
 
 		elif sl_op == SL_OP.SS:
 			logger.debug("post_data: slid 0x%0x status '%s'", int(self.key),sl_pkt.payload)
@@ -671,6 +678,7 @@ class Packet(Item):
 			self.construct(slnode, sl_op, rssi, payload)
 		Packet.PacketID += 1
 		super().__init__('Pkt', Packet.PacketID)
+		self.pno = Packet.PacketID
 		self.name = "N%s_P%s" % (self.slid, self.pkt_num)
 		logger.debug("pkt %s: node %s: %s", self,  self.node, SL_OP.code(self.sl_op))
 		if pkt is None:
@@ -696,7 +704,7 @@ class Packet(Item):
 		self.sl_op = sl_op
 		self.rssi = rssi + 256
 		self.payload = payload
-		logger.debug("SteamLinkPaktet payload = %s", payload);
+		logger.debug("SteamLinkPacket payload = %s", payload);
 		if self.payload is not None:
 			if type(self.payload) == type(b''):
 				self.bpayload = self.payload
@@ -794,6 +802,18 @@ class Packet(Item):
 		r['rssi'] = self.rssi
 		r['qos'] = self.qos
 		r['payload'] = self.payload
+		r['bpayload'] = repr(self.bpayload)
+		return r
+
+
+	def db_form(self):
+		r = {}
+		r['pno'] = self.pno
+		r['slid'] = self.slid
+		r['ts'] = self.ts
+		r['rssi'] = self.rssi
+		r['qos'] = self.qos
+		r['via'] = self.via
 		r['bpayload'] = repr(self.bpayload)
 		return r
 
