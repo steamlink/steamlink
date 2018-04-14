@@ -680,10 +680,11 @@ class Packet(Item):
 		Packet.PacketID += 1
 		super().__init__('Pkt', Packet.PacketID)
 		self.pno = Packet.PacketID
-		self.name = "N%s_P%s_%s" % (self.slid, self.pkt_num, SL_OP.code(self.sl_op))
 		if pkt is None:
 			self.set_node(slnode)
-		logger.debug("pkt %s: node %s: %s", self,  self.node, SL_OP.code(self.sl_op))
+			logger.debug("pkt %s: node %s: %s", self,  self.node, SL_OP.code(self.sl_op))
+		else:
+			logger.debug("pkt %s: node %s: %s", self,  self.node, SL_OP.code(self.sl_op))
 
 
 	def set_node(self, node):
@@ -732,8 +733,6 @@ class Packet(Item):
 					self.sl_op, self.slid, self.pkt_num, self.qos, self.bpayload)
 			if len(slnode.via) > 0:
 				for via in slnode.via:
-					if via == self.slid:
-						break
 					self.bpayload = self.pkt
 					sfmt = Packet.control_header_fmt % len(self.bpayload)
 					self.pkt = struct.pack(sfmt, SL_OP.BN, via, 0, self.qos, self.bpayload)
@@ -789,8 +788,6 @@ class Packet(Item):
 			except Exception as e:
 				pass
 
-		if self.is_data():
-			self.via.append(self.slid)
 		return True
 
 

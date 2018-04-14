@@ -180,7 +180,7 @@ def load_from_cache(fname):
 		else:
 			nodecfg = None
 		n = Node(data['Node'][node]['slid'], nodecfg)
-		n.via = data['Node'][node]['via']
+		n.via = data['Node'][node].get('via',[])
 		logger.info("restored node %s", n)
 
 #
