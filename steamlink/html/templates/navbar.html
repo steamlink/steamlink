@@ -1,0 +1,9 @@
+<div class="container">
+    <div class="row">
+        <div class="twelve columns">
+            {% for button in navbar %}
+                <a class="button button-primary" href="{{button}}">{{ button | capitalize }}</a>
+            {% endfor %}
+        </div>
+    </div>
+</div>

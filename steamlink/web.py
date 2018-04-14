@@ -42,6 +42,16 @@ class DisplayConfiguration:
 				logger.error("DisplayConfiguration: No key found")
 		return rows
 
+class NavBar:
+
+	def __init__(self, dir):
+		self.yamls = []
+		for file in os.listdir(dir):
+			name, ext = file.rsplit('.', 1)
+			if ext == 'yaml':
+				self.yamls.append(name)
+
+
 XXX = """
 #
 # ItemPartialMap
@@ -310,8 +320,10 @@ class WebApp(object):
 		self.static_dir = self.libdir+'/html/static'
 		self.templates_dir = self.libdir+'/html/templates'
 		self.app.router.add_route('GET', '/', self.route_handler)
+		self.app.router.add_route('GET', '/favicon.ico', self.favicon_handler)
 		self.app.router.add_route('GET', '/{file_name}', self.route_handler)
 
+		
 		self.app.router.add_static('/static', self.static_dir)
 		self.app.on_cleanup.append(self.web_on_cleanup)
 		self.app.on_shutdown.append(self.web_on_shutdown)
@@ -421,7 +433,12 @@ class WebApp(object):
 		logger.debug("console_update_loop done")
 
 
+	async def favicon_handler(self, request):
+		return None
+
 	async def route_handler(self, request):
+		nav = NavBar(self.templates_dir)
+
 		if request.rel_url.path == '/':
 			file_name = 'index'
 		else:
@@ -452,7 +469,7 @@ class WebApp(object):
 
 
 		if logging.DBG > 0: logger.debug("webapp handler %s", dc.data)
-		context = { 'context' : dc.row_wise()}
+		context = { 'context' : dc.row_wise(), 'navbar' : nav.yamls }
 		response = aiohttp_jinja2.render_template(file_name + '.html', request, context)
 #		response.headers['Content-Language'] = 'en'
 		return response
