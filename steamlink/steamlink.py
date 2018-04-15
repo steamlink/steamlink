@@ -356,6 +356,7 @@ class Node(Item):
 	 "Packets sent": "self.packets_sent",
 	 "Packets received": "self.packets_received",
 	 "Packets cached": "len(self.children)",
+	 "Child 1": "str(self.children[12])",
 	 "gps_lat": "self.nodecfg.gps_lat",
 	 "gps_lon": "self.nodecfg.gps_lon",
 	 "key": "self.slid",
@@ -689,16 +690,25 @@ class Packet(Item):
 				raise SteamLinkError("deconstruct pkt to short");
 		Packet.PacketID += 1
 		super().__init__('Pkt', Packet.PacketID)
-		self._pkt_num = Packet.PacketID
+		self.key = Packet.PacketID
 		if self.is_outgoing:
 			self.set_node(slnode)
 
 
 	def __str__(self):
-		return "Pkt N%s(%s)%s" % ( self.slid, self.pkt_num,  SL_OP.code(self.sl_op))
+		ULOn = "[4m"
+		BOn = "[7m"
+		BOff = "[0m"
+		try:
+			return "Pkt N%s(%s)%s" % ( self.slid, self.pkt_num, BOn+SL_OP.code(self.sl_op)+BOff)
+		except:
+			return "Pkt NXXX(??)??"
 
 
 	def set_node(self, node):
+		ULOn = "[4m"
+		BOn = "[7m"
+		BOff = "[0m"
 		self.node = node
 		self.set_parent(self.slid)
 		if self.is_outgoing:
@@ -708,7 +718,7 @@ class Packet(Item):
 			direction = "received"
 			via = "direct" if self.via == [] else "via %s" % self.via
 
-		logger.debug("pkt: %s %s %s: %s", direction, via, self, self.payload)
+		logger.debug("pkt: %s %s %s: %s", ULOn+ direction, via+BOff,  self, self.payload)
 
 
 	def is_data(self, sl_op = None):
@@ -862,6 +872,7 @@ class Packet(Item):
 			except Exception as e:
 				v = "*%s*" % e
 			data[label] = v
+		if logging.DBG > 1: logger.debug("pkt console data: %s", data)
 		return data
 
 
@@ -869,7 +880,7 @@ class Packet(Item):
 		rooms = []
 		rooms.append( "%s_*" % (self.itype))
 		# Packets don't have a 'header' room
-#		rooms.append( "%s_%s" % (self.itype, self.key))
+		rooms.append( "%s_%s" % (self.itype, self.key))
 		if self.parent is not None:
 			rooms.append( "%s_%s_*" % (self.parent.itype, self.parent.key))
 		return rooms

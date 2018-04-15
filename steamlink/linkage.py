@@ -203,13 +203,13 @@ class Item(BaseItem):
 		super().__init__(itype, key, name)
 		if not key_in_parent is None:
 			self.set_parent(key_in_parent)
-		self.set_rooms()
 
 
 	def set_parent(self, key_in_parent):
 		self.parent = self.get_parent(key_in_parent)
 		if self.parent is not None:
 			self.parent.add_child(self)
+		self.set_rooms()
 
 
 	def set_rooms(self):
@@ -348,7 +348,7 @@ class RoomItem:
 			self.cache = data_to_emit
 #		self.pack['display_vals'] = data_to_emit
 		self.pack = data_to_emit
-		if logging.DBG >= 1: logger.debug("console_update ROOM %s ITEM %s DATA %s", self.room, self.item, self.pack)
+		if logging.DBG > 2: logger.debug("console_update ROOM %s ITEM %s DATA %s", self.room, self.item, self.pack)
 		return self.pack
 
 

@@ -400,7 +400,7 @@ class WebApp(object):
 
 
 	def queue_item_update(self, roomitem, sroom, force):
-		if logging.DBG > 2: logger.debug("webapp queue_item_update for %s item %s", roomitem.room, roomitem.item)
+		if logging.DBG >= 2: logger.debug("webapp queue_item_update for %s item %s", roomitem.room, roomitem.item)
 		asyncio.ensure_future(self.con_upd_q.put([roomitem, sroom, force]), loop=self.loop)
 
 
@@ -418,13 +418,13 @@ class WebApp(object):
 #			await self.sio.emit('data_full', 
 			data = upd_roomitem.console_update(upd_force)
 			if upd_roomitem.room.stream_tag == None:
-				if logging.DBG > 2: logger.debug("console_update_loop: stream_tag is None: %s", data)
+				if logging.DBG >= 2: logger.debug("console_update_loop: stream_tag is None: %s", data)
 			else:
 				await self.sio.emit(upd_roomitem.room.stream_tag, 
 						data = data,
 						namespace = self.namespace,
 						room = upd_sroom)	
-				if logging.DBG > 2: logger.debug("console_update_loop: data sent to stream_tag %s: %s", \
+				if logging.DBG > 1: logger.debug("console_update_loop: data sent to stream_tag %s: %s", \
 						upd_roomitem.room.stream_tag, data)
 			upd_roomitem.update_sent()
 			self.con_upd_q.task_done()
