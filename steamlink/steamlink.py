@@ -277,10 +277,10 @@ class Steam(Item):
 		if not 'Node' in registry.get_itypes():
 			return
 		for node in registry.get_all('Node'):
-			if node.is_overdue() and node.is_up():
+			if node.is_overdue() and node.is_state_up():
 				node.set_state("OVERDUE")
 				node.schedule_update()
-			if not node.is_up() and node.nodecfg.pingable:
+			if not node.is_state_up() and node.nodecfg.pingable:
 				if node.last_packet_tx_ts + 60 < time.time():		# XXX var
 					node.send_get_status()
 		
@@ -431,21 +431,24 @@ class Node(Item):
 
 
 	def set_state(self, new_state):
-		was_up = self.is_up()
+		was_up = self.is_state_up()
 		old_state = self.state
 		self.state = new_state
-		is_up = self.is_up()
+		is_state_up = self.is_state_up()
 	
-		if not was_up and is_up:
+		if not was_up and is_state_up:
 			logger.info("node %s now online: %s -> %s", self, old_state, new_state)
-		elif was_up and not is_up:
+		elif was_up and not is_state_up:
 			logger.info("node %s now offline: %s -> %s", self, old_state, new_state)
-		if was_up != is_up:
+		if was_up != is_state_up:
 			# publish node state on some mqtt
 			pass
 
+		if new_state == "TRANSMITTING" and self.nodecfg.pingable:
+			self.send_get_status()
 
-	def is_up(self):
+
+	def is_state_up(self):
 		return self.state in Node.UPSTATES
 
 
@@ -478,7 +481,7 @@ class Node(Item):
 
 
 	def send_set_radio_param(self, radio):
-		if not self.is_up(): return SL_OP.NC
+		if not self.is_state_up(): return SL_OP.NC
 		lorainit = struct.pack('<BLB', 0, 0, radio)
 		logger.debug("send_set_radio_param: len %s, pkt %s", len(lorainit), lorainit)
 		sl_pkt = Packet(slnode=self, sl_op=SL_OP.SR, payload=lorainit)
@@ -489,7 +492,7 @@ class Node(Item):
 
 
 	def send_testpacket(self, pkt):
-		if not self.is_up(): return SL_OP.NC
+		if not self.is_state_up(): return SL_OP.NC
 		sl_pkt = Packet(slnode=self, sl_op=SL_OP.TD, payload=pkt)
 		self.publish_pkt(sl_pkt)
 		rc = self.get_response(timeout=SL_RESPONSE_WAIT_SEC)
@@ -546,8 +549,9 @@ class Node(Item):
 			node = registry.find_by_id('Node', slid)
 			if node:
 				node.last_packet_rx_ts = sl_pkt.ts
-				if not node.is_up():
-					self.set_state('TRANSMITTING')
+				if not node.is_state_up():
+					node.set_state('TRANSMITTING')
+				node.schedule_update()
 			else:
 				logger.error("post_data: via node %s not on file", slid)
 
@@ -603,7 +607,7 @@ class Node(Item):
 #			sl_log.post_incoming(test_pkt)
 
 		# any pkt from node indicates it's up
-		if not self.is_up():
+		if not self.is_state_up():
 			self.set_state('TRANSMITTING')
 
 		self.schedule_update()
@@ -762,7 +766,7 @@ class Packet(Item):
 
 				self.via.append(slid)
 				pkt = self.bpayload
-				logger.debug("pkt un-cap BS from %s, len %s rssi %s", slid, len(pkt), 256-self.rssi)
+				logger.debug("pkt un-ecap BS from P%s(%s)BS, len %s rssi %s", slid, self.pkt_num,  len(pkt), 256-self.rssi)
 			self.rssi = self.rssi - 256
 
 		if len(pkt) < struct.calcsize(Packet.data_header_fmt % 0):

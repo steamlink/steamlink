@@ -76,9 +76,9 @@ nodes:
     - "Name"
     - "Description"
     - "State"
+    - "Last Pkt received"
     - "Packets sent"
     - "Packets received"
-    - "key"
   row: 2
   grid_columns: 'twelve'
   grid_rows: 4
