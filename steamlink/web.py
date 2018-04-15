@@ -233,7 +233,7 @@ class WebNamespace(socketio.AsyncNamespace):
 		room = registry.find_by_id('Room', sroom)
 		if room is None:
 			room = Room(sroom=sroom) 	
-			logger.debug("join: auto create room: %s", str(message))
+			logger.debug("join: auto create room: %s %s", sroom, str(message))
 
 		room.stream_tag = stream_tag
 		self.enter_room(sid, sroom, namespace=self.namespace)

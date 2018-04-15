@@ -155,7 +155,7 @@ class BaseItem:
 			self.name = self.mkname()
 		else:
 			self.name = name
-		if logging.DBG > 2: logger.debug("BaseItem: created %s", self)
+		if logging.DBG >= 1: logger.debug("BaseItem: created %s", self)
 		registry.register(self)
 
 
@@ -203,6 +203,7 @@ class Item(BaseItem):
 		super().__init__(itype, key, name)
 		if not key_in_parent is None:
 			self.set_parent(key_in_parent)
+		self.set_rooms()
 
 
 	def set_parent(self, key_in_parent):
@@ -210,8 +211,10 @@ class Item(BaseItem):
 		if self.parent is not None:
 			self.parent.add_child(self)
 
+
+	def set_rooms(self):
 		for r in self.get_room_list():
-			if logging.DBG > 2: logger.debug("Item %s: add room %s", self, r)
+			if logging.DBG >= 1: logger.debug("Item %s: add room %s", self, r)
 			room = registry.find_by_id('Room', r)
 			if room is None:
 				room = Room(sroom = r)
@@ -345,7 +348,7 @@ class RoomItem:
 			self.cache = data_to_emit
 #		self.pack['display_vals'] = data_to_emit
 		self.pack = data_to_emit
-		if logging.DBG > 2: logger.debug("console_update ROOM %s ITEM %s DATA %s", self.room, self.item, self.pack)
+		if logging.DBG >= 1: logger.debug("console_update ROOM %s ITEM %s DATA %s", self.room, self.item, self.pack)
 		return self.pack
 
 
