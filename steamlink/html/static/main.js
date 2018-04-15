@@ -87,7 +87,7 @@ $(function() {
 
   window.socketStreams = {
     'streams' : [],
-    'connected' : false
+    'reconnect' : false
   };
   
   socket = io.connect(socketNamespace);
@@ -103,14 +103,16 @@ $(function() {
       $(alertWrapper).css({"color": "white"})
       $(alertWrapper).css({"background-color": "lightcoral"})
       $(alertWrapper).show();
+      window.socketStreams.connected = true;
   });
 
   socket.on("connect", () => {
       socket.emit("connected", { data: "I'm connected!" });
       $(alertWrapper).hide();
-      window.socketStreams.connected = true;
-      window.socketStreams.streams.forEach((stream) => {
-        stream.startStream();
-      })
+      if (window.socketStreams.connected) {
+        window.socketStreams.streams.forEach((stream) => {
+          stream.startStream();
+        });
+      }
   });
 });
