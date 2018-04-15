@@ -464,11 +464,11 @@ class WebApp(object):
 				pass
 			dc.data[partial][key] = i
 
-
-
-
 		if logging.DBG > 0: logger.debug("webapp handler %s", dc.data)
 		context = { 'context' : dc.row_wise(), 'navbar' : nav.yamls }
+		
+		if not (os.path.isfile(self.templates_dir + '/'+ file_name + '.html')):
+			file_name = 'index'
 		response = aiohttp_jinja2.render_template(file_name + '.html', request, context)
 #		response.headers['Content-Language'] = 'en'
 		return response

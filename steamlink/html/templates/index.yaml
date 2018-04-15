@@ -1,15 +1,15 @@
-mesh:
-  name: mesh
+home:
+  name: home
   type: tile
-  title: Mesh Summary
+  title: Steamlink Summary
   # Query information
-  record_type: Mesh
-  start_key: 1
+  record_type: Steam
+  start_key: 0
   key_field: "null"
   count: 0
   end_key: "null"
   return_children: false
-  stream_tag: mesh_header
+  stream_tag: home_header
   force: false
   # Layout
   row: 1
@@ -17,13 +17,13 @@ mesh:
   grid_rows: 4
   template: 'tile.html'
 
-nodes:
-  name: nodes
+meshes:
+  name: meshes
   type: table
-  title: Nodes in the Mesh
+  title: Meshes
   # Query information
-  record_type: Mesh
-  start_key: 1
+  record_type: Steam
+  start_key: 0
   key_field: "null"
   count: 20
   end_key: "null"
@@ -34,12 +34,12 @@ nodes:
   headers:
     - "Name"
     - "Description"
-    - "State"
+    - "Total Nodes"
+    - "Active Nodes"
     - "Packets sent"
     - "Packets received"
-    - "key"
   row: 2
   grid_columns: 'twelve'
   grid_rows: 4
   template: 'table.html'
-  record_link: "/node?node.start_key={key}&packets.start_key={key}"
+  record_link: "/mesh?mesh.start_key={key}&nodes.start_key={key}"

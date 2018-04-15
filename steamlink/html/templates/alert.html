@@ -17,8 +17,7 @@
 
 <script type="text/javascript">
     $(function () {
-
-        
+               
         var alertWrapper = $('#{{ partial_item.name }}');
         var alertElement =  $('#{{ partial_item.name }} > .alert-msg')[0];
         var alertCloseElement = $('#{{ partial_item.name }} > a')[0];
@@ -46,22 +45,6 @@
         }); 
         
         alertStream.startStream();
-
-        $(alertCloseElement).click(function(){
-            $(alertWrapper).hide();
-        });
-
-        socket.on("disconnect", () => {
-            alertElement.innerHTML = "Websocket disconnected..."
-            alertCloseElement.innerHTML = "[ ✕ ]"; 
-            $(alertWrapper).css({"color": "white"})
-            $(alertWrapper).css({"background-color": "red"})
-            $(alertWrapper).show();
-        });
-
-        socket.on("connect", () => {
-            $(alertWrapper).hide();
-        });
 
     });
 </script>

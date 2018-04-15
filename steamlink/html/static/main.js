@@ -74,19 +74,43 @@ function Stream(sock, config, on_new_message) {
     on_new_message(data);
   };
 
+
+  window.socketStreams.streams.push(this);
+
+
   sock.on(self.config.stream_tag, self.newStreamData);
 }
 
 // On Document Ready
 $(function() {
   // Setup socket.io
+
+  window.socketStreams = {
+    'streams' : [],
+    'connected' : false
+  };
+  
   socket = io.connect(socketNamespace);
 
-  socket.on("connect", function() {
-    socket.emit("connected", { data: "I'm connected!" });
+  var alertWrapper = $('#dashboard_socket_alerts');
+  var alertElement =  $('#dashboard_socket_alerts > .alert-msg')[0];
+  var alertCloseElement = $('#dashboard_socket_alerts a')[0];
+
+  socket.on("disconnect", () => {
+      console.log("socket connection dead");
+      alertElement.innerHTML = "Websocket disconnected..."
+      alertCloseElement.innerHTML = "[ ✕ ]"; 
+      $(alertWrapper).css({"color": "white"})
+      $(alertWrapper).css({"background-color": "lightcoral"})
+      $(alertWrapper).show();
   });
 
-  socket.on("disconnect", function() {
-    console.log("dead");
+  socket.on("connect", () => {
+      socket.emit("connected", { data: "I'm connected!" });
+      $(alertWrapper).hide();
+      window.socketStreams.connected = true;
+      window.socketStreams.streams.forEach((stream) => {
+        stream.startStream();
+      })
   });
 });

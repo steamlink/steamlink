@@ -28,3 +28,12 @@
 a {
     text-decoration: none;
 }
+
+.alert-partial.partial:hover {
+    cursor: pointer;   
+}
+.close-icon {
+    float: right;
+    color: black;
+    padding-right: 5px;
+}
