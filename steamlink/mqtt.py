@@ -138,7 +138,7 @@ class Mqtt:
 	def publish(self, firsthop, pkt, qos=0, retain=False, sub="control"):
 		s = self.control_topic_x if sub == "control" else self.data_topic_x
 		topic = s % firsthop
-		logger.info("%s publish %s %s", self.name, topic, pkt)
+		# logger.info("%s publish %s %s", self.name, topic, pkt)
 		self.mq.publish(topic, payload=pkt.pkt, qos=qos, retain=retain)
 
 

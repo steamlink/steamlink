@@ -248,7 +248,7 @@ class Steam(Item):
 				logger.warning("on_data_msg: no node for pkt %s", sl_pkt)
 				return
 			node = Node(sl_pkt.slid, sl_pkt.nodecfg)
-		sl_pkt.set_node(node)	
+		sl_pkt.set_node(node)
 		node.post_data(sl_pkt)
 
 
@@ -283,7 +283,7 @@ class Steam(Item):
 			if not node.is_state_up() and node.nodecfg.pingable:
 				if node.last_packet_tx_ts + 60 < time.time():		# XXX var
 					node.send_get_status()
-		
+
 
 
 	def save(self):
@@ -435,7 +435,7 @@ class Node(Item):
 		old_state = self.state
 		self.state = new_state
 		is_state_up = self.is_state_up()
-	
+
 		if not was_up and is_state_up:
 			logger.info("node %s now online: %s -> %s", self, old_state, new_state)
 		elif was_up and not is_state_up:
@@ -566,7 +566,7 @@ class Node(Item):
 		self.packets_received += 1
 		self.mesh.packets_received += 1
 
-		logger.info("%s: received %s", self, sl_pkt)
+		# logger.info("%s: received %s", self, sl_pkt)
 
 		self.tr[sl_pkt.slid] = sl_pkt.rssi
 
@@ -679,17 +679,18 @@ class Packet(Item):
 		self.ts = time.time()
 #		self.node = None
 		self.nodecfg = None
+		self.is_outgoing = pkt is None
 
-		if pkt is not None:					# deconstruct pkt
+		if self.is_outgoing:				# construct pkt
+			self.construct(slnode, sl_op, rssi, payload)
+		else:								# deconstruct pkt
 			if not self.deconstruct(pkt):
 				logger.error("deconstruct pkt to short: %s", len(pkt))
 				raise SteamLinkError("deconstruct pkt to short");
-		else:								# construct pkt
-			self.construct(slnode, sl_op, rssi, payload)
 		Packet.PacketID += 1
 		super().__init__('Pkt', Packet.PacketID)
-		self.pno = Packet.PacketID
-		if pkt is None:
+		self._pkt_num = Packet.PacketID
+		if self.is_outgoing:
 			self.set_node(slnode)
 
 
@@ -698,8 +699,16 @@ class Packet(Item):
 
 
 	def set_node(self, node):
-#		self.node = node
+		self.node = node
 		self.set_parent(self.slid)
+		if self.is_outgoing:
+			direction = "send"
+			via = "direct" if self.node.via == [] else "via %s" % self.node.via
+		else:
+			direction = "received"
+			via = "direct" if self.via == [] else "via %s" % self.via
+
+		logger.debug("pkt: %s %s %s: %s", direction, via, self, self.payload)
 
 
 	def is_data(self, sl_op = None):
@@ -731,13 +740,12 @@ class Packet(Item):
 			self.bpayload = self.nodecfg.pack()
 
 		self.pkt_num = slnode.set_pkt_number(self)
-		if self.is_data():
+		if self.is_data():	# N.B. store never sends data
 			sfmt = Packet.data_header_fmt % len(self.bpayload)
 			logger.debug("pack: %s %s %s %s %s %s", self.sl_op, self.slid, self.pkt_num, self.rssi, self.qos, self.bpayload)
 			self.pkt = struct.pack(sfmt,
 					self.sl_op, self.slid, self.pkt_num, 256 - self.rssi, self.qos, self.bpayload)
 		else:
-			logger.debug("pkt %s for %s", SL_OP.code(self.sl_op), slnode)
 			sfmt = Packet.control_header_fmt % len(self.bpayload)
 			self.pkt = struct.pack(sfmt,
 					self.sl_op, self.slid, self.pkt_num, self.qos, self.bpayload)
@@ -746,16 +754,16 @@ class Packet(Item):
 					self.bpayload = self.pkt
 					sfmt = Packet.control_header_fmt % len(self.bpayload)
 					self.pkt = struct.pack(sfmt, SL_OP.BN, via, 0, self.qos, self.bpayload)
-			for l in phex(self.pkt, 4):
-				logger.debug("pkt c:  %s", l)
-
-
+			if logging.DBG > 1:
+				for l in phex(self.pkt, 4):
+					logger.debug("pkt c:  %s", l)
 
 
 	def deconstruct(self, pkt):
 		self.pkt = pkt
-		for l in phex(pkt, 4):
-			logger.debug("pkt:  %s", l)
+		if logging.DBG > 1:
+			for l in phex(pkt, 4):
+				logger.debug("pkt:  %s", l)
 
 		if pkt[0] == SL_OP.BS:		# un-ecap all
 			while pkt[0] == SL_OP.BS:
@@ -816,7 +824,7 @@ class Packet(Item):
 
 	def db_form(self):
 		r = {}
-		r['pno'] = self.pno
+		r['pno'] = self.pkt_num
 		r['slid'] = self.slid
 		r['ts'] = self.ts
 		r['rssi'] = self.rssi
