@@ -352,6 +352,7 @@ class Node(Item):
  	 "Name": "self.nodecfg.name",
 	 "Description": "self.nodecfg.description",
 	 "State": "self.state",
+	 "Last Pkt received": 'time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(int(self.last_packet_rx_ts)))',
 	 "Packets sent": "self.packets_sent",
 	 "Packets received": "self.packets_received",
 	 "Packets cached": "len(self.children)",
