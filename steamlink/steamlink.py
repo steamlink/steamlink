@@ -760,7 +760,7 @@ class Packet(Item):
 			self.pkt = struct.pack(sfmt,
 					self.sl_op, self.slid, self.pkt_num, self.qos, self.bpayload)
 			if len(slnode.via) > 0:
-				for via in slnode.via:
+				for via in slnode.via[::-1]:
 					self.bpayload = self.pkt
 					sfmt = Packet.control_header_fmt % len(self.bpayload)
 					self.pkt = struct.pack(sfmt, SL_OP.BN, via, 0, self.qos, self.bpayload)

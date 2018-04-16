@@ -155,7 +155,7 @@ class BaseItem:
 			self.name = self.mkname()
 		else:
 			self.name = name
-		if logging.DBG >= 1: logger.debug("BaseItem: created %s", self)
+		if logging.DBG > 1: logger.debug("BaseItem: created %s", self)
 		registry.register(self)
 
 
@@ -214,7 +214,7 @@ class Item(BaseItem):
 
 	def set_rooms(self):
 		for r in self.get_room_list():
-			if logging.DBG >= 1: logger.debug("Item %s: add room %s", self, r)
+			if logging.DBG > 1: logger.debug("Item %s: add room %s", self, r)
 			room = registry.find_by_id('Room', r)
 			if room is None:
 				room = Room(sroom = r)
