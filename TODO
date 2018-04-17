@@ -1,17 +1,26 @@
 
 ToDos/Dones:
-X node: pkt sequence numbers
+
+Node
+X pkt sequence numbers
+X change ON opcode to transmit a SL_NodeCfgStruct packet
+- ACK handling
+- sign-on procedure
+X replace RadioHead driver with native driver (sandeepmistry/arduino-LoRa)
+
+Bridge:
+
+
+Store:
 X store: track and report missing or packets
-X node: change ON opcode to transmit a SL_NodeCfgStruct packet
-- node/store: sign-on procedure
-X node: replace RadioHead driver with native driver (sandeepmistry/arduino-LoRa)
-- store: limit number of items in a room
-- store: protocol for paging through "old" items
+- store: new DB layer with continuous searchs for notification of web clients
+- store: save Mesh/Node info in TinyDB yaml DB
+
+WebConsole:
 
 Bugs:
 fix: Adafruit MQTT library always sets 'retain' flag
 fix: mqtt client sometimes hangs on a 2nd or later connection attempt
-fix: 
 
 
 
