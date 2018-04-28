@@ -43,13 +43,14 @@
 
         var record_link = "{{ partial_item.record_link }}";
         var tableStream = new Stream(socket, streamConfig, (data) => {
+            var self = this;
             console.log(tableStream.cache);
             var htmlString = "";            
             tableStream.cache.forEach((item) => {
                 htmlString += "<tr>";
                 headers.forEach( (header) => {
                     if(header in item) {
-                        htmlString += "<td>" + "<a href =" + window.format(record_link, item) + ">" + item[header] + "</a></td>";
+                        htmlString += "<td>" + "<a href =" + window.format(record_link, {"key" : item[self.key_field]}) + ">" + item[header] + "</a></td>";
                     } else {
                         htmlString += "<td></td>";   
                     }
