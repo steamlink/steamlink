@@ -217,13 +217,13 @@ class Item(RegItem):
 		super().__init__(itype, key, name)
 		if not key_in_parent is None:
 			self.set_parent(key_in_parent)
+		self.set_rooms()
 
 
 	def set_parent(self, key_in_parent):
 		self.parent = self.get_parent(key_in_parent)
 		if self.parent is not None:
 			self.parent.add_child(self)
-		self.set_rooms()
 
 
 	def set_rooms(self):
