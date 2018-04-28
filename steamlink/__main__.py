@@ -135,7 +135,7 @@ DEFAULT_CONF = OrderedDict({
 		})
 	}),
 	'DB':  OrderedDict({
-		'db_filename': home + '/.steamlink/steamlink.json',
+		'db_filename': home + '/.steamlink/steamlink.db',
 	})
 })
 
@@ -144,7 +144,7 @@ DEFAULT_CONF = OrderedDict({
 # 
 #
 def save_to_cache(fname):
-	
+	return
 	meshes = {}
 	if 'Mesh' in registry.get_itypes():
 		for mesh in registry.get_all('Mesh'):
@@ -160,6 +160,7 @@ def save_to_cache(fname):
 
 
 def load_from_cache(fname):
+	return
 	if not os.path.exists(fname):
 		return
 
@@ -261,7 +262,7 @@ def steamlink_main() -> int:
 	except NotImplementedError:  # pragma: no cover
 		logger.error("main: failed to trap signals")
 
-	OpenRegistry(None)
+#	OpenRegistry(None)
 #	OpenRegistry(conf_working_dir+"/steamlink.reg")
 
 	broker_c = conf_general.get('mqtt_broker', None)
@@ -319,6 +320,8 @@ def steamlink_main() -> int:
 	logger.debug("startup: start db")
 	aioloop.run_until_complete(db.start())
 
+	logger.debug("startup: Open Registry")
+	OpenRegistry()
 	logger.debug("startup: start webapp")
 	aioloop.run_until_complete(webapp.start())
 	steam = Steam(conf_steam)

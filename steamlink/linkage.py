@@ -31,39 +31,17 @@ from yaml import Loader, Dumper
 class Registry:
 	def __init__(self):
 		logger.debug("Registry: instance")
+		self.db_items = ['Steam', 'Mesh', 'Node', 'Pkt']
 
 
-	def open(self, fname):
+	def open(self):
 		# Note: load from file not implememted, only save
 		logger.debug("Registry: open")
-		self.fname = fname
-		if fname is None:
-			self.reg = {'name_idx': {}, 'id_idx': {}, 'ItemTypes': []}
-			for itype in ['Steam', 'Mesh', 'Node', 'Pkt', 'RoomItem', 'Room']:
-				self.reg['ItemTypes'].append(itype)
-				self.reg['name_idx'][itype] = {}
-				self.reg['id_idx'][itype] = {}
-		else:
-			self.reg = self.load()
+		self.reg =  {'name_idx': {}, 'id_idx': {}, 'ItemTypes': []}
 
 
 	def close(self):
-		if self.fname is None:
-			return
-		logger.info("saving registry")
-		data = self.save()
-		if logging.DBG > 2:
-			import pprint
-			pp = pprint.PrettyPrinter(indent=4)
-			pp.pprint(data)
-		logger.info("writing registry to %s", self.fname)
-		with open(self.fname, 'w') as outfile:
-			yaml.dump(data, outfile, default_flow_style=False)
-
-
-	def load(self):
-		r =  {'name_idx': {}, 'id_idx': {}, 'ItemTypes': []}
-		return r
+		return
 
 
 	def register(self, item):
@@ -73,27 +51,13 @@ class Registry:
 			self.reg['id_idx'][item.itype] = {}
 		if logging.DBG > 2: logger.debug("Registry: register %s", item)
 		self.reg['name_idx'][item.itype][item.name] = item
-		self.reg['id_idx'][item.itype][item.key] = item
+		self.reg['id_idx'][item.itype][item._key] = item
 
 
 	def unregister(self, item):
 		if logging.DBG > 2: logger.debug("Registry: unregister %s", item)
 		del self.reg['name_idx'][item.itype][item.name]
-		del self.reg['id_idx'][item.itype][item.key]
-
-
-	def get_parent_type(self, itype):
-		try:
-			i = self.reg['ItemTypes'].index(itype)
-		except:
-			return None
-		if i == 0:
-			return None
-		return self.reg['ItemTypes'][i-1]
-
-
-	def get_itypes(self):
-		return self.reg['ItemTypes']
+		del self.reg['id_idx'][item.itype][item._key]
 
 
 	def get_all(self, itype):
@@ -110,7 +74,7 @@ class Registry:
 
 	def find_by_id(self, itype, Id):
 		try:
-			t = self.reg['id_idx'][itype].get(str(Id), None)
+			t = self.reg['id_idx'][itype].get(Id, None)
 		except KeyError as e:
 			logger.warning("find_by_id: %s not in id_idx", e)
 			t = None
@@ -119,7 +83,7 @@ class Registry:
 		return t
 
 
-	def save(self):
+	def XXXsave(self):
 		r = {}
 		for itype in self.reg['ItemTypes']:
 			kd = {}
@@ -135,8 +99,8 @@ class Registry:
 #
 registry = Registry()
 
-def OpenRegistry(fname):
-	registry.open(fname)
+def OpenRegistry():
+	registry.open()
 
 def CloseRegistry():
 	logger.info("closing registry")
@@ -150,13 +114,13 @@ def CloseRegistry():
 class BaseItem:
 	def __init__(self, itype, key, name = None):
 		self.itype = itype
-		self.key = str(key)		# assure type identity
+		self._key = key
+		self.keyfield = 'key'
 		if name is None:
 			self.name = self.mkname()
 		else:
 			self.name = name
 		if logging.DBG > 1: logger.debug("BaseItem: created %s", self)
-		registry.register(self)
 
 
 	def __del__(self):
@@ -164,23 +128,21 @@ class BaseItem:
 		logger.info("BaseItem: __del__ %s", self)
 
 
-	def delete(self):
-		if logging.DBG > 2: logger.debug("BaseItem %s: delete", self)
-		if registry.find_by_id(self.itype, self.key) is not None:
-			registry.unregister(self)
-			self.parent = None
-			if logging.DBG > 2: logger.debug("BaseItem: deleted %s", self)
-
-
 	def mkname(self):
-		return "%s:%s" % (self.itype, self.key)
+		return "%s:%s" % (self.itype, self._key)
 
 
 	def __str__(self):
 		try:
-			return "%s %s(%s)" % (self.itype, self.name, self.key)
+			return "%s %s(%s)" % (self.itype, self.name, self._key)
 		except:
 			return "SomeBaseItem"
+
+
+	def load(self, data):	#N.B.
+		assert(type(data) == type({}))
+		for k in data:
+			self.__dict__[k] = data[k]
 
 
 	def save(self):
@@ -188,15 +150,67 @@ class BaseItem:
 		return r
 
 
+#
+# RegItem
+#
+class RegItem(BaseItem):
+	def __init__(self, itype, key, name = None):
+		super().__init__(itype, key, name)
+		registry.register(self)
+		self._key = key		# assure type identity
+		
+
+	def delete(self):
+		if logging.DBG > 2: logger.debug("RegItem %s: delete", self)
+		if registry.find_by_id(self.itype, self._key) is not None:
+			registry.unregister(self)
+			self.parent = None
+			if logging.DBG > 2: logger.debug("RegItem: deleted %s", self)
+
+	def find_by_id(self, Id):
+		return registry.find_by_id(self.itype, Id)
+
+
 	def getkeyfield(self):
-		return "key"	#CU
+		return self.keyfield	
+
+	def write(self):
+		return
+
+#
+# DBItem
+#
+class DBItem(RegItem):
+	def __init__(self, itype, key, name = None):
+		super().__init__(itype, key, name)
+		self.db_table = _DB.table(itype)
+		self.itype = itype
+		data = self.db_table.search(self.keyfield, '==', key)
+		if data is not None and len(data) == 1:
+			self.load(data[0])
+	
+	def write(self):
+		logger.debug("write %s %s", self.itype, self.keyfield)
+		self.db_table.upsert(self.keyfield, self.save())
+		
+
+	def delete(self):
+		if logging.DBG > 2: logger.debug("DBItem %s: delete", self)
+		self.db_table.remove(self.keyfield, self._key)
+		self.parent = None
+
+		if registry.find_by_id(self.itype, self._key) is not None:
+			registry.unregister(self)
+			self.parent = None
+			if logging.DBG > 2: logger.debug("DBItem: deleted %s", self)
 
 
 #
 # Item
 #
-class Item(BaseItem):
-	def __init__(self, itype, key, name = None, key_in_parent = None):
+class Item(RegItem):
+	def __init__(self, itype, key, name = None, parent_class = None,  key_in_parent = None):
+		self.parent_class = parent_class
 		self.parent = None
 		self.children = {}
 		self.my_room_list = []
@@ -226,7 +240,7 @@ class Item(BaseItem):
 
 	def delete(self):
 		if logging.DBG > 2: logger.debug("Item %s: delete", self)
-		if registry.find_by_id(self.itype, self.key) is not None: # recursive delete
+		if registry.find_by_id(self.itype, self._key) is not None: # recursive delete
 			for room in self.my_room_list:
 				if logging.DBG > 2: logger.debug("Item %s: del room %s", self, room)
 				room.del_item(self)
@@ -241,12 +255,8 @@ class Item(BaseItem):
 			super().delete()
 
 
-	def get_parent_type(self):
-		return registry.get_parent_type(self.itype)
-
-
 	def get_parent(self, key_in_parent):
-		ptype = self.get_parent_type()
+		ptype =  self.parent_class.__name__
 		if ptype is None:
 			p = None
 		else:
@@ -256,14 +266,14 @@ class Item(BaseItem):
 
 
 	def add_child(self, item):
-		if logging.DBG > 2: logger.debug("Item: child %s added to %s", item.key, self)
-		self.children[item.key] = item
+		if logging.DBG > 2: logger.debug("Item: child %s added to %s", item._key, self)
+		self.children[item._key] = item
 		self.schedule_update()
 
 
 	def del_child(self, item):
-		if logging.DBG > 2: logger.debug("Item: child %s delete from %s", item.key, self)
-		del self.children[item.key]
+		if logging.DBG > 2: logger.debug("Item: child %s delete from %s", item._key, self)
+		del self.children[item._key]
 		self.schedule_update()
 
 
@@ -271,7 +281,7 @@ class Item(BaseItem):
 		if logging.DBG > 2: logger.debug("Item %s: schedule_update", self.name)
 		for room in self.my_room_list:
 			if logging.DBG > 2: logger.debug("Item: schedule_update for item %s in room %s", self, room.name)
-			room.roomitems[self.key].push_update(False)
+			room.roomitems[self._key].push_update(False)
 
 
 	def gen_console_data(self):
@@ -281,7 +291,7 @@ class Item(BaseItem):
 		data = {
 			'name': self.name,
 			'type': self.itype,
-			'id': self.key,
+			'id': self._key,
 			'children': str(cs),
 		}
 		return data
@@ -290,16 +300,30 @@ class Item(BaseItem):
 	def get_room_list(self):
 		rooms = []
 		rooms.append( "%s_*" % (self.itype))
-		rooms.append( "%s_%s" % (self.itype, self.key))
+		rooms.append( "%s_%s" % (self.itype, self._key))
 		if self.parent is not None:
-			rooms.append( "%s_%s_*" % (self.parent.itype, self.parent.key))
+			rooms.append( "%s_%s_*" % (self.parent.itype, self.parent._key))
 		return rooms
+
+
+	def load(self, data):	#N.B.
+		logger.debug("load: %s", data)
+		for k in data:
+			if k == 'parent':
+				if data[k] is not None:
+					self.parent = self.set_parent(data[k])
+				else:
+					self.parent = None
+			elif k == 'children':
+				pass 		# set by set_parent of child
+			else:
+				self.__dict__[k] = data[k]
 
 
 	def save(self):
 		r = super().save()
 		if self.parent:
-			r['parent'] = self.parent.key
+			r['parent'] = self.parent.k_ey
 		if self.children:
 			r['children'] = list(self.children.keys())
 		return r
@@ -320,7 +344,7 @@ class RoomItem:
 #		self.pack = {
 #			'name': self.item.name,		#XXX? extra fields
 #			'type': self.item.itype,
-#			'id': self.item.key,
+#			'id': self.item._key,
 #			'header': self.room.is_header(),
 #		 	'display_vals': {},
 #		}
@@ -330,9 +354,9 @@ class RoomItem:
 
 	def __getstate__(self):
 		r = self.__dict__.copy()
-#		r = {'room': self.room.key, 'item': self.item.key}
-		r['room'] = self.room.key 
-		r['item'] = self.item.key
+#		r = {'room': self.room.key, 'item': self.item._key}
+		r['room'] = self.room._key 
+		r['item'] = self.item._key
 		return r
 
 	def __repr__(self):
@@ -422,7 +446,7 @@ class MemberRoom:
 #
 # Room
 #
-class Room(BaseItem):
+class Room(RegItem):
 	def __init__(self, ritype = None, rkey = None, detail = None, sroom = None):
 
 		self.stream_tag = None
@@ -495,18 +519,18 @@ class Room(BaseItem):
 
 
 	def add_item(self, item):
-		if item.key in self.roomitems:
+		if item._key in self.roomitems:
 			logger.error("room %s add_item: id %s already an item in room", self, item)
 			return
-		self.roomitems[item.key] = RoomItem(self, item)
+		self.roomitems[item._key] = RoomItem(self, item)
 
 
 	def del_item(self, item):
-		if not item.key in self.roomitems:
+		if not item._key in self.roomitems:
 			logger.error("room %s del_member: item %s not an item in room", self, item)
 		else:
-			self.roomitems[item.key].deleted = True
-			self.roomitems[item.key].item = None
+			self.roomitems[item._key].deleted = True
+			self.roomitems[item._key].item = None
 
 
 	def schedule_update(self, rsid = None):

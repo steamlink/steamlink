@@ -22,7 +22,8 @@ REQUIRES = [
 	'hbmqtt==0.8.0',
 	'jinja2==2.10',
 	'aiohttp-jinja2>=1.0.0',
-	'tinydb>=3.8.1'
+	'tinydb>=3.9.0',
+	'tinydb-smartcache>=1.0.2'
 ]
 
 setup(

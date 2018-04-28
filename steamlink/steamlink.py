@@ -85,7 +85,8 @@ Pkt_1_*					XXX nothing below pkt
 
 """
 
-
+NODEVER = 1
+MAXSILENCE = 45
 
 #
 # SL_CodeCfgStruct
@@ -93,34 +94,33 @@ Pkt_1_*					XXX nothing below pkt
 class SL_NodeCfgStruct:
 	"""
 	Node configuration data, as stored in flash
+	defined in SteamLink.h in the steamlink-arduino repo
 
 	struct SL_NodeCfgStruct {
-		int slid;
+		uint8_t  version;
+		uint32_t slid;
 		char name[10];
 		char description[32];
 		float gps_lat;
 		float gps_lon;
-		short altitude;
-		short max_silence;
-		boolean sleeps;
-		boolean pingable;
-		boolean battery_powered;
-		byte radio_params;
-	}
-	"""
-	sfmt = '<L10s32sffhhBBBB'
+		short altitude;		// in meters
+		uint8_t max_silence; // in seconds
+		bool battery_powered;
+		uint8_t radio_params; // radio params need to be interpreted by drivers
 
-	def __init__(self, slid = None, name = "*UNK*", description = "*UNK*", gps_lat = 0.0, gps_lon = 0.0, altitude = 0, max_silence = 60, sleeps = False, pingable = True, battery_powered = False, radio_params = 0, pkt = None):
+	"""
+	sfmt = '<BL10s32sffhBBB'
+
+	def __init__(self, version = NODEVER, slid = None, name = "*UNK*", description = "*UNK*", gps_lat = 0.0, gps_lon = 0.0, altitude = 0, max_silence = MAXSILENCE, battery_powered = False, radio_params = 0, pkt = None):
 		if pkt is None:	 # construct
+			self.version = version
 			self.slid = slid						# L
 			self.name = name						# 10s
 			self.description = description			# 32s
 			self.gps_lat = gps_lat					# f
 			self.gps_lon = gps_lon					# f
 			self.altitude = altitude				# h
-			self.max_silence = max_silence			# h
-			self.sleeps = sleeps					# B
-			self.pingable = pingable				# B
+			self.max_silence = max_silence			# B
 			self.battery_powered = battery_powered	# B
 			self.radio_params = radio_params		# B
 
@@ -128,15 +128,13 @@ class SL_NodeCfgStruct:
 			if struct.calcsize(SL_NodeCfgStruct.sfmt) != len(pkt):
 				logger.error("NodeCfgStruct: packed messages length incorrect, wanted %s, got %s", struct.calcsize(SL_NodeCfgStruct.sfmt), len(pkt))
 				raise SteamLinkError("packed messages length incorrect")
-			self.slid, name, description, self.gps_lat, self.gps_lon, self.altitude, self.max_silence, sleeps, pingable, battery_powered, self.radio_params = struct.unpack(SL_NodeCfgStruct.sfmt, pkt)
+			self.version, self.slid, name, description, self.gps_lat, self.gps_lon, self.altitude, self.max_silence, battery_powered, self.radio_params = struct.unpack(SL_NodeCfgStruct.sfmt, pkt)
 			self.name = name.decode().strip('\0')
 			self.description = description.decode().strip('\0')
-			self.pingable = pingable == 1
 			self.battery_powered = battery_powered == 1
-			self.sleeps = sleeps == 1
 
 	def pack(self):
-		self.pkt = struct.pack(SL_NodeCfgStruct.sfmt, self.slid, self.name.encode(), self.description.encode(), self.gps_lat, self.gps_lon, self.altitude, self.max_silence, self.sleeps, self.pingable, self.battery_powered, self.radio_params)
+		self.pkt = struct.pack(SL_NodeCfgStruct.sfmt, self.version, self.slid, self.name.encode(), self.description.encode(), self.gps_lat, self.gps_lon, self.altitude, self.max_silence, self.battery_powered, self.radio_params)
 		return self.pkt
 
 
@@ -155,8 +153,6 @@ class SL_NodeCfgStruct:
 			'gps_lon': self.gps_lon,
 			'altitude': self.altitude,
 			'max_silence': self.max_silence,
-			'sleeps': self.sleeps,
-			'pingable': self.pingable,
 			'battery_powered': self.battery_powered,
 			'radio_params': self.radio_params
 		}
@@ -173,18 +169,19 @@ class SL_OP:
 	data message types: ODD, 1 bottom bit
 	'''
 
-	DN = 0x30		# data to node, ACK for qos 2
+	DN = 0x30		# data to node, ACK 
 	BN = 0x32		# slid precedes payload, bridge forward to node
 	GS = 0x34		# get status, reply with SS message
 	TD = 0x36		# transmit a test message via radio
-	SR = 0x38		# set radio paramter to x, acknowlegde with AK or NK
+	SC = 0x38		# set radio paramter to x, acknowlegde with AK or NK
 	BC = 0x3A		# restart node, no reply
-	BR = 0x3C		# reset the radio, acknowlegde with AK or NK
+	BR = 0x3C		# reset the radio, TBD
+	AN = 0x3E		# Ack from store -> node
 
 	DS = 0x31		# data to store
 	BS = 0x33		# bridge to store
 	ON = 0x35		# send status on to store, send on startup
-	AK = 0x37		# acknowlegde the last control message
+	AS = 0x37		# acknowlegde the last control message
 	NK = 0x39		# negative acknowlegde the last control message
 	TR = 0x3B		# Received Test Data
 	SS = 0x3D		# status info and counters
@@ -197,6 +194,10 @@ class SL_OP:
 			pass
 		return '??'
 
+
+SL_AN_CODE = {0: 'Success', 1: 'Supressed duplicate pkt', 2: 'Unexpected pkt, dropping'}
+SL_AS_CODE = {0: 'Success', 1: 'Supressed duplicate pkt', 2: 'Unexpected pkt, dropping'}
+
 #
 # Steam
 #
@@ -205,16 +206,41 @@ class Steam(Item):
  	 "Name": "self.name",
  	 "Meshes": "' '.join(self.children)",
 	 "Time": "time.asctime()",
-	 "Load": '"%3.1f%%" % self.load',
-	 }
+	 "Load": '"%3.1f%%" % self.cpubusy',
+	}
+
+	cache = {}
+	def find_by_id(Id):
+		if Id in Steam.cache:
+			return Steam.cache[Id]
+		rec = Steam.db_table.search('key', "==", Id) 
+		if rec is None or len(rec) == 0:
+			return None
+		logger.debug("find_by_id %s found %s", Id, rec[0])
+		n = Steam(rec[0]['key'])
+		Steam.cache[Id] = n
+		return n
+
+	def find_by_id(Id):
+		rec = Steam.db_table.search('key', "==", Id) 
+		if rec is None or len(rec) == 0:
+			return None
+		return rec[0]
 
 
 	def __init__(self, conf):
 		self.desc = conf['description']
 		self.autocreate = conf['autocreate']
-		self.load = 0
-		super().__init__('Steam', conf['id'])
+		self.cpubusy = 0
+		self.key = int(conf['id'])
+		super().__init__('Steam', int(conf['id']))
 		_MQTT.set_msg_callback(self.on_data_msg)
+
+		Steam.db_table = _DB.table('Steam')
+		Mesh.db_table = _DB.table('Mesh')
+		Node.db_table = _DB.table('Node')
+		Packet.db_table = _DB.table('Pkt')
+		self.write()
 
 
 	def gen_console_data(self):
@@ -230,7 +256,7 @@ class Steam(Item):
 
 
 	def on_data_msg(self, client, userdata, msg):
-		# msg has  topic, payload, qos, retain
+		# msg has  topic, payload, retain
 		topic_parts = msg.topic.split('/', 2)
 		if logging.DBG > 2: logger.debug("on_data_msg  %s %s", msg.topic, msg.payload)
 		try:
@@ -242,12 +268,16 @@ class Steam(Item):
 			logger.warning("mqtt: pkt dropped: '%s', value error %s", msg.payload, e)
 			return
 
-		node = registry.find_by_id('Node', sl_pkt.slid)
+		node = Node.find_by_id(sl_pkt.slid)
 		if node is None:		# Auto-create node
 			if not self.autocreate:
 				logger.warning("on_data_msg: no node for pkt %s", sl_pkt)
 				return
-			node = Node(sl_pkt.slid, sl_pkt.nodecfg)
+			if sl_pkt.sl_op == SL_OP.ON:
+				node = Node(sl_pkt.slid, sl_pkt.nodecfg)
+			else:
+				logger.warning("on_data_msg: no node for pkt %s", sl_pkt)
+				return
 		sl_pkt.set_node(node)
 		node.post_data(sl_pkt)
 
@@ -266,7 +296,7 @@ class Steam(Item):
 
 			delta = n_now - now
 			wait = 1 - (n_now % 1)
-			self.load = ((n_process_time - process_time) / delta ) * 100.0
+			self.cpubusy = ((n_process_time - process_time) / delta ) * 100.0
 			now = n_now
 			process_time = n_process_time
 			if logging.DBG == 0:	# N.B. reduce noise when debuging, i.e. no heartbeat
@@ -274,20 +304,21 @@ class Steam(Item):
 
 
 	def heartbeat(self):
-		if not 'Node' in registry.get_itypes():
+		if not 'Node' in registry.reg['ItemTypes']:
 			return
+		n_now = time.time()
 		for node in registry.get_all('Node'):
-			if node.is_overdue() and node.is_state_up():
+			if node.wait_for_AS_until != 0 and node.wait_for_AS_until <= n_now:
+				node.publish_pkt(resend=True)
+			elif node.is_overdue() and node.is_state_up():
 				node.set_state("OVERDUE")
 				node.schedule_update()
-			if not node.is_state_up() and node.nodecfg.pingable:
-				if node.last_packet_tx_ts + 60 < time.time():		# XXX var
-					node.send_get_status()
-
+#			if not node.is_state_up():		#XXX not offline or sleeping
+#				if node.last_packet_tx_ts != 0 and node.last_packet_tx_ts + MAXSILENCE < n_now:
+#					node.send_get_status()
 
 
 	def save(self):
-#		r = super().save()
 		r = {}
 		r['key'] = self.key
 		r['name'] = self.name
@@ -300,7 +331,7 @@ class Steam(Item):
 #
 class Mesh(Item):
 	console_fields = {
-     "key": "self.key",
+     "mesh_id": "self.mesh_id",
  	 "Name": "self.name",
 	 "Description": "self.desc",
 	 "Total Nodes": "len(self.children)",
@@ -309,19 +340,35 @@ class Mesh(Item):
 	 "Packets received": "self.packets_received",
 	 }
 
+	cache = {}
+	def find_by_id(Id):
+		if Id in Mesh.cache:
+			return Mesh.cache[Id]
+		rec = Mesh.db_table.search('mesh_id', "==", Id) 
+		if rec is None or len(rec) == 0:
+			return None
+		logger.debug("find_by_id %s found %s", Id, rec[0])
+		n = Mesh(rec[0]['mesh_id'])
+		Mesh.cache[Id] = n
+		return n
+
+
 	def __init__(self, mesh_id):
+		self.mesh_id = int(mesh_id)
 		logger.debug("Mesh creating: %s", mesh_id)
 		self.packets_sent = 0
 		self.packets_received = 0
 		self.desc = "Description for mesh %s" % mesh_id
 
-		super().__init__('Mesh', mesh_id, key_in_parent=0)
+		super().__init__('Mesh', mesh_id, parent_class=Steam, key_in_parent=0)
+		self.keyfield = 'mesh_id'
 		self.desc = "Description for %s" % self.name
 		logger.info("Mesh created: %s", self)
+		self.write()
 
 
 	def mkname(self):
-		return "Mesh%06x" % int(self.key)
+		return "Mesh%x" % int(self.mesh_id)
 
 
 	def gen_console_data(self):
@@ -337,9 +384,8 @@ class Mesh(Item):
 
 
 	def save(self):
-#		r = super().save()
 		r = {}
-		r['key'] = self.key
+		r['mesh_id'] = self.mesh_id
 		r['name'] = self.name
 		r['desc'] = self.desc
 		return r
@@ -359,16 +405,33 @@ class Node(Item):
 	 "Child 1": "str(self.children[12])",
 	 "gps_lat": "self.nodecfg.gps_lat",
 	 "gps_lon": "self.nodecfg.gps_lon",
-	 "key": "self.slid",
+	 "slid": "self.slid",
 	}
 	UPSTATES = ["OK", "UP", "TRANSMITTING"]
+	cache = {}
+
+	def find_by_id(Id):
+		if Id in Node.cache:
+			return Node.cache[Id]
+		rec = Node.db_table.search('slid', "==", Id) 
+		if rec is None or len(rec) == 0:
+			return None
+		logger.debug("Node find_by_id %s found: %s", Id, rec[0])
+		n = Node(rec[0]['slid'], rec[0]['nodecfg'])
+		Node.cache[Id] = n
+		return n
+#		return rec[0]
 
 
 	""" a node in a mesh set """
 	def __init__(self, slid, nodecfg = None):
+		slid = int(slid)
 		logger.debug("Node creating : %s" % slid)
 		if nodecfg is None:
 			self.nodecfg = SL_NodeCfgStruct(slid, "Node%08x" % slid)
+			logger.debug("Node config is %s", self.nodecfg)
+		elif type(nodecfg) == type({}):
+			self.nodecfg = SL_NodeCfgStruct(slid, **nodecfg)
 			logger.debug("Node config is %s", self.nodecfg)
 		else:
 			self.nodecfg = nodecfg
@@ -381,21 +444,25 @@ class Node(Item):
 		self.packets_received = 0
 		self.pkt_numbers = {True: 0, False:  0}	# next pkt num for data, control pkts
 		self.state = "INITIAL"
+		self.last_pkt = None			# last packet transmitted to node
 		self.last_packet_rx_ts = 0
 		self.last_packet_tx_ts = 0
 		self.last_packet_num = 0
 		self.via = []		# not initiatized
 		self.tr = {}		# dict of sending nodes, each holds a list of (pktno, rssi)
+		self.wait_for_AS_until = 0 		# deadline for AS ack
 		self.packet_log = TimeLog(MAX_NODE_LOG_LEN)
 
-		self.mesh = registry.find_by_id('Mesh', self.mesh_id)
+		self.mesh = Mesh.find_by_id(self.mesh_id)
 		if self.mesh is None:		# Auto-create Mesh
 			logger.debug("Node %s: mesh %s autocreated", self.slid, self.mesh_id)
 			self.mesh = Mesh(self.mesh_id)
 
-		super().__init__('Node', slid, None, key_in_parent=self.mesh_id)
+		super().__init__('Node', slid, None, parent_class=Mesh, key_in_parent=self.mesh_id)
+		self.keyfield = 'slid'
 
 		logger.info("Node created: %s" % self)
+		self.write()
 
 
 	def set_pkt_number(self, pkt):
@@ -406,9 +473,17 @@ class Node(Item):
 		return self.pkt_numbers[dc]
 
 
+	def load(self, data):	#N.B.
+		for k in data:
+			logger.debug("load %s: %s", k, data[k])
+			if k == 'nodecfg':
+				self.nodecfg = SL_NodeCfgStruct(**data[k])
+			else:
+				self.__dict__[k] = data[k]
+
+
 	def save(self):
 		r = {}
-		r['key'] = self.key
 		r['name'] = self.name
 		r['slid'] = self.slid
 		r['mesh_id'] = self.mesh_id
@@ -420,12 +495,12 @@ class Node(Item):
 	def mkname(self):
 		if self.nodecfg is not None:
 			return self.nodecfg.name
-		return "Node%08x" % int(self.key)
+		return "Node%s" % int(self.slid)
 
 
 	def get_firsthop(self):
 		if len(self.via) == 0:
-			firsthop = self.key
+			firsthop = self.slid
 		else:
 			firsthop = self.via[0]
 		return firsthop
@@ -445,8 +520,8 @@ class Node(Item):
 			# publish node state on some mqtt
 			pass
 
-		if new_state == "TRANSMITTING" and self.nodecfg.pingable:
-			self.send_get_status()
+#		if new_state == "TRANSMITTING":		#XXX check if node is sleeping or offline
+#			self.send_get_status()
 
 
 	def is_state_up(self):
@@ -457,7 +532,17 @@ class Node(Item):
 		return (self.last_packet_rx_ts + self.nodecfg.max_silence) <= time.time()
 
 
-	def publish_pkt(self, sl_pkt, sub="control"):
+	def publish_pkt(self, sl_pkt=None, resend=False, sub="control"):
+		if resend:
+			if sl_pkt is None:
+				return
+			logger.debug("resending pkt: %s", sl_pkt)
+			sl_pkt = self.last_pkt 
+		else:
+			if self.wait_for_AS_until != 0:
+				logger.error("attempt to send pkt while waiting for AS, ignored: %s", sl_pkt)
+				return
+			self.last_pkt = sl_pkt
 		self.log_pkt(sl_pkt)
 		self.packets_sent += 1
 		self.mesh.packets_sent += 1
@@ -466,6 +551,13 @@ class Node(Item):
 		self.last_packet_tx_ts = time.time()
 		self.schedule_update()
 		self.mesh.schedule_update()
+		self.write()
+
+
+	def send_ack_to_node(self, code):
+		sl_pkt = Packet(slnode=self, sl_op=SL_OP.AN, payload=chr(code))	
+		self.publish_pkt(sl_pkt)
+		return
 
 
 	def send_boot_cold(self):
@@ -477,26 +569,34 @@ class Node(Item):
 	def send_get_status(self):
 		sl_pkt = Packet(slnode=self, sl_op=SL_OP.GS)
 		self.publish_pkt(sl_pkt)
-#		rc = self.get_response(timeout=SL_RESPONSE_WAIT_SEC)
 		return
 
 
-	def send_set_radio_param(self, radio):
+	def send_data_to_node(self, data): 
 		if not self.is_state_up(): return SL_OP.NC
-		lorainit = struct.pack('<BLB', 0, 0, radio)
-		logger.debug("send_set_radio_param: len %s, pkt %s", len(lorainit), lorainit)
-		sl_pkt = Packet(slnode=self, sl_op=SL_OP.SR, payload=lorainit)
+		bpayload = data
+		logger.debug("send_data_to_node:: len %s, pkt %s", len(bpayload), self.bpayload)
+		sl_pkt = Packet(slnode=self, sl_op=SL_OP.DN, payload=bpayload)
 		self.publish_pkt(sl_pkt)
+		self.wait_for_AS()
+		return
 
-		rc = self.get_response(timeout=SL_RESPONSE_WAIT_SEC)
-		return rc
+
+	def send_set_config(self): 
+		if not self.is_state_up(): return SL_OP.NC
+		bpayload = self.nodecfg.pack()
+		logger.debug("send_set_config: len %s, pkt %s", len(bpayload), self.nodecfg)
+		sl_pkt = Packet(slnode=self, sl_op=SL_OP.SC, payload=bpayload)
+		self.publish_pkt(sl_pkt)
+		self.wait_for_AS()
+		return
 
 
 	def send_testpacket(self, pkt):
 		if not self.is_state_up(): return SL_OP.NC
 		sl_pkt = Packet(slnode=self, sl_op=SL_OP.TD, payload=pkt)
 		self.publish_pkt(sl_pkt)
-		rc = self.get_response(timeout=SL_RESPONSE_WAIT_SEC)
+		rc = self.get_response(timeout=SL_RESPONSE_WAIT_SEC) # No!
 		logger.debug("send_packet %s got %s", sl_pkt, SL_OP.code(rc))
 		return rc
 
@@ -513,11 +613,12 @@ class Node(Item):
 			return True
 		if pkt_num == 0xFFFF:				# wrap
 			self.last_packet_num = 0		# remote will skip 0
-		if pkt_num == last_packet_num + 1:	# proper squence
+		if pkt_num == last_packet_num + 1:	# proper sequence
 			return True
 		if pkt_num == last_packet_num:		# duplicate
 			logger.info("Node %s: received duplicate pkt %s", self, sl_pkt)
-			return False
+			return  sl_pkt.sl_op ==  SL_OP.ON	 # N.B.!
+#			return False
 		if pkt_num == 1:					# remote restarted
 			logger.error("Node %s: restarted with pkt 1", self)
 			return True
@@ -532,7 +633,8 @@ class Node(Item):
 			return
 		if logging.DBG > 2: logger.debug("store_data inserting into db")
 
-		_DB.insert(sl_pkt.db_form())
+#		_DB.insert(sl_pkt.save())
+		send_ack_to_node(0)
 
 
 	def post_data(self, sl_pkt):
@@ -540,6 +642,9 @@ class Node(Item):
 		self.log_pkt(sl_pkt)
 		if sl_pkt.is_data():
 			if not self.check_pkt_num(sl_pkt):
+				if sl_pkt.sl_op in [SL_OP.DS]:
+					logger.debug("post_data send AN on duplicate DS")
+					send_ack_to_node(1)
 				return	# duplicate
 		else:
 			logger.error("Node %s got control pkt %s", self, sl_pkt)
@@ -547,12 +652,13 @@ class Node(Item):
 
 		# set ts for all nodes on the route
 		for slid in sl_pkt.via + [sl_pkt.slid]:
-			node = registry.find_by_id('Node', slid)
+			node = Node.find_by_id(slid)
 			if node:
 				node.last_packet_rx_ts = sl_pkt.ts
 				if not node.is_state_up():
 					node.set_state('TRANSMITTING')
 				node.schedule_update()
+				node.write()
 			else:
 				logger.error("post_data: via node %s not on file", slid)
 
@@ -573,24 +679,28 @@ class Node(Item):
 
 		sl_op = sl_pkt.sl_op
 
-		if sl_op == SL_OP.ON:
-			logger.debug('post_data: slid %d UP', int(self.key))
+		if sl_op == SL_OP.ON: # autocreate did set nodecfg
+			self.wait_for_AS_until = 0		# give up waiting
+			logger.debug('post_data: slid %d UP', int(self.slid))
 			self.nodecfg = SL_NodeCfgStruct(pkt=sl_pkt.bpayload)
+			self.send_set_config()
 			self.set_state("UP")
 		elif sl_op == SL_OP.DS:
-#			logger.debug('post_data: slid %d status %s', int(self.key),sl_pkt.payload)
+#			logger.debug('post_data: slid %d status %s', int(self.slid),sl_pkt.payload)
 			self.store_data(sl_pkt)
 
 		elif sl_op == SL_OP.SS:
-#			logger.debug("post_data: slid %d status '%s'", int(self.key),sl_pkt.payload)
+#			logger.debug("post_data: slid %d status '%s'", int(self.slid),sl_pkt.payload)
 			self.set_state(sl_pkt.payload)
 
-		elif sl_op in [SL_OP.AK, SL_OP.NK]:
-			logger.debug('post_data: slid %d answer %s', int(self.key), SL_OP.code(sl_op))
-			try:
-				self.response_q.put(sl_op)
-			except Full:
-				logger.warning('post_data: node %s queue, dropping: %s', int(self.key), sl_pkt)
+		elif sl_op == SL_OP.AS:
+			logger.debug('post_data: slid %d ACK:  %s', int(self.slid), 
+						SL_AS_CODE[int(sl_pkt.bpayload[0])])
+			self.wait_for_AS_until = 0		# done waiting
+#			try:
+#				self.response_q.put(sl_op)
+#			except Full:
+#				logger.warning('post_data: node %s queue, dropping: %s', int(self.slid), sl_pkt)
 		elif sl_op == SL_OP.TR:
 			logger.debug('post_data: node %s test msg', sl_pkt.payload)
 
@@ -611,8 +721,13 @@ class Node(Item):
 		if not self.is_state_up():
 			self.set_state('TRANSMITTING')
 
+		self.write()
 		self.schedule_update()
 		self.mesh.schedule_update()
+
+
+	def wait_for_AS(self):
+		self.wait_for_AS_until = time.time() + int(self.nodecfg.max_silence / 4)
 
 
 	def get_response(self, timeout):
@@ -638,17 +753,17 @@ class Node(Item):
 #	def console_tail(self, room):
 #		v = self.packet_log.get('',-1)
 #		r = {
-#		  'id': key,
+#		  'id': slid,
 #		  'type': 'pkt',
 #		  'display_vals': { 'data': v }
 #		}
 #		emit_to_room(r, room)
 
 
-#	async def console_pkt_log(self, room, key, count):
-#		v = self.packet_log.get(key, count)
+#	async def console_pkt_log(self, room, slid, count):
+#		v = self.packet_log.get(slid, count)
 #		r = {
-#		  'id': key,
+#		  'id': slid,
 #		  'type': 'pkt',
 #		  'display_vals': v
 #		}
@@ -661,19 +776,30 @@ class Node(Item):
 class Packet(Item):
 	console_fields = {
  	 "op": "SL_OP.code(self.sl_op)",
-	 "key": "self.key",
 	 "rssi": "self.rssi",
 	 "via": "self.via",
 	 "payload": "self.payload",
 	 "ts": "time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(self.ts))",
 	}
 	PacketID = 0
-	data_header_fmt = '<BLHBB%is'		# op, slid, pkt_num, rssi, qos, payload"
-	control_header_fmt = '<BLHB%is'		# op, slid, pkt_num, qos, payload"
+	data_header_fmt = '<BLHB%is'		# op, slid, pkt_num, rssi, payload"
+	control_header_fmt = '<BLH%is'		# op, slid, pkt_num, payload"
+
+	cache = {}
+	def find_by_id(Id):
+		if Id in Packet.cache:
+			return Packet.cache[Id]
+		rec = Packet.db_table.search('ts', "==", Id) 
+		if rec is None or len(rec) == 0:
+			return None
+		logger.debug("Node find_by_id %s found: %s", Id, rec[0])
+		n = Packet(rec[0]['ts'])
+		Packet.cache[Id] = n
+		return n
+
 
 	def __init__(self, slnode = None, sl_op = None, rssi = 0, payload = None, pkt = None):
 		self.rssi = 0
-		self.qos = 0
 		self.via = []
 		self.payload = None
 		self.itype = "Pkt"
@@ -689,10 +815,11 @@ class Packet(Item):
 				logger.error("deconstruct pkt to short: %s", len(pkt))
 				raise SteamLinkError("deconstruct pkt to short");
 		Packet.PacketID += 1
-		super().__init__('Pkt', Packet.PacketID)
-		self.key = Packet.PacketID
+		super().__init__('Pkt', Packet.PacketID, parent_class=Node)
+		self.keyfield = "ts"
 		if self.is_outgoing:
 			self.set_node(slnode)
+		self.write()
 
 
 	def __str__(self):
@@ -731,7 +858,7 @@ class Packet(Item):
 
 
 	def construct(self, slnode, sl_op, rssi, payload):
-		self.slid = int(slnode.key)
+		self.slid = int(slnode.slid)
 		self.sl_op = sl_op
 		self.rssi = rssi + 256
 		self.payload = payload
@@ -752,18 +879,18 @@ class Packet(Item):
 		self.pkt_num = slnode.set_pkt_number(self)
 		if self.is_data():	# N.B. store never sends data
 			sfmt = Packet.data_header_fmt % len(self.bpayload)
-			logger.debug("pack: %s %s %s %s %s %s", self.sl_op, self.slid, self.pkt_num, self.rssi, self.qos, self.bpayload)
+			logger.debug("pack: %s %s %s %s %s %s", self.sl_op, self.slid, self.pkt_num, self.rssi, self.bpayload)
 			self.pkt = struct.pack(sfmt,
-					self.sl_op, self.slid, self.pkt_num, 256 - self.rssi, self.qos, self.bpayload)
+					self.sl_op, self.slid, self.pkt_num, 256 - self.rssi, self.bpayload)
 		else:
 			sfmt = Packet.control_header_fmt % len(self.bpayload)
 			self.pkt = struct.pack(sfmt,
-					self.sl_op, self.slid, self.pkt_num, self.qos, self.bpayload)
+					self.sl_op, self.slid, self.pkt_num, self.bpayload)
 			if len(slnode.via) > 0:
 				for via in slnode.via[::-1]:
 					self.bpayload = self.pkt
 					sfmt = Packet.control_header_fmt % len(self.bpayload)
-					self.pkt = struct.pack(sfmt, SL_OP.BN, via, 0, self.qos, self.bpayload)
+					self.pkt = struct.pack(sfmt, SL_OP.BN, via, 0, self.bpayload)
 			if logging.DBG > 1:
 				for l in phex(self.pkt, 4):
 					logger.debug("pkt c:  %s", l)
@@ -779,7 +906,7 @@ class Packet(Item):
 			while pkt[0] == SL_OP.BS:
 				payload_len = len(pkt) - struct.calcsize(Packet.data_header_fmt % 0)
 				sfmt = Packet.data_header_fmt % payload_len
-				self.sl_op, slid, self.pkt_num, self.rssi, self.qos, self.bpayload \
+				self.sl_op, slid, self.pkt_num, self.rssi, self.bpayload \
 						= struct.unpack(sfmt, pkt)
 
 				self.via.append(slid)
@@ -793,12 +920,12 @@ class Packet(Item):
 		if self.is_data(pkt[0]):
 			payload_len = len(pkt) - struct.calcsize(Packet.data_header_fmt % 0)
 			sfmt = Packet.data_header_fmt % payload_len
-			self.sl_op, self.slid, self.pkt_num, rssi, self.qos, self.bpayload \
+			self.sl_op, self.slid, self.pkt_num, rssi, self.bpayload \
 						= struct.unpack(sfmt, pkt)
 		else:
 			payload_len = len(pkt) - struct.calcsize(Packet.control_header_fmt % 0)
 			sfmt = Packet.control_header_fmt % payload_len
-			self.sl_op, self.slid, self.pkt_num, self.qos, self.bpayload \
+			self.sl_op, self.slid, self.pkt_num, self.bpayload \
 						= struct.unpack(sfmt, pkt)
 		self.payload = None
 
@@ -819,37 +946,30 @@ class Packet(Item):
 		return True
 
 
+	def load(self, data):
+		super().load(data)
+			
+
 	def save(self):
-#		r = super().save()
 		r = {}
 		r['sl_op'] = self.sl_op
+		r['pkt_num'] = self.pkt_num
 		r['slid'] = self.slid
 		r['ts'] = self.ts
 		r['rssi'] = self.rssi
-		r['qos'] = self.qos
-		r['payload'] = self.payload
-		r['bpayload'] = repr(self.bpayload)
-		return r
-
-
-	def db_form(self):
-		r = {}
-		r['pno'] = self.pkt_num
-		r['slid'] = self.slid
-		r['ts'] = self.ts
-		r['rssi'] = self.rssi
-		r['qos'] = self.qos
 		r['via'] = self.via
-		r['bpayload'] = repr(self.bpayload)
+		r['payload'] = self.payload
+		r['bpayload'] = repr(self.bpayload)	#??
 		return r
 
 
 	def post_data(self):
 		self.node.post_data(self)
 
+
 	def o__str__(self):
 		if self.slid is None:
-			via = "-%s-" % self.key
+			via = "-%s-" % "??"
 		else:
 			via = "%d" % self.slid
 		if len(self.via) > 0:
@@ -877,12 +997,13 @@ class Packet(Item):
 
 
 	def get_room_list(self):
+		logger.debug("get_room_list %s", self)
 		rooms = []
 		rooms.append( "%s_*" % (self.itype))
 		# Packets don't have a 'header' room
-		rooms.append( "%s_%s" % (self.itype, self.key))
+		rooms.append( "%s_%s" % (self.itype, self.slid))
 		if self.parent is not None:
-			rooms.append( "%s_%s_*" % (self.parent.itype, self.parent.key))
+			rooms.append( "%s_%s_*" % (self.parent.itype, self.parent._key))
 		return rooms
 
 
