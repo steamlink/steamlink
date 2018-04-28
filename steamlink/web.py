@@ -247,11 +247,17 @@ class WebNamespace(socketio.AsyncNamespace):
 		room.add_member(sid)
 		logger.debug("WebNamespace items_to_send %s", room.name)
 		room.schedule_update(sid)	# update all items in the room for this sid only
-		skf = "%s.keyfield" % room.ritype
+		if message['count'] != 0:
+			itype = eval("%s.childclass" % room.ritype)
+			if itype == '':
+				itype = "Packet"
+		else:
+			itype = room.ritype
+		skf = "%s.keyfield" % itype
 		kf = eval(skf)
 		logger.debug("WebNamespace itype %s keyfield %s", room.ritype, kf)
 		res = { 'key_field': kf,
-				'record_type': room.ritype
+				'record_type': itype
 			  }
 		return res
 

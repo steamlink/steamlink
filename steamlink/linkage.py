@@ -303,6 +303,7 @@ class Item(RegItem):
 		rooms.append( "%s_%s" % (self.itype, self._key))
 		if self.parent is not None:
 			rooms.append( "%s_%s_*" % (self.parent.itype, self.parent._key))
+		logger.debug("get_room_list %s", rooms)
 		return rooms
 
 
@@ -469,6 +470,7 @@ class Room(RegItem):
 		self.members = {}			# fake dict: web session in room
 		self.roomitems = {}			# RoomItem keys in room
 
+		logger.debug("room created %s %s %s",self.ritype, self.rkey, self.detail)
 
 	def get_roomitem_keys(self):
 		return list(self.roomitems.keys())

@@ -208,8 +208,11 @@ class Steam(Item):
 	 "Time": "time.asctime()",
 	 "Load": '"%3.1f%%" % self.cpubusy',
 	}
+
+	childclass = 'Mesh'
 	keyfield = 'key'
 	cache = {}
+
 	def find_by_id(Id):
 		if Id in Steam.cache:
 			return Steam.cache[Id]
@@ -341,6 +344,7 @@ class Mesh(Item):
 	 "Packets received": "self.packets_received",
 	 }
 
+	childclass = 'Node'
 	keyfield = 'mesh_id'
 	cache = {}
 
@@ -412,6 +416,7 @@ class Node(Item):
 	}
 	UPSTATES = ["OK", "UP", "TRANSMITTING"]
 
+	childclass = 'Packet'
 	keyfield = 'slid'
 	cache = {}
 
@@ -790,6 +795,7 @@ class Packet(Item):
 	data_header_fmt = '<BLHB%is'		# op, slid, pkt_num, rssi, payload"
 	control_header_fmt = '<BLH%is'		# op, slid, pkt_num, payload"
 
+	childclass = ''
 	keyfield = 'ts'
 	cache = {}
 	def find_by_id(Id):
