@@ -240,8 +240,8 @@ class WebNamespace(socketio.AsyncNamespace):
 		room.add_member(sid)
 		logger.debug("WebNamespace items_to_send %s", room.name)
 		room.schedule_update(sid)	# update all items in the room for this sid only
-		res = { 'key_field': room.item.keyfield,
-				'record_type': room.item.itype
+		res = { 'key_field': 'key',
+				'record_type': room.ritype
 			  }
 		return res
 
