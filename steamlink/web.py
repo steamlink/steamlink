@@ -10,6 +10,13 @@ from aiohttp import web
 from aiohttp.log import access_logger, web_logger
 
 
+from .steamlink import (
+	Mesh,
+	Node,
+	Steam,
+	Packet
+)
+Pkt = Packet
 from .linkage import (
 	registry,
 	BaseItem,
@@ -240,7 +247,10 @@ class WebNamespace(socketio.AsyncNamespace):
 		room.add_member(sid)
 		logger.debug("WebNamespace items_to_send %s", room.name)
 		room.schedule_update(sid)	# update all items in the room for this sid only
-		res = { 'key_field': 'key',
+		skf = "%s.keyfield" % room.ritype
+		kf = eval(skf)
+		logger.debug("WebNamespace itype %s keyfield %s", room.ritype, kf)
+		res = { 'key_field': kf,
 				'record_type': room.ritype
 			  }
 		return res

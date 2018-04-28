@@ -208,21 +208,21 @@ class Steam(Item):
 	 "Time": "time.asctime()",
 	 "Load": '"%3.1f%%" % self.cpubusy',
 	}
-
+	keyfield = 'key'
 	cache = {}
 	def find_by_id(Id):
 		if Id in Steam.cache:
 			return Steam.cache[Id]
-		rec = Steam.db_table.search('key', "==", Id) 
+		rec = Steam.db_table.search(Steam.keyfield, "==", Id) 
 		if rec is None or len(rec) == 0:
 			return None
 		logger.debug("find_by_id %s found %s", Id, rec[0])
-		n = Steam(rec[0]['key'])
+		n = Steam(rec[0][Steam.keyfield])
 		Steam.cache[Id] = n
 		return n
 
 	def find_by_id(Id):
-		rec = Steam.db_table.search('key', "==", Id) 
+		rec = Steam.db_table.search(Steam.keyfield, "==", Id) 
 		if rec is None or len(rec) == 0:
 			return None
 		return rec[0]
@@ -234,6 +234,7 @@ class Steam(Item):
 		self.cpubusy = 0
 		self.key = int(conf['id'])
 		super().__init__('Steam', int(conf['id']))
+		self.keyfield = Steam.keyfield
 		_MQTT.set_msg_callback(self.on_data_msg)
 
 		Steam.db_table = _DB.table('Steam')
@@ -340,15 +341,17 @@ class Mesh(Item):
 	 "Packets received": "self.packets_received",
 	 }
 
+	keyfield = 'mesh_id'
 	cache = {}
+
 	def find_by_id(Id):
 		if Id in Mesh.cache:
 			return Mesh.cache[Id]
-		rec = Mesh.db_table.search('mesh_id', "==", Id) 
+		rec = Mesh.db_table.search(Mesh.keyfield, "==", Id) 
 		if rec is None or len(rec) == 0:
 			return None
 		logger.debug("find_by_id %s found %s", Id, rec[0])
-		n = Mesh(rec[0]['mesh_id'])
+		n = Mesh(rec[0][Mesh.keyfield])
 		Mesh.cache[Id] = n
 		return n
 
@@ -361,7 +364,7 @@ class Mesh(Item):
 		self.desc = "Description for mesh %s" % mesh_id
 
 		super().__init__('Mesh', mesh_id, parent_class=Steam, key_in_parent=0)
-		self.keyfield = 'mesh_id'
+		self.keyfield = Mesh.keyfield
 		self.desc = "Description for %s" % self.name
 		logger.info("Mesh created: %s", self)
 		self.write()
@@ -385,7 +388,7 @@ class Mesh(Item):
 
 	def save(self):
 		r = {}
-		r['mesh_id'] = self.mesh_id
+		r[Mesh.keyfield] = self.mesh_id
 		r['name'] = self.name
 		r['desc'] = self.desc
 		return r
@@ -408,16 +411,18 @@ class Node(Item):
 	 "slid": "self.slid",
 	}
 	UPSTATES = ["OK", "UP", "TRANSMITTING"]
+
+	keyfield = 'slid'
 	cache = {}
 
 	def find_by_id(Id):
 		if Id in Node.cache:
 			return Node.cache[Id]
-		rec = Node.db_table.search('slid', "==", Id) 
+		rec = Node.db_table.search(Node.keyfield, "==", Id) 
 		if rec is None or len(rec) == 0:
 			return None
 		logger.debug("Node find_by_id %s found: %s", Id, rec[0])
-		n = Node(rec[0]['slid'], rec[0]['nodecfg'])
+		n = Node(rec[0][Node.keyfield], rec[0]['nodecfg'])
 		Node.cache[Id] = n
 		return n
 #		return rec[0]
@@ -459,7 +464,7 @@ class Node(Item):
 			self.mesh = Mesh(self.mesh_id)
 
 		super().__init__('Node', slid, None, parent_class=Mesh, key_in_parent=self.mesh_id)
-		self.keyfield = 'slid'
+		self.keyfield = Node.keyfield
 
 		logger.info("Node created: %s" % self)
 		self.write()
@@ -485,8 +490,8 @@ class Node(Item):
 	def save(self):
 		r = {}
 		r['name'] = self.name
-		r['slid'] = self.slid
-		r['mesh_id'] = self.mesh_id
+		r[Node.keyfield] = self.slid
+		r[Mesh.keyfield] = self.mesh_id
 		r['via'] = self.via
 		r['nodecfg'] = self.nodecfg.save()
 		return r
@@ -785,15 +790,16 @@ class Packet(Item):
 	data_header_fmt = '<BLHB%is'		# op, slid, pkt_num, rssi, payload"
 	control_header_fmt = '<BLH%is'		# op, slid, pkt_num, payload"
 
+	keyfield = 'ts'
 	cache = {}
 	def find_by_id(Id):
 		if Id in Packet.cache:
 			return Packet.cache[Id]
-		rec = Packet.db_table.search('ts', "==", Id) 
+		rec = Packet.db_table.search(Packet.keyfield, "==", Id) 
 		if rec is None or len(rec) == 0:
 			return None
 		logger.debug("Node find_by_id %s found: %s", Id, rec[0])
-		n = Packet(rec[0]['ts'])
+		n = Packet(rec[0][Packet.keyfield])
 		Packet.cache[Id] = n
 		return n
 
@@ -816,7 +822,7 @@ class Packet(Item):
 				raise SteamLinkError("deconstruct pkt to short");
 		Packet.PacketID += 1
 		super().__init__('Pkt', Packet.PacketID, parent_class=Node)
-		self.keyfield = "ts"
+		self.keyfield = Packet.keyfield
 		if self.is_outgoing:
 			self.set_node(slnode)
 		self.write()
@@ -955,7 +961,7 @@ class Packet(Item):
 		r['sl_op'] = self.sl_op
 		r['pkt_num'] = self.pkt_num
 		r['slid'] = self.slid
-		r['ts'] = self.ts
+		r[Packet.keyfield] = self.ts
 		r['rssi'] = self.rssi
 		r['via'] = self.via
 		r['payload'] = self.payload
@@ -1031,7 +1037,7 @@ class TestPkt:
 			self.pkt['directon'] = 'recv'
 			self.pkt['text'] = r[4]
 		ts = time.strftime("%Y-%m-%d_%H:%M:%S", time.localtime())
-		self.pkt['ts'] = ts
+		self.pkt[Packet.keyfield] = ts
 
 
 	def get_pktno(self):
