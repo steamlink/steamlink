@@ -8,6 +8,7 @@ from queue import Empty, Full
 import json
 import time
 import asyncio
+import re
 
 from .timelog import TimeLog
 
@@ -21,6 +22,10 @@ from .linkage import (
 	Room,
 	Item,
 )
+
+
+SL_MAX_MESSAGE_LEN = 255
+SL_ACK_WAIT = 6
 
 
 _MQTT = None
@@ -194,7 +199,6 @@ class SL_OP:
 			pass
 		return '??'
 
-
 SL_AN_CODE = {0: 'Success', 1: 'Supressed duplicate pkt', 2: 'Unexpected pkt, dropping'}
 SL_AS_CODE = {0: 'Success', 1: 'Supressed duplicate pkt', 2: 'Unexpected pkt, dropping'}
 
@@ -240,6 +244,10 @@ class Steam(Item):
 		super().__init__('Steam', int(conf['id']))
 		self.keyfield = Steam.keyfield
 		_MQTT.set_msg_callback(self.on_data_msg)
+		_MQTT.set_public_control_callback(self.on_public_control_msg)
+		self.public_topic_control = _MQTT.get_public_control_topic()
+		self.public_topic_control_re = self.public_topic_control % "(.*)"
+
 
 		Steam.db_table = _DB.table('Steam')
 		Mesh.db_table = _DB.table('Mesh')
@@ -260,8 +268,23 @@ class Steam(Item):
 		return data
 
 
+	def on_public_control_msg(self, client, userdata, msg):
+		if logging.DBG > 2: logger.debug("on_public_control_msg %s %s", msg.topic, msg.payload)
+		match = re.match(self.public_topic_control_re, msg.topic) 
+		if match is None:
+			logger.warning("topic did not match public control topic: %s %s", topic, self.public_topic_control)
+			return
+		nodename = match.group(1)
+		node = Node.find_by_name(nodename)
+		if node is None:
+			logger.warning("public control: no such node node %s: %s", nodename, msg.payload)
+			return
+		node.send_data_to_node(msg.payload+b'\0')
+
+
 	def on_data_msg(self, client, userdata, msg):
 		# msg has  topic, payload, retain
+
 		topic_parts = msg.topic.split('/', 2)
 		if logging.DBG > 2: logger.debug("on_data_msg  %s %s", msg.topic, msg.payload)
 		try:
@@ -313,8 +336,12 @@ class Steam(Item):
 			return
 		n_now = time.time()
 		for node in registry.get_all('Node'):
-			if node.wait_for_AS_until != 0 and node.wait_for_AS_until <= n_now:
-				node.publish_pkt(resend=True)
+			if node.wait_for_AS_until[0] != 0:
+				rwait = int(node.wait_for_AS_until[0] - n_now)
+				logger.debug("heartbeat: %s wait %s sec for AS ", node.name, rwait)
+				if rwait <= 0:
+					node.publish_pkt(node.wait_for_AS_until[1], resend=True)
+					node.wait_for_AS(node.wait_for_AS_until[1])
 			elif node.is_overdue() and node.is_state_up():
 				node.set_state("OVERDUE")
 				node.schedule_update()
@@ -323,11 +350,15 @@ class Steam(Item):
 					node.send_get_status()
 
 
-	def save(self):
+	def save(self, withvirtual=False):
 		r = {}
 		r['key'] = self.key
 		r['name'] = self.name
 		r['desc'] = self.desc
+		if withvirtual:
+			r["Meshes"] = list(self.children.keys())
+			r["Time"] = time.asctime()
+			r["Load"] = "%3.1f%%" % self.cpubusy
 		return r
 
 
@@ -336,8 +367,8 @@ class Steam(Item):
 #
 class Mesh(Item):
 	console_fields = {
-     "mesh_id": "self.mesh_id",
- 	 "Name": "self.name",
+	 "mesh_id": "self.mesh_id",
+	 "Name": "self.name",
 	 "Description": "self.desc",
 	 "Total Nodes": "len(self.children)",
 	 "Active Nodes": "len(self.children)",
@@ -392,11 +423,16 @@ class Mesh(Item):
 		return data
 
 
-	def save(self):
+	def save(self, withvirtual=False):
 		r = {}
 		r[Mesh.keyfield] = self.mesh_id
 		r['name'] = self.name
 		r['desc'] = self.desc
+		if withvirtual:
+			r["Total Nodes"] = len(self.children)
+			r["Active Nodes"] = len(self.children)
+			r["Packets sent"] = self.packets_sent
+			r["Packets received"] = self.packets_received
 		return r
 
 #
@@ -407,7 +443,7 @@ class Node(Item):
  	 "Name": "self.nodecfg.name",
 	 "Description": "self.nodecfg.description",
 	 "State": "self.state",
-	 "Last Packet received": 'time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(int(self.last_packet_rx_ts)))',
+	 "Last Pkt received": 'time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(int(self.last_packet_rx_ts)))',
 	 "Packets sent": "self.packets_sent",
 	 "Packets received": "self.packets_received",
 	 "Packets cached": "len(self.children)",
@@ -424,6 +460,21 @@ class Node(Item):
 
 	def find_by_id(Id):
 		return registry.find_by_id('Node', Id)
+
+		if Id in Node.cache:
+			return Node.cache[Id]
+		rec = Node.db_table.search(Node.keyfield, "==", Id) 
+		if rec is None or len(rec) == 0:
+			return None
+		logger.debug("Node find_by_id %s found: %s", Id, rec[0])
+		n = Node(rec[0][Node.keyfield], rec[0]['nodecfg'])
+		Node.cache[Id] = n
+		return n
+#		return rec[0]
+
+
+	def find_by_name(name):
+		return registry.find_by_name('Node', name)
 
 		if Id in Node.cache:
 			return Node.cache[Id]
@@ -458,13 +509,12 @@ class Node(Item):
 		self.packets_received = 0
 		self.pkt_numbers = {True: 0, False:  0}	# next pkt num for data, control pkts
 		self.state = "INITIAL"
-		self.last_pkt = None			# last packet transmitted to node
 		self.last_packet_rx_ts = 0
 		self.last_packet_tx_ts = 0
 		self.last_packet_num = 0
 		self.via = []		# not initiatized
 		self.tr = {}		# dict of sending nodes, each holds a list of (pktno, rssi)
-		self.wait_for_AS_until = 0 		# deadline for AS ack
+		self.wait_for_AS_until = [0, None] 		# deadline for AS ack
 		self.packet_log = TimeLog(MAX_NODE_LOG_LEN)
 
 		self.mesh = Mesh.find_by_id(self.mesh_id)
@@ -496,13 +546,15 @@ class Node(Item):
 				self.__dict__[k] = data[k]
 
 
-	def save(self):
+	def save(self, withvirtual=False):
 		r = {}
 		r['name'] = self.name
 		r[Node.keyfield] = self.slid
 		r[Mesh.keyfield] = self.mesh_id
 		r['via'] = self.via
 		r['nodecfg'] = self.nodecfg.save()
+		if withvirtual:
+			r['Last Pkt received'] = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(int(self.last_packet_rx_ts)))
 		return r
 
 
@@ -548,15 +600,14 @@ class Node(Item):
 
 	def publish_pkt(self, sl_pkt=None, resend=False, sub="control"):
 		if resend:
-			if sl_pkt is None:
-				return
 			logger.debug("resending pkt: %s", sl_pkt)
-			sl_pkt = self.last_pkt 
 		else:
-			if self.wait_for_AS_until != 0:
+			if self.wait_for_AS_until[0] != 0 and sl_pkt.sl_op != SL_OP.AN:
 				logger.error("attempt to send pkt while waiting for AS, ignored: %s", sl_pkt)
 				return
-			self.last_pkt = sl_pkt
+		if len(sl_pkt.pkt) > SL_MAX_MESSAGE_LEN:
+			logger.error("publish pkt to long(%s): %s", len(sl_pkt.pkt), sl_pkt)
+			return
 		self.log_pkt(sl_pkt)
 		self.packets_sent += 1
 		self.mesh.packets_sent += 1
@@ -589,10 +640,10 @@ class Node(Item):
 	def send_data_to_node(self, data): 
 		if not self.is_state_up(): return SL_OP.NC
 		bpayload = data
-		logger.debug("send_data_to_node:: len %s, pkt %s", len(bpayload), self.bpayload)
+		logger.debug("send_data_to_node:: len %s, pkt %s", len(bpayload), bpayload)
 		sl_pkt = Packet(slnode=self, sl_op=SL_OP.DN, payload=bpayload)
 		self.publish_pkt(sl_pkt)
-		self.wait_for_AS()
+		self.wait_for_AS(sl_pkt)
 		return
 
 
@@ -602,7 +653,7 @@ class Node(Item):
 		logger.debug("send_set_config: len %s, pkt %s", len(bpayload), self.nodecfg)
 		sl_pkt = Packet(slnode=self, sl_op=SL_OP.SC, payload=bpayload)
 		self.publish_pkt(sl_pkt)
-		self.wait_for_AS()
+		self.wait_for_AS(sl_pkt)
 		return
 
 
@@ -650,12 +701,15 @@ class Node(Item):
 #		_DB.insert(sl_pkt.save())
 		self.send_ack_to_node(0)
 
+		_MQTT.public_publish(self.name, sl_pkt.payload)
+		
+
 
 	def post_data(self, sl_pkt):
 		""" handle incoming messages on the ../data topic """
 		self.log_pkt(sl_pkt)
 		if sl_pkt.is_data():
-			if not self.check_pkt_num(sl_pkt):
+			if not self.check_pkt_num(sl_pkt):	# duplicate packet
 				if sl_pkt.sl_op in [SL_OP.DS]:
 					logger.debug("post_data send AN on duplicate DS")
 					self.send_ack_to_node(1)
@@ -694,7 +748,7 @@ class Node(Item):
 		sl_op = sl_pkt.sl_op
 
 		if sl_op == SL_OP.ON: # autocreate did set nodecfg
-			self.wait_for_AS_until = 0		# give up waiting
+			self.wait_for_AS_until = [0,None]		# give up waiting
 			logger.debug('post_data: slid %d UP', int(self.slid))
 			self.nodecfg = SL_NodeCfgStruct(pkt=sl_pkt.bpayload)
 			self.send_set_config()
@@ -710,7 +764,7 @@ class Node(Item):
 		elif sl_op == SL_OP.AS:
 			logger.debug('post_data: slid %d ACK:  %s', int(self.slid), 
 						SL_AS_CODE[int(sl_pkt.bpayload[0])])
-			self.wait_for_AS_until = 0		# done waiting
+			self.wait_for_AS_until = [0,None]		# done waiting
 #			try:
 #				self.response_q.put(sl_op)
 #			except Full:
@@ -740,8 +794,10 @@ class Node(Item):
 		self.mesh.schedule_update()
 
 
-	def wait_for_AS(self):
-		self.wait_for_AS_until = time.time() + int(self.nodecfg.max_silence / 4)
+	def wait_for_AS(self, pkt):
+		self.wait_for_AS_until[0] = time.time() + SL_ACK_WAIT
+		self.wait_for_AS_until[1] = pkt
+		logger.debug("wait_for_AS on node %s for %s sec", self, SL_ACK_WAIT)
 
 
 	def get_response(self, timeout):
@@ -795,6 +851,8 @@ class Packet(Item):
 	 "payload": "self.payload",
 	 "ts": "time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(self.ts))",
 	}
+
+
 	PacketID = 0
 	data_header_fmt = '<BLHB%is'		# op, slid, pkt_num, rssi, payload"
 	control_header_fmt = '<BLH%is'		# op, slid, pkt_num, payload"
@@ -967,7 +1025,7 @@ class Packet(Item):
 		super().load(data)
 			
 
-	def save(self):
+	def save(self, withvirtual=False):
 		r = {}
 		r['sl_op'] = self.sl_op
 		r['pkt_num'] = self.pkt_num
@@ -977,6 +1035,9 @@ class Packet(Item):
 		r['via'] = self.via
 		r['payload'] = self.payload
 		r['bpayload'] = repr(self.bpayload)	#??
+		if withvirtual:
+			r["ts"] = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(self.ts))
+			r["op"] = SL_OP.code(self.sl_op)
 		return r
 
 
@@ -1014,7 +1075,7 @@ class Packet(Item):
 
 
 	def get_room_list(self):
-		logger.debug("get_room_list %s", self)
+		#logger.debug("get_room_list %s", self)
 		rooms = []
 		rooms.append( "%s_*" % (self.itype))
 		# Packets don't have a 'header' room

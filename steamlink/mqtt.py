@@ -3,6 +3,7 @@
 import aiomqtt
 import asyncio
 import random
+import json
 import sys
 import os
 from hbmqtt.broker import Broker
@@ -29,6 +30,8 @@ class Mqtt:
 		self.topic_prefix = conf['prefix']
 		self.topic_control = conf['control']
 		self.topic_data = conf['data']
+		self.public_topic_control = conf['public_control']
+		self.public_topic_data = conf['public_data']
 		self.server =   conf['server']
 		self.port =     conf['port']
 		self.clientid = conf['clientid']
@@ -39,12 +42,13 @@ class Mqtt:
 		self.control_topic_x = "%s/%%s/%s" % (self.topic_prefix, self.topic_control)
 		self.data_topic_x = "%s/%%s/%s" % (self.topic_prefix, self.topic_data)
 		self.data_topic = "%s/+/%s" % (self.topic_prefix, self.topic_data)
+		self.public_control_topic = self.public_topic_control % "+"
 
 		self.connected = asyncio.Event(loop=loop)
 		self.subscribed = asyncio.Event(loop=loop)
 		self.disconnected = asyncio.Event(loop=loop)
 		self.mq = self.set_mq()
-		self.subscription_list = [self.data_topic]
+		self.subscription_list = [self.data_topic, self.public_control_topic]
 		self.running = True
 
 	def set_mq(self):
@@ -69,8 +73,16 @@ class Mqtt:
 		return mq
 
 
+	def get_public_control_topic(self):
+		return self.public_topic_control
+
 	def set_msg_callback(self, callback):
+		logger.debug("set_msg_callback on %s", self.data_topic)
 		self.mq.message_callback_add(self.data_topic, callback)
+
+	def set_public_control_callback(self, callback):
+		logger.debug("set_public_control_callbac on %s", self.public_control_topic)
+		self.mq.message_callback_add(self.public_control_topic, callback)
 
 
 	async def start(self):
@@ -121,7 +133,11 @@ class Mqtt:
 
 
 	def on_message(self, client, userdata, msg):
-		logger.info("%s got %s %s", self.name, msg.topic, json.loads(msg.payload.decode('utf-8')))
+		try:
+			ddata = json.loads(msg.payload.decode('utf-8'))
+		except:
+			ddata = msg.payload
+		logger.info("%s got %s %s", self.name, msg.topic, ddata)
 
 
 	def mk_json_msg(self, msg):
@@ -140,6 +156,12 @@ class Mqtt:
 		topic = s % firsthop
 		# logger.info("%s publish %s %s", self.name, topic, pkt)
 		self.mq.publish(topic, payload=pkt.pkt, qos=qos, retain=retain)
+
+
+	def public_publish(self, nodename, data, qos=0, retain=False):
+		topic = self.public_topic_data % nodename
+		# logger.debug("%s public publish %s %s", self.name, topic, data)
+		self.mq.publish(topic, payload=data, qos=qos, retain=retain)
 
 
 

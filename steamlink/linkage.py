@@ -68,7 +68,10 @@ class Registry:
 
 
 	def find_by_name(self, itype, name):
-		t = self.reg['name_idx'][itype].get(name, None)
+		try:
+			t = self.reg['name_idx'][itype].get(name, None)
+		except:
+			t = None
 		return t
 
 

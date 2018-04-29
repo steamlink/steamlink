@@ -99,6 +99,8 @@ DEFAULT_CONF = OrderedDict({
 		'prefix': 'SteamLink',
 		'data': 'data',
 		'control': 'control',
+		'public_control': 'SteamLink/pub/%s/control',
+		'public_data': 'SteamLink/pub/%s/data',
 	}),
 
 	'console': OrderedDict({
