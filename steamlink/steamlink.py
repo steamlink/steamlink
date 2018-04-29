@@ -318,9 +318,9 @@ class Steam(Item):
 			elif node.is_overdue() and node.is_state_up():
 				node.set_state("OVERDUE")
 				node.schedule_update()
-#			if not node.is_state_up():		#XXX not offline or sleeping
-#				if node.last_packet_tx_ts != 0 and node.last_packet_tx_ts + MAXSILENCE < n_now:
-#					node.send_get_status()
+			if not node.is_state_up():		#XXX not offline or sleeping
+				if node.last_packet_tx_ts != 0 and node.last_packet_tx_ts + MAXSILENCE < n_now:
+					node.send_get_status()
 
 
 	def save(self):
