@@ -58,7 +58,7 @@ MAX_NODE_LOG_LEN = 1000		# maximum packets stored in per node log
 RoomSyntax = """
 <ritype>_<key>_<detail>
 
-ritype = Steam, Mesh, Node, Pkt
+ritype = Steam, Mesh, Node, Packet
 key = ID or *
 detail = None or *
 
@@ -75,13 +75,13 @@ Node_*					-> all nodes
 Node_Node00000001		-> node 1
 Node_Node00000001_*		-> all pkt logs for node 1
 
-#PktType_*				-> all pkt types
-#PktType_ON				-> ??
-#PktType_ON_*			-> all ON packets
+#PacketType_*				-> all pkt types
+#PacketType_ON				-> ??
+#PacketType_ON_*			-> all ON packets
 
-Pkt_*
-Pkt_1
-Pkt_1_*					XXX nothing below pkt
+Packet_*
+Packet_1
+Packet_1_*					XXX nothing below pkt
 
 """
 
@@ -204,7 +204,7 @@ SL_AS_CODE = {0: 'Success', 1: 'Supressed duplicate pkt', 2: 'Unexpected pkt, dr
 class Steam(Item):
 	console_fields = {
  	 "Name": "self.name",
- 	 "Meshes": "' '.join(str(self.children))",
+ 	 "Meshes": "list(self.children.keys())",
 	 "Time": "time.asctime()",
 	 "Load": '"%3.1f%%" % self.cpubusy',
 	}
@@ -244,7 +244,7 @@ class Steam(Item):
 		Steam.db_table = _DB.table('Steam')
 		Mesh.db_table = _DB.table('Mesh')
 		Node.db_table = _DB.table('Node')
-		Packet.db_table = _DB.table('Pkt')
+		Packet.db_table = _DB.table('Packet')
 		self.write()
 
 
@@ -407,7 +407,7 @@ class Node(Item):
  	 "Name": "self.nodecfg.name",
 	 "Description": "self.nodecfg.description",
 	 "State": "self.state",
-	 "Last Pkt received": 'time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(int(self.last_packet_rx_ts)))',
+	 "Last Packet received": 'time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(int(self.last_packet_rx_ts)))',
 	 "Packets sent": "self.packets_sent",
 	 "Packets received": "self.packets_received",
 	 "Packets cached": "len(self.children)",
@@ -803,7 +803,7 @@ class Packet(Item):
 	keyfield = 'ts'
 	cache = {}
 	def find_by_id(Id):
-		return registry.find_by_id('Pkt', Id)
+		return registry.find_by_id('Packet', Id)
 		if Id in Packet.cache:
 			return Packet.cache[Id]
 		rec = Packet.db_table.search(Packet.keyfield, "==", Id) 
@@ -819,7 +819,7 @@ class Packet(Item):
 		self.rssi = 0
 		self.via = []
 		self.payload = None
-		self.itype = "Pkt"
+		self.itype = "Packet"
 		self.ts = time.time()
 #		self.node = None
 		self.nodecfg = None
@@ -832,7 +832,7 @@ class Packet(Item):
 				logger.error("deconstruct pkt to short: %s", len(pkt))
 				raise SteamLinkError("deconstruct pkt to short");
 		Packet.PacketID += 1
-		super().__init__('Pkt', Packet.PacketID, parent_class=Node)
+		super().__init__('Packet', Packet.PacketID, parent_class=Node)
 		self.keyfield = Packet.keyfield
 		if self.is_outgoing:
 			self.set_node(slnode)
@@ -844,9 +844,9 @@ class Packet(Item):
 		BOn = "[7m"
 		BOff = "[0m"
 		try:
-			return "Pkt N%s(%s)%s" % ( self.slid, self.pkt_num, BOn+SL_OP.code(self.sl_op)+BOff)
+			return "Packet N%s(%s)%s" % ( self.slid, self.pkt_num, BOn+SL_OP.code(self.sl_op)+BOff)
 		except:
-			return "Pkt NXXX(??)??"
+			return "Packet NXXX(??)??"
 
 
 	def set_node(self, node):

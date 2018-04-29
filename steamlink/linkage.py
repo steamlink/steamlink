@@ -31,7 +31,7 @@ from yaml import Loader, Dumper
 class Registry:
 	def __init__(self):
 		logger.debug("Registry: instance")
-		self.db_items = ['Steam', 'Mesh', 'Node', 'Pkt']
+		self.db_items = ['Steam', 'Mesh', 'Node', 'Packet']
 
 
 	def open(self):

@@ -16,7 +16,6 @@ from .steamlink import (
 	Steam,
 	Packet
 )
-Pkt = Packet
 from .linkage import (
 	registry,
 	BaseItem,
@@ -92,7 +91,7 @@ class ItemPartialMap:
 		del self.map[idx]
 
 
-irectypes = ['Steam', 'Mesh', 'Node', 'Pkt']
+irectypes = ['Steam', 'Mesh', 'Node', 'Packet']
 
 #
 # Partial
