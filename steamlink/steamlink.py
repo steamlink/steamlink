@@ -204,7 +204,7 @@ SL_AS_CODE = {0: 'Success', 1: 'Supressed duplicate pkt', 2: 'Unexpected pkt, dr
 class Steam(Item):
 	console_fields = {
  	 "Name": "self.name",
- 	 "Meshes": "' '.join(self.children)",
+ 	 "Meshes": "' '.join(str(self.children))",
 	 "Time": "time.asctime()",
 	 "Load": '"%3.1f%%" % self.cpubusy',
 	}
@@ -214,6 +214,7 @@ class Steam(Item):
 	cache = {}
 
 	def find_by_id(Id):
+		return registry.find_by_id('Steam', Id)
 		if Id in Steam.cache:
 			return Steam.cache[Id]
 		rec = Steam.db_table.search(Steam.keyfield, "==", Id) 
@@ -349,6 +350,7 @@ class Mesh(Item):
 	cache = {}
 
 	def find_by_id(Id):
+		return registry.find_by_id('Mesh', Id)
 		if Id in Mesh.cache:
 			return Mesh.cache[Id]
 		rec = Mesh.db_table.search(Mesh.keyfield, "==", Id) 
@@ -421,6 +423,8 @@ class Node(Item):
 	cache = {}
 
 	def find_by_id(Id):
+		return registry.find_by_id('Node', Id)
+
 		if Id in Node.cache:
 			return Node.cache[Id]
 		rec = Node.db_table.search(Node.keyfield, "==", Id) 
@@ -644,7 +648,7 @@ class Node(Item):
 		if logging.DBG > 2: logger.debug("store_data inserting into db")
 
 #		_DB.insert(sl_pkt.save())
-		send_ack_to_node(0)
+		self.send_ack_to_node(0)
 
 
 	def post_data(self, sl_pkt):
@@ -654,7 +658,7 @@ class Node(Item):
 			if not self.check_pkt_num(sl_pkt):
 				if sl_pkt.sl_op in [SL_OP.DS]:
 					logger.debug("post_data send AN on duplicate DS")
-					send_ack_to_node(1)
+					self.send_ack_to_node(1)
 				return	# duplicate
 		else:
 			logger.error("Node %s got control pkt %s", self, sl_pkt)
@@ -799,6 +803,7 @@ class Packet(Item):
 	keyfield = 'ts'
 	cache = {}
 	def find_by_id(Id):
+		return registry.find_by_id('Pkt', Id)
 		if Id in Packet.cache:
 			return Packet.cache[Id]
 		rec = Packet.db_table.search(Packet.keyfield, "==", Id) 
