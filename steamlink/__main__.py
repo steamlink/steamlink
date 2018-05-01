@@ -194,7 +194,7 @@ def load_from_cache(fname):
 #
 # Main
 #
-def steamlink_main(conf):
+def steamlink_main(cl_args, conf):
 	global daemon
 
 	""" start steamlink """
@@ -225,7 +225,7 @@ def steamlink_main(conf):
 
 	# N.B. no asyncio before daemon!
 	aioloop = asyncio.get_event_loop()
-	if DBG >= 2:
+	if logging.DBG >= 2:
 		aioloop.set_debug(enabled=True)
 
 	try:
@@ -297,7 +297,7 @@ def steamlink_main(conf):
 
 	logger.debug("startup: start webapp")
 	aioloop.run_until_complete(webapp.start())
-	steam = Steam(conf_steam, loop = aioloop)
+	steam = Steam(conf_steam)
 	logger.debug("startup: create Steam")
 	load_from_cache(conf_working_dir+"/steamlink.cache")
 
@@ -396,7 +396,7 @@ def steamlink_command():
 	conf = loadconfig(DEFAULT_CONF, conff)
 
 	try:
-		restart = steamlink_main(conf)
+		restart = steamlink_main(cl_args, conf)
 		rc = 0
 #	except SystemExit as e:
 #		rc  = e
