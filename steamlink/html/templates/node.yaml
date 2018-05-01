@@ -22,7 +22,7 @@ packets:
   type: table
   title: Packets in the Node
   # Query information
-  record_type: Pkt
+  record_type: Packet
   start_key: 1
   key_field: "null"
   count: 20
