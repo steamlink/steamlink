@@ -1,5 +1,6 @@
 ## SteamLink
 
+[![Build Status](https://travis-ci.org/steamlink/steamlink.svg?branch=master)](https://travis-ci.org/steamlink/steamlink)
 
 ### Installation
 
