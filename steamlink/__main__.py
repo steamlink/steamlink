@@ -56,6 +56,11 @@ from .const import (
 class GracefulExit(SystemExit):
 	code = 1
 
+class GracefulRestart(SystemExit):
+	code = 2
+
+def raise_graceful_restart():
+	raise GracefulRestart()
 
 def raise_graceful_exit():
 	raise GracefulExit()
@@ -225,7 +230,7 @@ def steamlink_main() -> int:
 	# create config  if -C
 	if cl_args.createconfig:
 		rc = createconfig(conff, DEFAULT_CONF)
-		return(rc)
+		sys.exit(rc)
 
 	# load config
 	conf = loadconfig(DEFAULT_CONF, conff)
@@ -259,6 +264,7 @@ def steamlink_main() -> int:
 		aioloop.set_debug(enabled=True)
 
 	try:
+		aioloop.add_signal_handler(signal.SIGHUP, raise_graceful_restart)
 		aioloop.add_signal_handler(signal.SIGINT, raise_graceful_exit)
 		aioloop.add_signal_handler(signal.SIGTERM, raise_graceful_exit)
 	except NotImplementedError:  # pragma: no cover
@@ -326,7 +332,7 @@ def steamlink_main() -> int:
 	OpenRegistry()
 	logger.debug("startup: start webapp")
 	aioloop.run_until_complete(webapp.start())
-	steam = Steam(conf_steam)
+	steam = Steam(conf_steam, loop = aioloop)
 	logger.debug("startup: create Steam")
 	load_from_cache(conf_working_dir+"/steamlink.cache")
 
@@ -350,17 +356,22 @@ def steamlink_main() -> int:
 
 	coros.append(webapp.qstart())
 	logger.debug("startup: starting coros")
+	restart = False
 	try:
 		aioloop.run_until_complete(asyncio.gather(
 			*coros
 			))
 		aioloop.run_forever()
+	except (GracefulRestart):
+		logger.info("restarting")
+		restart = True
 	except (GracefulExit, KeyboardInterrupt):
-		logger.info("terminating")
+		logger.info("shutting down")
 	except hbmqtt.errors.NoDataException as e:
 		logger.notice("coros run_until: hbmqtt.errors.NoDataException: %s", e)
 
 	# Shutdown
+#	webapp.stop()
 	aioloop.run_until_complete(db.stop())
 	if TestTask:
 		logger.debug("stopping TestTask")
@@ -373,16 +384,19 @@ def steamlink_main() -> int:
 	CloseRegistry()
 
 	logger.info("done")
+	return restart
 
 
 daemon = False
 def main() -> int:
 	try:
-		rc = steamlink_main()
-	except SystemExit as e:
-		rc  = e
-		pass
+		restart = steamlink_main()
+		rc = 0
+#	except SystemExit as e:
+#		rc  = e
+#		pass
 	except:
+		restart = False
 		rc = 127
 		exc_type, exc_value, exc_traceback = sys.exc_info()
 		tb = traceback.format_exception(exc_type, exc_value, exc_traceback)
@@ -394,7 +408,9 @@ def main() -> int:
 			for l in tb:
 				syslog.syslog(syslog.LOG_ERR, ' -> %s' % l.rstrip('\n'))
 				logger.error(' -> %s', l.rstrip('\n'))
-
+	if restart:
+		os.execv(sys.argv[0], [sys.argv[0]])
 	sys.exit(rc)
+
 if __name__ == "__main__":
 	main()
