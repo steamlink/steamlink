@@ -247,7 +247,11 @@ class WebNamespace(socketio.AsyncNamespace):
 		logger.debug("WebNamespace items_to_send %s", room.name)
 		room.schedule_update(sid)	# update all items in the room for this sid only
 		if message['count'] != 0:
-			itype = eval("%s.childclass" % room.ritype)
+			try:
+				itype = eval("%s.childclass" % room.ritype)
+			except Exception as e:
+				logger.error("unknown room type %s", e)
+				return
 			if itype == '':
 				itype = "Packet"
 		else:
@@ -397,7 +401,7 @@ class WebApp(object):
 		self.loop.run_until_complete(self.server.wait_closed())
 		self.loop.run_until_complete(self.app.shutdown())
 		self.loop.run_until_complete(self.handler.shutdown(self.shutdown_timeout))
-		self.loop.run_until_complete(self.runner.cleanup())
+#		self.loop.run_until_complete(self.runner.cleanup())
 
 
 	async def config_json(self, request):
@@ -466,12 +470,12 @@ class WebApp(object):
 			try:
 				partial, key = qk.split('.', 1)
 			except:
-				logger.info("web route_handler: Query key with no '.' : %s", qk)
+				logger.debug("web route_handler: Query key with no '.' : %s", qk)
 				continue
 			if not partial in dc.data:
-				logger.info("web route_handler: partial not in yaml : %s", partial)
+				logger.debug("web route_handler: partial not in yaml : %s", partial)
 				continue
-			logger.info("web route_handler: dc.data[partial] : %s", dc.data[partial])
+			logger.debug("web route_handler: dc.data[partial] : %s", dc.data[partial])
 			i = request.query[qk]
 			try:
 				i = int(i)

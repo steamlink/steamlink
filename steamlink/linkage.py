@@ -79,7 +79,7 @@ class Registry:
 		try:
 			t = self.reg['id_idx'][itype].get(Id, None)
 		except KeyError as e:
-			logger.warning("find_by_id: %s not in id_idx", e)
+			if logging.DBG > 1: logger.debug("find_by_id: %s not in id_idx", e)
 			t = None
 			
 		if logging.DBG > 2: logger.debug("find_by_id %s %s = %s", itype, Id, str(t))
