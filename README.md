@@ -20,7 +20,7 @@ It will create `steamlink.yaml` in your home directory. You can use the `-c <fil
 
 After editing the config you can start steamlink with
 
-```$ steamlink```. 
+```$ steamlink```
 
 
 ### Configuration
@@ -75,5 +75,41 @@ The MQTT section defines the MQTT client cconnection.
 #### MQTT Broker
 
 Steamlink uses an MQTT broker for internal processing and for delivery of data traffic from and to network nodes. A built-in MQTT broker is used by default, the `mqtt_broker` entry in the `[general]` section will point to the configuration section for the internal broker. If you want to use an external MQTT broker, set `mqtt_broker` to blank. The client connection pararamters to your broker are define in the `[mqtt]` section.
+
+### Operation
+
+#### Node states
+
+| State | Off/Online | comment
+|-------|:-----------|:--------
+| INITIAL| - | loaded from config, has not seen live data
+| ONLINE | on | node signed on
+| OFFLINE| off| node signed off with no indication of restart time
+| SLEEPING| off | node signed off with intention to return
+| TRANSMITTING| on | node is transmitting data but we did not see a sign-on in this session
+| OVERDUE | off | no data from node longer than maximum sleep time
+| OK | on | node set status
+
+#### Packet counters
+
+| fieldname | comment
+|-----|:-----
+| packets_sent | number of packets transmitted since node started
+| packets_received | number of packets node received since start
+| packets_resent | number of packets that were resent because of missing ACKs
+| packets_dropped | number of packets that were not transmitted because of buffer full, crc failure, or invalid or unknown destination
+| packets_missed | number of packets that the node should have received but never saw
+
+
+#### Other packet info
+
+| fieldname | comment
+|-----|:-----
+| last\_node\_restart\_ts | timestamp of last time node restarted
+| last\_packet\_rx\_ts | timestamp of last packet received
+| last\_packet\_tx\_ts | timestamp of last packet transmitted
+| via | list of SLIDs the last packet was router via
+
+
 
 
