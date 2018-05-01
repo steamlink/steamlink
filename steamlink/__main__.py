@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# Main program for a Steamlink network
+# Main program for a Steamlink network store
 
 import sys
 import os
@@ -336,7 +336,7 @@ def steamlink_main(conf):
 		logger.notice("coros run_until: hbmqtt.errors.NoDataException: %s", e)
 
 	# Shutdown
-#	webapp.stop()
+#	webapp.stop()	# N.B. take 20 seconds to shutdown
 	aioloop.run_until_complete(db.stop())
 	if TestTask:
 		logger.debug("stopping TestTask")
