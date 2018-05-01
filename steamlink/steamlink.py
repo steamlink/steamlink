@@ -521,7 +521,7 @@ class Node(Item):
 	 "gps_lon": "self.nodecfg.gps_lon",
 	 "slid": "self.slid",
 	}
-	UPSTATES = ["OK", "UP", "TRANSMITTING"]
+	UPSTATES = ["ONLINE", "OK", "UP", "TRANSMITTING"]
 
 	childclass = 'Packet'
 	keyfield = 'slid'
@@ -838,7 +838,7 @@ class Node(Item):
 
 		if sl_op == SL_OP.ON: # autocreate did set nodecfg
 			self.set_wait_for_AS(None)		# give up 
-			logger.debug('post_data: slid %d UP', int(self.slid))
+			logger.debug('post_data: slid %d ONLINE', int(self.slid))
 			self.nodecfg = SL_NodeCfgStruct(pkt=sl_pkt.bpayload)
 			self.send_set_config()
 			self.set_state("ONLINE")
