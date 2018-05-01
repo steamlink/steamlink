@@ -4,6 +4,7 @@ python:
 # command to install dependencies
 install:
   - pip install -r requirements.txt
+  - python3 setup.py install
 # command to run tests
 script:
   - steamlink --help 
