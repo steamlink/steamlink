@@ -4,8 +4,8 @@ ToDos/Dones:
 Node
 X pkt sequence numbers
 X change ON opcode to transmit a SL_NodeCfgStruct packet
-- ACK handling
-- sign-on procedure
+X ACK handling
+X sign-on procedure
 X replace RadioHead driver with native driver (sandeepmistry/arduino-LoRa)
 
 Bridge:
@@ -15,6 +15,7 @@ Store:
 X store: track and report missing or packets
 - store: new DB layer with continuous searchs for notification of web clients
 - store: save Mesh/Node info in TinyDB yaml DB
+- store: provide rc script
 
 WebConsole:
 
