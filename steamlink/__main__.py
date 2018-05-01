@@ -194,46 +194,11 @@ def load_from_cache(fname):
 #
 # Main
 #
-def steamlink_main() -> int:
+def steamlink_main(conf):
 	global daemon
-	""" start steamlinks """
 
-	cl_args = getargs()
+	""" start steamlink """
 
-	try:
-		loglevel = getattr(logging, cl_args.loglevel.upper())
-	except Exception as e:
-		loglevel = None
-
-	if loglevel is None:
-		loglevel = logging.DEBUG if cl_args.debug > 0 else logging.INFO
-
-	FORMAT = '%(asctime)-15s: %(levelname)s %(module)s %(message)s'
-	logging.basicConfig(format=FORMAT, filename=cl_args.logfile)
-	logger.setLevel(loglevel)
-	DBG = cl_args.debug
-	logging.DBG = DBG
-
-	if DBG >= 2:
-		logger.info("DBG: logging all warnings")
-		import warnings
-		warnings.simplefilter("always")
-		logging.captureWarnings(True)
-
-	logger.info("%s version %s" % (PROJECT_PACKAGE_NAME, __version__))
-
-	if cl_args.config is None:
-		conff = home + "/" + DEFAULT_CONFIG_FILE
-	else:
-		conff = cl_args.config
-
-	# create config  if -C
-	if cl_args.createconfig:
-		rc = createconfig(conff, DEFAULT_CONF)
-		sys.exit(rc)
-
-	# load config
-	conf = loadconfig(DEFAULT_CONF, conff)
 	if conf['mqtt']['clientid'] is None:
 		conf['mqtt']['clientid'] = "clie"+"%04i" % int(random.random() * 10000)
 
@@ -269,9 +234,6 @@ def steamlink_main() -> int:
 		aioloop.add_signal_handler(signal.SIGTERM, raise_graceful_exit)
 	except NotImplementedError:  # pragma: no cover
 		logger.error("main: failed to trap signals")
-
-#	OpenRegistry(None)
-#	OpenRegistry(conf_working_dir+"/steamlink.reg")
 
 	broker_c = conf_general.get('mqtt_broker', None)
 	if broker_c is None:
@@ -329,7 +291,10 @@ def steamlink_main() -> int:
 	aioloop.run_until_complete(db.start())
 
 	logger.debug("startup: Open Registry")
+#	OpenRegistry(None)
+#	OpenRegistry(conf_working_dir+"/steamlink.reg")
 	OpenRegistry()
+
 	logger.debug("startup: start webapp")
 	aioloop.run_until_complete(webapp.start())
 	steam = Steam(conf_steam, loop = aioloop)
@@ -386,11 +351,52 @@ def steamlink_main() -> int:
 	logger.info("done")
 	return restart
 
+#
+# Main
+#
 
 daemon = False
-def main() -> int:
+def steamlink_command():
+	global daemon
+	cl_args = getargs()
+
 	try:
-		restart = steamlink_main()
+		loglevel = getattr(logging, cl_args.loglevel.upper())
+	except Exception as e:
+		loglevel = None
+
+	if loglevel is None:
+		loglevel = logging.DEBUG if cl_args.debug > 0 else logging.INFO
+
+	FORMAT = '%(asctime)-15s: %(levelname)s %(module)s %(message)s'
+	logging.basicConfig(format=FORMAT, filename=cl_args.logfile)
+	logger.setLevel(loglevel)
+	DBG = cl_args.debug
+	logging.DBG = DBG
+
+	if DBG >= 2:
+		logger.info("DBG: logging all warnings")
+		import warnings
+		warnings.simplefilter("always")
+		logging.captureWarnings(True)
+
+	logger.info("%s version %s" % (PROJECT_PACKAGE_NAME, __version__))
+
+	if cl_args.config is None:
+		conff = home + "/" + DEFAULT_CONFIG_FILE
+	else:
+		conff = cl_args.config
+
+	# create config  if -C
+	if cl_args.createconfig:
+		rc = createconfig(conff, DEFAULT_CONF)
+		return(rc)
+
+	# load config
+	conf = loadconfig(DEFAULT_CONF, conff)
+
+	try:
+		restart = steamlink_main(conf)
 		rc = 0
 #	except SystemExit as e:
 #		rc  = e
@@ -410,7 +416,8 @@ def main() -> int:
 				logger.error(' -> %s', l.rstrip('\n'))
 	if restart:
 		os.execv(sys.argv[0], [sys.argv[0]])
-	sys.exit(rc)
+	return rc
 
 if __name__ == "__main__":
-	main()
+	rc = steamlink_command()
+	sys.exit(rc)
