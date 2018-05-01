@@ -151,11 +151,11 @@ class Mqtt:
 		return jmsg
 
 
-	def publish(self, firsthop, pkt, qos=0, retain=False, sub="control"):
+	def publish(self, firsthop, payload, qos=0, retain=False, sub="control"):
 		s = self.control_topic_x if sub == "control" else self.data_topic_x
 		topic = s % firsthop
-		# logger.info("%s publish %s %s", self.name, topic, pkt)
-		self.mq.publish(topic, payload=pkt.pkt, qos=qos, retain=retain)
+		# logger.info("%s publish %s %s", self.name, topic, payload)
+		self.mq.publish(topic, payload=payload, qos=qos, retain=retain)
 
 
 	def public_publish(self, nodename, data, qos=0, retain=False):
