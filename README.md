@@ -10,7 +10,8 @@ It requires python version 3.6 or better, and the python pip module.
 
 1. Create en environment (for example 'sl') for SteamLink	```$ python3 -m venv sl```
 1. Activate the new environment ```$ . sl/bin/activate``` 
-1. Install (or upgrade) SteamLink from pypi ```$ pip3 install --upgrade steamlink```
+1. Install (or upgrade) SteamLink from pypi ```$ pip3 install --upgrade steamlink```. Alternatively, if you have cloned the githup repository, you can install SteamLink with ```$ python3 setup.py install``` from the checked out working directory.
+
 
 Steamlink will run with configuration defaults, if you don't specify a config file. You can create a default config file with the command
 
@@ -22,6 +23,7 @@ After editing the config you can start steamlink with
 
 ```$ steamlink```
 
+TODO: running as a service
 
 ### Configuration
 The default configuration file is `steamlink.yaml` in the user's home directory. Override with the -c option.
@@ -30,7 +32,6 @@ The default configuration file is `steamlink.yaml` in the user's home directory.
 - `mqtt_broker` - null for external broker or section name n this config file for the internal broker definition. Default `mqtt_broker`. See <B>MQTT Broker</B> below.
 
 - `ping_timeout` - websocket keep-alive timeout
-
 
 #### Steam
 - `id` - id of the top level entry, default 0
