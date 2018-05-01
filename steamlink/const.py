@@ -1,8 +1,8 @@
 # coding: utf-8
 """Constants used by Home Assistant components."""
 MAJOR_VERSION = 0
-MINOR_VERSION = 7
-PATCH_VERSION = '2'
+MINOR_VERSION = 8
+PATCH_VERSION = '0'
 __short_version__ = '{}.{}'.format(MAJOR_VERSION, MINOR_VERSION)
 __version__ = '{}.{}'.format(__short_version__, PATCH_VERSION)
 REQUIRED_PYTHON_VER = (3, 6, 0)
@@ -12,7 +12,7 @@ PROJECT_NAME = 'SteamLink'
 PROJECT_PACKAGE_NAME = 'steamlink'
 PROJECT_LICENSE = 'MIT License'
 PROJECT_AUTHOR = 'SteamLink Authors'
-PROJECT_COPYRIGHT = ' 2017, {}'.format(PROJECT_AUTHOR)
+PROJECT_COPYRIGHT = ' 2017-2018, {}'.format(PROJECT_AUTHOR)
 PROJECT_URL = 'https://steamlink.net/'
 PROJECT_EMAIL = 'info+git@steamlink.net'
 PROJECT_DESCRIPTION = ('Open-source IoT network framework '
