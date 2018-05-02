@@ -200,7 +200,6 @@ class SL_OP:
 			pass
 		return '??'
 
-SL_AN_CODE = {0: 'Success', 1: 'Supressed duplicate pkt', 2: 'Unexpected pkt, dropping'}
 SL_AS_CODE = {0: 'Success', 1: 'Supressed duplicate pkt', 2: 'Unexpected pkt, dropping'}
 
 #
@@ -515,6 +514,7 @@ class Node(Item):
 	 "Packets resent": "self.packets_resent",
 	 "Packets dropped": "self.packets_dropped",
 	 "Packets missed": "self.packets_missed",
+	 "Packets duplicate": "self.packets_duplicate",
 	 "Packets cached": "len(self.children)",
 	 "Child 1": "str(self.children[12])",
 	 "gps_lat": "self.nodecfg.gps_lat",
@@ -579,6 +579,7 @@ class Node(Item):
 		self.packets_resent = 0
 		self.packets_dropped = 0
 		self.packets_missed = 0
+		self.packets_duplicate = 0
 		self.pkt_numbers = {True: 0, False:  0}	# next pkt num for data, control pkts
 		self.state = "INITIAL"
 		self.last_node_restart_ts = 0
@@ -627,9 +628,17 @@ class Node(Item):
 		r['via'] = self.via
 		r['nodecfg'] = self.nodecfg.save()
 		if withvirtual:
+			r['state'] = self.state
 			r['Last Pkt received'] = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(int(self.last_packet_rx_ts)))
 			r['Last Pkt sent'] = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(int(self.last_packet_tx_ts)))
 			r['Last Node restart'] = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(int(self.last_node_restart_ts)))
+			r['packets_sent'] = self.packets_sent
+			r['packets_received'] = self.packets_received
+			r['packets_resent'] = self.packets_resent
+			r['packets_dropped'] = self.packets_dropped
+			r['packets_missed'] = self.packets_missed
+			r['packets_duplicate'] = self.packets_duplicate
+			r['wait_for_AS'] = "%s %s" % (self.wait_for_AS[0], seld.wait_for_AS[1])
 		return r
 
 
@@ -790,7 +799,6 @@ class Node(Item):
 		_MQTT.public_publish(self.name, sl_pkt.payload)
 		
 
-
 	def post_data(self, sl_pkt):
 		""" handle incoming messages on the ../data topic """
 		self.log_pkt(sl_pkt)
@@ -799,6 +807,7 @@ class Node(Item):
 				if sl_pkt.sl_op in [SL_OP.DS]:
 					logger.debug("post_data send AN on duplicate DS")
 					self.send_ack_to_node(1)
+				self.packets_duplicate += 1
 				self.packets_dropped += 1
 				return	# duplicate
 		else:
@@ -806,8 +815,8 @@ class Node(Item):
 			self.packets_dropped += 1
 			return # NotForUs
 
-		# set ts for all nodes on the route
-		for slid in sl_pkt.via + [sl_pkt.slid]:
+		# set ts for all nodes on the via route
+		for slid in sl_pkt.via:
 			node = Node.find_by_id(slid)
 			if node:
 				node.last_packet_rx_ts = sl_pkt.ts
@@ -876,6 +885,8 @@ class Node(Item):
 				self.tr[test_pkt.pkt['slid']] = []
 			self.tr[test_pkt.pkt['slid']].append((test_pkt.pkt['pktno'], test_pkt.pkt['rssi']))
 #			sl_log.post_incoming(test_pkt)
+
+		self.last_packet_rx_ts = sl_pkt.ts
 
 		# any pkt from node indicates it's up
 		if not self.is_state_up():
