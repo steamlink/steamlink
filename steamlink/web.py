@@ -95,27 +95,11 @@ class WebNamespace(socketio.AsyncNamespace):
 
 
 	async def on_startstream(self, sid, message):
-		for f in 'key_field', 'start_key', 'end_key':	#XXX fix in Javascript
-			if message[f] == 'null':	
-				message[f] = None
-
-		logger.debug("WebNamespace on_startstream msg -> %s", message)
 		try:
-			table_name = message['record_type']
-
-			key_field = message['key_field']
-			start_key = message['start_key']
-			end_key = message['end_key']
-			count = message['count']
-			stream_tag = message['stream_tag']
-
-			return_children = message['return_children']
-			force = message['force']
+			res = add_csearch(self, sid, message)
 		except KeyError as e:
 			return {'error': '%s field missing in request' % e }
-
-		force = True
-		res = add_csearch(self, sid, table_name, key_field, start_key, end_key, stream_tag, count, return_children, force)
+	
 		logger.debug("WebNamespace on_startstream res %s", res)
 		return res
 
@@ -123,23 +107,9 @@ class WebNamespace(socketio.AsyncNamespace):
 	async def on_leave(self, sid, message):
 
 		logger.debug("WebNamespace on_leave %s", message)
-		try:
-			table_name = message['record_type']
 
-			key_field = message['key_field']
-			start_key = message['start_key']
-			end_key = message['end_key']
-			count = message['count']
-			stream_tag = message['stream_tag']
-
-			return_children = message['return_children']
-			force = message['force']
-		except KeyError as e:
-			return {'error': '%s field missing in request' % e }
-
-		res = drop_csearch(self, sid, table_name, key_field, start_key, end_key, stream_tag, count, return_children, force)
-		return "ACK"
-
+		res = drop_csearch(self, sid, message)
+		return { 'success': True }
 
 
 #

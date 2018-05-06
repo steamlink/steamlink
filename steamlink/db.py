@@ -122,25 +122,49 @@ class DBTable:
 		return res
 
 
-	def get_range(self, field, startv, endv, count=5):
-		if logging.DBG > 1: logger.debug("get_range: field '%s' startv '%s' endv '%s' count '%s'", \
-				field, startv, endv, count)
+	def check_restrictions(restrict_by, item):
+		for restrict in restrict_by:
+			field =  restrict['field_name']
+			op =  restrict['op']
+			val =  restrict['value']
+			ex = "item['%s'] %s %s" % (field, op, repr(value))
+			return eval(ex)
+
+
+	def get_range(self, csk):
+		""" get a range of records, obeying restrictions
+		- if start_key is null, use start_item_number.
+		- if start_item_number is negative start from the end
+		if logging.DBG > 1: logger.debug("get_range: %s", str(csk))
+
+
+		field = csk.key_field
+		startv = csk.start_key
+		endv = csk.end_key
+		count = csk.count
 
 		tab = self.table.all()
 		if len(tab) == 0:
+			csk.total_item_count = 0
+			csk.count = 0
 			return []
 
 		udict = {}
 		for t in tab:
 			udict[t[field]] = t
-		sdict = sorted(udict)
-		
-		if startv in [None, '', '<START>']:
-			sidx = 0
+		fullsdict = sorted(udict)
+	
+		sdict = []
+		for r in fullsdict:
+			if check_restrictions(csk.restrict_by, udict[r]):
+				sdict.append(r)
+
+		if startv in [None]:
+			if csk.start_item_number < 0:
+				sidx = min(0, len(sdict) + csk.start_item_number)
+			else:
+				sidx = min(csk.start_item_number, len(sdict)-1)
 			startv = sdict[sidx]
-		elif startv in [-1, '<END>']:
-			sidx = min(len(sdict)-1, count-1)
-			startv = sdict[sdix]
 		else:
 			sidx = None
 			for idx in range(len(sdict)):
@@ -150,23 +174,27 @@ class DBTable:
 					break
 			if sidx is None:
 				return []
-		if endv in [None, '', -1]:
-			eidx = len(sdict)-1
+		if endv in [None,]:
+			eidx = min(sidx + count-1, len(sdict)-1)
 			endv = sdict[eidx]
 		else:
 			eidx = None
 			for idx in range(sidx, len(sdict)):
-				print("BBBB checking  %s >= %s", sdict[idx], startv)
 				if sdict[idx] < endv:
 					endv = sdict[idx]
 					eidx = idx
 					break
 			if eidx is None:
 				return []
-			
-		res = OrderedDict()
+			count = eidx - sidx + 1
+		res = {}
 		for idx in range(sidx, eidx+1):
 			res[sdict[idx]]  = udict[sdict[idx]]
+
+		csk.start_key = sdict[sidx]
+		csk.end_key = sdict[eidx]
+		csk.start_item_number = sidx
+		csk.total_item_count = len(sdict)
 		if logging.DBG > 1: logger.debug("get_range res=%s", res)
 		return res
 

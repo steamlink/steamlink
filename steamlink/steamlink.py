@@ -1189,20 +1189,21 @@ class LogData:
 				return None
 			lwait -= waited
 
-
-# req_dict is
-""" {'record_type':
+"""
+ message = {
+     'table_name':
 	 'key_field':
+	 'restrict_by': 
 	 'start_key':
+	 'start_item_number':
 	 'end_key':
 	 'count':
-	 'return_children':
 	 'stream_tag':
-	 'force':
+  }
 """
 
 
-def add_csearch(webnamespace, sid, table_name, key_field, start_key, end_key, stream_tag, count, return_children, force):
+def add_csearch(webnamespace, sid, message):
 
 	
 	try:
@@ -1210,21 +1211,7 @@ def add_csearch(webnamespace, sid, table_name, key_field, start_key, end_key, st
 	except KeyError as e:
 		return { 'error': 'Table %s not found' % str(e) }
 
-	csearchkey = CSearchKey(table_name, key_field, start_key, end_key, stream_tag, count, )
-
-	if return_children:
-		if csearchkey.key_field is None:
-			csearchkey.key_field = table.itemclass._children_link.keyfield
-		new_table = table.itemclass._children_link.link_class._table
-
-		csearchkey.restrict_field = table.itemclass._children_link.link_field
-		csearchkey.restrict_value = csearchkey.start_key
-		csearchkey.start_key = None
-
-		csearchkey.table_name = new_table.tablename
-		csearchkey.key_field = new_table.keyfield
-		table_name = new_table.tablename
-		table = new_table
+	csearchkey = CSearchKey(**message)
 
 	try:
 		csearchkey = table.add_csearch(webnamespace, csearchkey, sid)
@@ -1234,18 +1221,18 @@ def add_csearch(webnamespace, sid, table_name, key_field, start_key, end_key, st
 		return { 'error': msg }
 
 
-	if force:
-		for cs in table.csearches:
-			table.csearches[cs].force_update(sid)
-		force = True
+	#  force update
+	for cs in table.csearches:
+		table.csearches[cs].force_update(sid)
 
 
 	if logging.DBG > 1: logger.debug("add_csearch sid %s csearchkey %s", sid, csearchkey)
-	res = {'key_field': csearchkey.key_field,
-			'record_type': csearchkey.table_name,
+	res = {
 			'start_key': csearchkey.start_key,
 			'end_key': csearchkey.end_key,
 			'count': csearchkey.count,
+			'start_item_number': csearchkey.start_item_number,
+			'total_item_count':  csearchkey.total_item_count,
 		}
 	return res
 

@@ -38,19 +38,23 @@ import yaml
 from yaml import Loader, Dumper
 
 class CSearchKey:
-	def __init__(self, table_name, key_field, start_key, end_key, stream_tag, count):
-		if count == 0: count = 1		# historic
+	def __init__(self, table_name, key_field, restrict_by, start_key, start_item_number, end_key, count, stream_tag):
 
 		self.table_name = table_name
 		self.key_field = key_field
 		self.start_key = start_key
+		self.start_item_number = start_item_number
 		self.end_key = end_key
 		self.count = count
+		self.stream_tag = stream_tag
+
 		self.at_start = False
 		self.at_end = False
+		self.search_id =  self.__repr__()	#used to index CSearches 
 
-		self.stream_tag = stream_tag
-		self.search_id =  self.__repr__()	#used to undex CSearches 
+		self.total_item_count = None
+
+		self.restrict_by = restrict_by
 
 		self.restrict_field = None
 		self.restrict_value = None
@@ -62,9 +66,9 @@ class CSearchKey:
 	def __str__(self):
 		at_start = "S" if self.at_start else "-"
 		at_end = "E" if self.at_end else "-"
-		return "CS: %s %s(%s->%s) [%s(%s) cnt %s %s%s" % \
+		return "CS: %s %s(%s->%s) -%s- tot %s  cnt %s %s%s" % \
 		 (self.table_name, self.key_field, self.start_key, self.end_key, 
-				self.restrict_field, self.restrict_value, self.count, at_start, at_end)
+				self.restrict_by, self.total_item_count, self.count, at_start, at_end)
 #
 # CSearch 
 #
@@ -120,6 +124,15 @@ class CSearch:
 		return len(self.clients)
 
 
+	def check_restrictions(restrict_by, item):
+		for restrict in restrict_by:
+			field =  restrict['field_name'] 
+			op =  restrict['op'] 
+			val =  restrict['value'] 
+			ex = "item['%s'] %s %s" % (field, op, repr(value))
+			return eval(ex)
+
+
 	def check_csearch(self, op, item):
 		""" check if item matches any registered searches, 
 			schedule update for all search clients it matched 
@@ -131,9 +144,10 @@ class CSearch:
 		if logging.DBG > 1: logger.debug("CSearch %s check_csearch op %s for %s", self.search_id, op, item)
 		item_search_key = item.__dict__[self.csearchkey.key_field]
 		push = False
-		if self.csearchkey.restrict_field is not None:
-			if item.__dict__[self.csearchkey.restrict_field] != self.csearchkey.restrict_value:
-				return
+		go = check_restrictions(self.csearchkey.restrict_by, item.__dict__)
+		if not go:
+			return
+
 		if not item_search_key in self.cs_items:
 			if op in ['ins']:
 				if  self.csearchkey.at_end \
@@ -369,7 +383,7 @@ class DbTable(Table):
 			
 
 	def get_range(self, csk):
-		drange =  self.dbtable.get_range(csk.key_field, csk.start_key, csk.end_key, csk.count)
+		drange =  self.dbtable.get_range(csk)
 		if len(drange) == 0:
 			return []
 		ret = []
@@ -378,10 +392,6 @@ class DbTable(Table):
 		if logging.DBG > 1: logger.debug("get_range drange len %s %s", len(drange), drange)
 		for rkey in drange:
 			r = drange[rkey]
-			if csk.restrict_field is not None:
-				if r[csk.restrict_field] != csk.restrict_value:
-					logger.debug("csk.restrict %s %s", csk.restrict_field, csk.restrict_value)
-					continue
 			keys.append(r[csk.key_field])
 			if r[self.keyfield] in self.cache:
 				rn = self.cache[r[self.keyfield]]
@@ -396,8 +406,8 @@ class DbTable(Table):
 		csk.at_start = keys[0] == list(drange.keys())[0]
 		csk.at_end = keys[-1] == list(drange.keys())[-1]
 		csk.start_key = keys[0]
-		ncount = min(len(keys), csk.count)
-		csk.end_key = keys[ncount-1]
+		csk.count = min(len(keys), csk.count)
+
 		logger.debug("get_range found %s recs %s", len(ret), str(csk))
 		return ret
 
