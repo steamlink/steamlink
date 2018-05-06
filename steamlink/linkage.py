@@ -141,7 +141,7 @@ class CSearch:
 			but the delete will happen after
 		"""
 # find csitem for item
-		if logging.DBG >= 0: logger.debug("CSearch %s check_csearch op %s for %s", self.search_id, op, item)
+		if logging.DBG >= 2: logger.debug("CSearch %s check_csearch op %s for %s", self.search_id, op, item)
 		item_search_key = item.__dict__[self.csearchkey.key_field]
 		push = False
 		go = self.check_restrictions(self.csearchkey.restrict_by, item.__dict__)

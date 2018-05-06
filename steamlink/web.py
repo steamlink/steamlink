@@ -99,7 +99,13 @@ class WebNamespace(socketio.AsyncNamespace):
 		try:
 			res = add_csearch(self, sid, message)
 		except KeyError as e:
-			return {'error': '%s field missing in request' % e }
+			msg = '%s field missing in request' % e 
+			logger.warning(msg)
+			return {'error': msg }
+		except TypeError as e:
+			msg = '%s, probably incorrect value for start_key' % e 
+			logger.warning(msg)
+			return {'error': msg }
 	
 		logger.debug("WebNamespace on_startstream res %s", res)
 		return res
