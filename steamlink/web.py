@@ -112,7 +112,7 @@ class WebNamespace(socketio.AsyncNamespace):
 			return_children = message['return_children']
 			force = message['force']
 		except KeyError as e:
-			return {'ERROR': '%s field missing in request' % e }
+			return {'error': '%s field missing in request' % e }
 
 		force = True
 		res = add_csearch(self, sid, table_name, key_field, start_key, end_key, stream_tag, count, return_children, force)
@@ -135,7 +135,7 @@ class WebNamespace(socketio.AsyncNamespace):
 			return_children = message['return_children']
 			force = message['force']
 		except KeyError as e:
-			return {'ERROR': '%s field missing in request' % e }
+			return {'error': '%s field missing in request' % e }
 
 		res = drop_csearch(self, sid, table_name, key_field, start_key, end_key, stream_tag, count, return_children, force)
 		return "ACK"

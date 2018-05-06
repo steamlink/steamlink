@@ -1208,7 +1208,7 @@ def add_csearch(webnamespace, sid, table_name, key_field, start_key, end_key, st
 	try:
 		table = tables[table_name]
 	except KeyError as e:
-		return { 'Success': False, 'ERROR': 'Table %s not found' % str(e) }
+		return { 'error': 'Table %s not found' % str(e) }
 
 	csearchkey = CSearchKey(table_name, key_field, start_key, end_key, stream_tag, count, )
 
@@ -1231,7 +1231,7 @@ def add_csearch(webnamespace, sid, table_name, key_field, start_key, end_key, st
 	except KeyError as e:
 		msg = 'could not add search %s' % (str(e))
 		logger.info('add_search fail: %s', msg)
-		return { 'Success': False, 'ERROR': msg }
+		return { 'error': msg }
 
 
 	if force:
@@ -1258,7 +1258,7 @@ def drop_csearch(webnamespace, sid, table_name=None, key_field=None, start_key=N
 		try:
 			table_name, table = find_table(table_name)
 		except KeyError as e:
-			return { 'Success': False, 'ERROR': 'Table %s not found' % str(e) }
+			return { 'error': 'Table %s not found' % str(e) }
 		table_list = [table]
 
 	for tab in table_list:
