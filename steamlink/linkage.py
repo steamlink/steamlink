@@ -393,13 +393,11 @@ class DbTable(Table):
 			to_load -= 1
 			if to_load == 0:
 				break
-#		keys_sorted = sorted(keys)
-		keys_sorted = keys
 		csk.at_start = keys[0] == list(drange.keys())[0]
 		csk.at_end = keys[-1] == list(drange.keys())[-1]
-		csk.start_key = keys_sorted[0]
-		ncount = min(len(keys_sorted), csk.count)
-		csk.end_key = keys_sorted[ncount-1]
+		csk.start_key = keys[0]
+		ncount = min(len(keys), csk.count)
+		csk.end_key = keys[ncount-1]
 		logger.debug("get_range found %s recs %s", len(ret), str(csk))
 		return ret
 
