@@ -36,8 +36,8 @@
     $(function () {
 
         var scrolledDiv = $('#{{ partial_item.name }} > table > tbody')[0];
-        var nextButton = $('{{ partial_item.name }}_next')[0];
-        var prevButton = $('{{ partial_item.name }}_prev')[0];
+        var nextButton = $('{{ partial_item.name }}_next');
+        var prevButton = $('{{ partial_item.name }}_prev');
 
         var headers = {{ partial_item.headers|tojson|safe }};
 
@@ -48,8 +48,8 @@
             start_key: {{ partial_item.start_key|tojson|safe }},
             start_item_number: {{ partial_item.start_item_number|tojson|safe }},
             count: {{ partial_item.count|tojson|safe }},
-            end_key: {{ partial_item.end_key|tojson|safe }}
-            stream_tag: {{ partial_item.stream_tag|tojson|safe }},
+            end_key: {{ partial_item.end_key|tojson|safe }},
+            stream_tag: {{ partial_item.stream_tag|tojson|safe }}
         };
 
         var record_link = "{{ partial_item.record_link }}";
@@ -96,7 +96,7 @@
             }            
         };
 
-        var tableStream = new Stream(socket, startStreamConfig, onNewMessage(data));
+        var tableStream = new Stream(socket, startStreamConfig, onNewMessage);
         
         tableStream.startStream();
 

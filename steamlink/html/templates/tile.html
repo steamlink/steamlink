@@ -31,11 +31,11 @@
             start_key: {{ partial_item.start_key|tojson|safe }},
             start_item_number: {{ partial_item.start_item_number|tojson|safe }},
             count: {{ partial_item.count|tojson|safe }},
-            end_key: {{ partial_item.end_key|tojson|safe }}
-            stream_tag: {{ partial_item.stream_tag|tojson|safe }},
+            end_key: {{ partial_item.end_key|tojson|safe }},
+            stream_tag: {{ partial_item.stream_tag|tojson|safe }}
         };
 
-        var tileStream = new Stream(socket, streamConfig, (data) => {
+        var tileStream = new Stream(socket, startStreamConfig, (data) => {
             var innerHTML = "<ul>";
             for (var key in data) {
                 innerHTML += "<li> <strong>" + key + ": </strong><em>" + data[key]+ "</em></li>";

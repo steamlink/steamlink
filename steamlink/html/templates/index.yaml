@@ -7,7 +7,7 @@ home:
   key_field: steam_id
   restrict_by: []
   start_key: null
-  start_item_count: 0
+  start_item_number: 0
   count: 1
   end_key: null
   stream_tag: steam_header
@@ -32,7 +32,7 @@ meshes:
       op: "=="
       value: 0
   start_key: null
-  start_item_count: 0
+  start_item_number: 0
   count: 10
   end_key: null
   stream_tag: meshes_area
