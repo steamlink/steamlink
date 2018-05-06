@@ -11,7 +11,11 @@
     <h4 class="table-partial partial-heading">
         {{ partial_item.title }}
     </h4>
-    <div class="table-partial partial" id="{{ partial_item.name }}" style="height:{{ partial_item.grid_rows * 50}}px; overflow:scroll;">
+    <div class="table-partial partial" id="{{ partial_item.name }}" 
+        {% if partial_item.grid_rows %}
+        style="height:{{ partial_item.grid_rows * 50}}px; overflow:scroll;"
+        {% endif %}
+    >
         <table>
             <thead>
                 {% for header in partial_item.headers %}
