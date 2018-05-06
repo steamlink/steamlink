@@ -40,7 +40,7 @@
         var scrolledDiv = $('#{{ partial_item.name }} > table > tbody')[0];
         var nextButton = $('#{{ partial_item.name }}_next')[0];
         var prevButton = $('#{{ partial_item.name }}_prev')[0];
-        var firstButton = $('#{{ partial_item.name }}_first'[0]);
+        var firstButton = $('#{{ partial_item.name }}_first')[0];
         var lastButton = $('#{{ partial_item.name }}_last')[0];
         var sortButton = $('#{{ partial_item.name }}_sort_order')[0];
 
@@ -95,6 +95,7 @@
                 newConfig.start_item_number = newConfig.start_item_number + table_rows;
                 newConfig.count = table_rows;
                 tableStream.updateStream(newConfig);
+                renderTable();
             }            
         };
 
@@ -106,6 +107,7 @@
                 newConfig.start_item_number = newConfig.start_item_number - table_rows;
                 newConfig.count = table_rows;
                 tableStream.updateStream(newConfig);
+                renderTable();
             }            
         };
 
@@ -115,8 +117,10 @@
             newConfig.end_key = null;
             newConfig.start_item_number = 0;
             newConfig.count = table_rows;
+            console.log("Logging new config");
+            console.log(newConfig);
             tableStream.updateStream(newConfig);
-            
+            renderTable();
         };
 
         lastButton.onclick = function() {
@@ -126,7 +130,7 @@
             newConfig.start_item_number = -1 * table_rows;
             newConfig.count = table_rows;
             tableStream.updateStream(newConfig);
-            
+            renderTable();
         };
 
         sortButton.onclick = function() {
