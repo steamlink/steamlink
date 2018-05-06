@@ -30,7 +30,7 @@ nodes_map:
       value: 1
   start_key: null
   start_item_number: 0
-  count: 1
+  count: 10
   end_key: null
   stream_tag: nodes_map
   # Fields
@@ -43,7 +43,6 @@ nodes_map:
   grid_rows: 8
   template: 'map.html'
   record_link: "/node?node.start_key={key}&packets.start_key={key}"
-
 
 nodes:
   name: nodes
@@ -72,6 +71,6 @@ nodes:
     - "Packets received"
   row: 2
   grid_columns: 'twelve'
-  grid_rows: 4
+  grid_rows: 10
   template: 'table.html'
   record_link: "/node?node.start_key={key}&packets.start_key={key}"

@@ -85,7 +85,7 @@ function Stream(sock, config, on_new_message) {
     // back-end can ask for either an add, modify, or delete
     // first see if we have record in cache
     var foundIndex = self.cache.findIndex(function(e){
-      return e[self.key_field] === data[self.key_field];
+      return e[self.config.key_field] === data[self.config.key_field];
     });
     if ('_del_key' in data) { // if delete:
       if (foundIndex >= 0) { // if key exists in cache
@@ -101,16 +101,16 @@ function Stream(sock, config, on_new_message) {
         // find insertion point
         insertionIndex = self.cache.findIndex(function(e) {
           // assume cache is ordered by key_field
-          return (e[self.key_field] > data[self.key_field])
+          return (e[self.config.key_field] > data[self.config.key_field])
           });
         if (insertionIndex >= 0) { // if insertion index is found
           self.cache.splice(insertionIndex, 0, data);
-          if (data[self.key_field] < self.start_key) {
-            self.start_key = data[self.key_field];
+          if (data[self.config.key_field] < self.config.start_key) {
+            self.config.start_key = data[self.config.key_field];
           }
         } else { // must insert at end
           self.cache.push(data);
-          self.end_key = data[self.key_field];
+          self.config.end_key = data[self.config.key_field];
         }
         // TODO: cache pruning?
       }  
