@@ -136,7 +136,7 @@ class DBTable:
 		- if start_key is null, use start_item_number.
 		- if start_item_number is negative start from the end
 		if logging.DBG > 1: logger.debug("get_range: %s", str(csk))
-
+		"""
 
 		field = csk.key_field
 		startv = csk.start_key

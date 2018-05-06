@@ -1206,6 +1206,7 @@ class LogData:
 def add_csearch(webnamespace, sid, message):
 
 	
+	table_name = message['table_name']
 	try:
 		table = tables[table_name]
 	except KeyError as e:
