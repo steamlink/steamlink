@@ -25,6 +25,10 @@
             <tbody >
             </tbody>
         </table>
+
+        <button id="{{ partial_item.name }}_prev">Previous</button>
+        <button id="{{ partial_item.name }}_next">Next</button>
+
     </div>
 </div>
 
@@ -32,21 +36,26 @@
     $(function () {
 
         var scrolledDiv = $('#{{ partial_item.name }} > table > tbody')[0];
+        var nextButton = $('{{ partial_item.name }}_next')[0];
+        var prevButton = $('{{ partial_item.name }}_prev')[0];
+
         var headers = {{ partial_item.headers|tojson|safe }};
 
-        var streamConfig = {
-            record_type: {{ partial_item.record_type|tojson|safe }},
-            start_key: {{ partial_item.start_key|tojson|safe }},
+        var startStreamConfig = {
+            table_name: {{ partial_item.table_name|tojson|safe }},
             key_field: {{ partial_item.key_field|tojson|safe }},
+            restrict_by: {{ partial_item.restrict_by|tojson|safe }},
+            start_key: {{ partial_item.start_key|tojson|safe }},
+            start_item_number: {{ partial_item.start_item_number|tojson|safe }},
             count: {{ partial_item.count|tojson|safe }},
-            end_key: {{ partial_item.end_key|tojson|safe }},
-            return_children: {{ partial_item.return_children|tojson|safe }},
+            end_key: {{ partial_item.end_key|tojson|safe }}
             stream_tag: {{ partial_item.stream_tag|tojson|safe }},
-            force: {{ partial_item.force|tojson|safe}}
         };
 
         var record_link = "{{ partial_item.record_link }}";
-        var tableStream = new Stream(socket, streamConfig, (data) => {
+        var table_rows = {{ partial_item.table_rows|tojson|safe }};
+
+        var onNewMessage = function(data) {
             var htmlString = "";            
             tableStream.cache.forEach((item) => {
                 htmlString += "<tr>";
@@ -58,12 +67,36 @@
                     }
                 });
                 htmlString += "</tr>";
+                scrolledDiv.innerHTML = htmlString;
             });
-            scrolledDiv.innerHTML = htmlString;
             if ( Math.abs(scrolledDiv.scrollTop - scrolledDiv.scrollHeight) < 300) {
                 scrolledDiv.scrollTop = scrolledDiv.scrollHeight;
             }
-        }); 
+        }
+        
+        nextButton.onclick = function() {
+            var newConfig = tableStream.config;
+            if ((newConfig.start_item_number + newConfig.count - 1) < newConfig.total_item_count) {
+                newConfig.start_key = null;
+                newConfig.end_key = null;
+                newConfig.start_item_number = newConfig.start_item_number + table_rows;
+                newConfig.count = table_rows;
+                tableStream.updateStream(newConfig);
+            }            
+        };
+
+        prevButton.onclick = function() {
+            var newConfig = tableStream.config;
+            if (newConfig.start_item_number > 0) {
+                newConfig.start_key = null;
+                newConfig.end_key = null;
+                newConfig.start_item_number = newConfig.start_item_number - table_rows;
+                newConfig.count = table_rows;
+                tableStream.updateStream(newConfig);
+            }            
+        };
+
+        var tableStream = new Stream(socket, startStreamConfig, onNewMessage(data));
         
         tableStream.startStream();
 

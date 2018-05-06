@@ -4,35 +4,79 @@ function Stream(sock, config, on_new_message) {
 
   console.log("Creating stream");
 
+  /*****
+
+  Config search fields:
+  
+  table_name
+  key_field
+  restrict_by
+  start_key
+  start_item_number
+  count
+  end_key
+
+  ******/
+
   this.config = config;
-  this.record_type = {};
-  this.key_field = {};
-  this.start_key = {};
-  this.end_key = {};
+
+  // config
   this.cache = [];
   var self = this;
   
   this.startStream = function() {
     console.log("Starting stream with config:");
-    console.log(this.config);
+    console.log(self.config);
     sock.emit("startstream", {
-      record_type: this.config.record_type,
-      start_key: this.config.start_key,
-      key_field: this.config.key_field,
-      count: this.config.count,
-      end_key: this.config.end_key,
-      return_children: this.config.return_children,
-      stream_tag: this.config.stream_tag,
-      force: this.config.force
+      table_name: self.config.table_name,
+      key_field: self.config.key_field,
+      restrict_by: self.config.restrict_by,
+      start_key: self.config.start_key,
+      start_item_number: self.config.start_item_number,
+      count: self.config.count,
+      end_key: self.config.end_key,
+      stream_tag: self.config.stream_tag
     }, function (data){ // on ack
       if (data.error) {
         console.log("Err: " + data.error);
       } else { // store key field and record type
         console.log("Ack rcvd");
         console.log(data);
-        self.record_type = data.record_type;
-        self.key_field = data.key_field;
-        console.log(self);
+        self.config.start_key = data.start_key;
+        self.config.end_key = data.end_key;
+        self.config.count = data.count;
+        self.config.start_item_number = data.start_item_number;
+        self.config.total_item_count = data.total_item_count;
+      }
+    });
+  };
+
+  // TODO: refactor
+  this.updateStream = function(newConfig) {
+    self.cache = {};
+    self.config = newConfig;
+    console.log("Updating stream with config:");
+    console.log(self.config);
+    sock.emit("startstream", {
+      table_name: self.config.table_name,
+      key_field: self.config.key_field,
+      restrict_by: self.config.restrict_by,
+      start_key: self.config.start_key,
+      start_item_number: self.config.start_item_number,
+      count: self.config.count,
+      end_key: self.config.end_key,
+      stream_tag: self.config.stream_tag
+    }, function (data){ // on ack
+      if (data.error) {
+        console.log("Err: " + data.error);
+      } else { // store key field and record type
+        console.log("Ack rcvd");
+        console.log(data);
+        self.config.start_key = data.start_key;
+        self.config.end_key = data.end_key;
+        self.config.count = data.count;
+        self.config.start_item_number = data.start_item_number;
+        self.config.total_item_count = data.total_item_count;
       }
     });
   };

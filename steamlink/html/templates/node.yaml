@@ -3,14 +3,14 @@ node:
   type: tile
   title: Node Summary
   # Query information
-  record_type: Node
-  start_key: 1
-  key_field: null
-  count: 0
+  table_name: Node
+  key_field: slid
+  restrict_by: []
+  start_key: null
+  start_item_count: 0
+  count: 1
   end_key: null
-  return_children: false
   stream_tag: node_header
-  force: false
   # Layout
   row: 1
   grid_columns: 'twelve'
@@ -21,16 +21,24 @@ packets:
   name: packets
   type: table
   title: Packets in the Node
+  # Layout
+  row: 2
+  grid_columns: 'twelve'
   # Query information
-  record_type: Node
-  start_key: 1
-  key_field: null
-  count: 1000
+  table_name: Packet
+  key_field: ts
+  restrict_by:
+    - field_name: slid
+      op: "=="
+      value: 305
+  start_key: null
+  start_item_count: 0
+  count: -10
   end_key: null
-  return_children: true
-  stream_tag: table_item_area
-  force: false
-  # Fields
+  stream_tag: packets_area
+  # Template fields
+  table_rows: 10 # should be the same as count
+  template: 'table.html'
   headers:
     - "op"
     - "rssi"
@@ -38,7 +46,7 @@ packets:
     - "payload"
     - "ts"
     - "key"
-  row: 2
-  grid_columns: 'twelve'
-  template: 'table.html'
   record_link: "/packet?packet.start_key={key}"
+  
+
+  

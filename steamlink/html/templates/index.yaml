@@ -3,14 +3,14 @@ home:
   type: tile
   title: Steamlink Summary
   # Query information
-  record_type: Steam
-  start_key: 0
-  key_field: null
-  count: 0
+  table_name: Steam
+  key_field: steam_id
+  restrict_by: []
+  start_key: null
+  start_item_count: 0
+  count: 1
   end_key: null
-  return_children: false
-  stream_tag: home_header
-  force: false
+  stream_tag: steam_header
   # Layout
   row: 1
   grid_columns: 'twelve'
@@ -20,17 +20,25 @@ home:
 meshes:
   name: meshes
   type: table
-  title: Meshes
+  title: Meshes in Steamlink
+  # Layout
+  row: 2
+  grid_columns: 'twelve'
   # Query information
-  record_type: Steam
-  start_key: 0
-  key_field: null
-  count: 20
+  table_name: Mesh
+  key_field: mesh_id
+  restrict_by:
+    - field_name: steam_id
+      op: "=="
+      value: 0
+  start_key: null
+  start_item_count: 0
+  count: 10
   end_key: null
-  return_children: true
-  stream_tag: table_item_area
-  force: false
-  # Fields
+  stream_tag: meshes_area
+  # Template fields
+  table_rows: 10 # should be the same as count
+  template: 'table.html'
   headers:
     - "Name"
     - "Description"
@@ -38,8 +46,4 @@ meshes:
     - "Active Nodes"
     - "Packets sent"
     - "Packets received"
-  row: 2
-  grid_columns: 'twelve'
-  grid_rows: 4
-  template: 'table.html'
   record_link: "/mesh?mesh.start_key={key}&nodes.start_key={key}"
