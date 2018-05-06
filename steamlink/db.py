@@ -143,9 +143,11 @@ class DBTable:
 		endv = csk.end_key
 		count = csk.count
 
+		csk.total_item_count = 0
+
 		tab = self.table.all()
 		if len(tab) == 0:
-			csk.total_item_count = 0
+			logger.debug("get_range table empty")
 			csk.count = 0
 			return {}
 
@@ -153,13 +155,18 @@ class DBTable:
 		for t in tab:
 			udict[t[field]] = t
 		fullsdict = sorted(udict)
+		logger.debug("get_range table %s items", len(fullsdict))
 	
-		sdict = []
-		for r in fullsdict:
-			if self.check_restrictions(csk.restrict_by, udict[r]):
-				sdict.append(r)
+		if len(csk.restrict_by) == 0:
+			sdict = fullsdict
+		else:
+			sdict = []
+			for r in fullsdict:
+				if self.check_restrictions(csk.restrict_by, udict[r]):
+					sdict.append(r)
 
 		if len(sdict) == 0:
+			logger.debug("get_range table empty after destrict")
 			return {}
 
 		if startv in [None]:
@@ -176,8 +183,9 @@ class DBTable:
 					startv = sdict[sidx]
 					break
 			if sidx is None:
+				logger.debug("get_range no start key found")
 				return {}
-		if endv in [None,]:
+		if endv in [None]:
 			eidx = min(sidx + count-1, len(sdict)-1)
 			endv = sdict[eidx]
 		else:
@@ -188,6 +196,7 @@ class DBTable:
 					eidx = idx
 					break
 			if eidx is None:
+				logger.debug("get_range no end key found")
 				return {}
 			count = eidx - sidx + 1
 		res = {}
