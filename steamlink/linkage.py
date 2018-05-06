@@ -302,12 +302,15 @@ class OCache(dict):
 # Table
 #
 class Table:
+	tables = {}
+
 	""" provide an index over items """
 	index = None
 	def __init__(self, itemclass, keyfield):
 		self.itemclass = itemclass
 		self.keyfield = keyfield
 		self.csearches = {}
+		Table.tables[self.itemclass.__name__] = self
 
 
 	def add_csearch(self, webnamespace, csearchkey, sid):
@@ -513,26 +516,6 @@ class DictTable(Table):
 		return "DictTable(%s)%s" %(self.itemclass.__name__, len(self.index))
 
 #
-# ItemLink
-#
-class ItemLink:
-	""" provide link to related classed """
-	def __init__(self, keyfield, link_class, link_field):
-		self.keyfield = keyfield
-		self.link_class = link_class
-		self.link_field = link_field
-
-	def get(self, rec):
-		k = rec.__dict__[self.keyfield]
-		logger.debug("ItemLink.get: keyfield %s key %s", self.keyfield, k)
-		res = self.link_class._table.find(k, self.link_field)
-		return res
-
-	def get_linked_table_name(self):
-		return self.link_class.__name__
-
-
-#
 # BaseItem
 #
 class BaseItem:
@@ -616,15 +599,25 @@ class Item(BaseItem):
 	def gen_console_data(self):
 		return self.save()
 
+#
+# LogItem
+class LogItem(Item):
+	def __init__(self, lvl, line):
+		self.ts = time.time()
+		self.lvl = lvl
+		self.line = line
+		super().__init__(self.ts)
+
 
 # LogQ
 #
-class LogQ:
+class LogQ(Item):
 	def __init__(self, conf, loop = None):
 		self.conf = conf
 		self.name = "logq"
 		self.q = Queue(loop=loop)
 		self.loop = loop
+		LogItem._table = DbTable(LogItem, keyfield="ts", tablename="LogItem")
 
 	def write(self, msg):
 		asyncio.ensure_future(self.awrite(msg), loop=self.loop)
@@ -645,6 +638,10 @@ class LogQ:
 				break
 			if len(msg) == 0:
 				continue
+
+			lvl, line = msg.split(None, 1)
+			litem = LogItem(lvl, line)
+
 #			print("got one", msg)
 #			emit to web consoles!!
 

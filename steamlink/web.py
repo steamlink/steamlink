@@ -78,7 +78,7 @@ class WebNamespace(socketio.AsyncNamespace):
 
 	def on_disconnect(self, sid):
 		logger.debug("WebNamespace disconnect")
-		res = drop_csearch(self, sid)
+		res = drop_csearch(self, sid, {})
 
 
 #	async def on_need_log(self, sid, data):
@@ -275,7 +275,7 @@ class WebApp(object):
 			except:
 				pass
 			if (key == "restrict_by"):
-				dc.data[partial][key][0].value = i
+				dc.data[partial][key][0]['value'] = i
 			else:
 				dc.data[partial][key] = i
 

@@ -20,9 +20,9 @@ from .util import phex
 
 from .linkage import (
 	Item,
+	Table,
 	DictTable,
 	DbTable,
-	ItemLink,
 	CSearchKey,
 )
 
@@ -869,7 +869,8 @@ class Packet(Item):
 	 "rssi": "self.rssi",
 	 "via": "self.via",
 	 "payload": "self.payload",
-	 "ts": "time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(self.ts))",
+	 "ts": "self.ts",
+	 "Time": "time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(self.ts))",
 	}
 
 
@@ -1208,9 +1209,9 @@ def add_csearch(webnamespace, sid, message):
 	
 	table_name = message['table_name']
 	try:
-		table = tables[table_name]
+		table = Table.tables[table_name]
 	except KeyError as e:
-		return { 'error': 'Table %s not found' % str(e) }
+		return { 'error': 'Table %s not found. Availabe are %s' % (str(e), list(Table.tables.keys())) }
 
 	csearchkey = CSearchKey(**message)
 
@@ -1238,11 +1239,11 @@ def add_csearch(webnamespace, sid, message):
 	return res
 
 
-def drop_csearch(webnamespace, sid, messages):
+def drop_csearch(webnamespace, sid, message):
 
 	table_name = message.get('table_name', None)
 	if table_name == None:		# all all tables, i.e. disconnect
-		table_list = list(tables.values())
+		table_list = list(Table.tables.values())
 	else:
 		try:
 			table_name, table = find_table(table_name)
@@ -1256,17 +1257,10 @@ def drop_csearch(webnamespace, sid, messages):
 	return { 'Success': True }
 
 
-tables = {}
+# tables = {}
 def SteamSetup():
 	Steam._table = DbTable(Steam, keyfield="steam_id", tablename="Steam")
-	tables['Steam'] = Steam._table
-	
 	Mesh._table = DbTable(Mesh, keyfield="mesh_id", tablename="Mesh")
-	tables['Mesh'] = Mesh._table
-	
 	Node._table = DbTable(Node, keyfield="slid", tablename="Node")
-	tables['Node'] = Node._table
-	
 	Packet._table = DbTable(Packet, keyfield="ts", tablename="Packet")
-	tables['Packet'] = Packet._table
 

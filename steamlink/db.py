@@ -171,7 +171,7 @@ class DBTable:
 
 		if startv in [None]:
 			if csk.start_item_number < 0:
-				sidx = min(0, len(sdict) + csk.start_item_number)
+				sidx = max(0, len(sdict) + csk.start_item_number)
 			else:
 				sidx = min(csk.start_item_number, len(sdict)-1)
 			startv = sdict[sidx]
@@ -191,7 +191,7 @@ class DBTable:
 		else:
 			eidx = None
 			for idx in range(sidx, len(sdict)):
-				if sdict[idx] < endv:
+				if sdict[idx] <= endv:
 					endv = sdict[idx]
 					eidx = idx
 					break

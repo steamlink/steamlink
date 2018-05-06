@@ -44,8 +44,7 @@ packets:
     - "rssi"
     - "via"
     - "payload"
-    - "ts"
-    - "key"
+    - "Time"
   record_link: "/packet?packet.start_key={key}"
   
 
