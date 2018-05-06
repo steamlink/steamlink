@@ -40,6 +40,7 @@ Web -> Store message:
     start_item_number:
     end_key: (if end key is null, use count)
     count:
+	stream_tag:
 
 Store -> Web message:
     start_key:
