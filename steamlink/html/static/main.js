@@ -53,7 +53,7 @@ function Stream(sock, config, on_new_message) {
 
   // TODO: refactor
   this.updateStream = function(newConfig) {
-    self.cache = {};
+    self.cache = [];
     self.config = newConfig;
     console.log("Updating stream with config:");
     console.log(self.config);
@@ -136,17 +136,7 @@ $(function() {
   
   socket = io.connect(socketNamespace);
   
-  var alertWrapper = $('#dashboard_socket_alerts');
-  /*
-  var alerts = [];
- 
-  var alertTemplate = '<div class="alert-msg" style="display:inline-block"></div><a class="alert-partial close-icon" style="display:inline-block"></a>'
-  
-  var createNewAlert = function(a) {
-    alert = push
-  }
-  */
-  
+  var alertWrapper = $('#dashboard_socket_alerts');  
   var alertElement =  $('#dashboard_socket_alerts > .alert-msg')[0];
   var alertCloseElement = $('#dashboard_socket_alerts a')[0];
 

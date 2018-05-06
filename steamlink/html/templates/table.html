@@ -29,6 +29,7 @@
         <button id="{{ partial_item.name }}_prev">&lt;</button>
         <button id="{{ partial_item.name }}_next">&gt;</button>
         <button id="{{ partial_item.name }}_last">&gt;&gt;</button>
+        <button id="{{ partial_item.name }}_sort_order">Toggle Sort Order</button>
 
     </div>
 </div>
@@ -37,12 +38,15 @@
     $(function () {
 
         var scrolledDiv = $('#{{ partial_item.name }} > table > tbody')[0];
-        var nextButton = $('{{ partial_item.name }}_next');
-        var prevButton = $('{{ partial_item.name }}_prev');
-        var firstButton = $('{{ partial_item.name }}_first');
-        var lastButton = $('{{ partial_item.name }}_last');
+        var nextButton = $('#{{ partial_item.name }}_next')[0];
+        var prevButton = $('#{{ partial_item.name }}_prev')[0];
+        var firstButton = $('#{{ partial_item.name }}_first'[0]);
+        var lastButton = $('#{{ partial_item.name }}_last')[0];
+        var sortButton = $('#{{ partial_item.name }}_sort_order')[0];
 
         var headers = {{ partial_item.headers|tojson|safe }};
+
+        var sortMultiplier = 1;
 
         var startStreamConfig = {
             table_name: {{ partial_item.table_name|tojson|safe }},
@@ -58,9 +62,14 @@
         var record_link = "{{ partial_item.record_link }}";
         var table_rows = {{ partial_item.table_rows|tojson|safe }};
 
-        var onNewMessage = function(data) {
-            var htmlString = "";            
-            tableStream.cache.forEach((item) => {
+
+
+        var renderTable = function() {
+            var htmlString = "";
+            var cache = tableStream.cache.sort(function(a,b) {
+                return sortMultiplier*(a[tableStream.config.key_field] - b[tableStream.config.key_field]);
+            })            
+            cache.forEach((item) => {
                 htmlString += "<tr>";
                 headers.forEach( (header) => {
                     if(header in item) {
@@ -72,6 +81,10 @@
                 htmlString += "</tr>";
                 scrolledDiv.innerHTML = htmlString;
             });
+        }
+
+        var onNewMessage = function(data) {
+            renderTable();
         }
         
         nextButton.onclick = function() {
@@ -116,8 +129,12 @@
             
         };
 
+        sortButton.onclick = function() {
+            sortMultiplier=sortMultiplier*(-1);
+            renderTable();
+        };
+
         var tableStream = new Stream(socket, startStreamConfig, onNewMessage);
-        
         tableStream.startStream();
 
     });

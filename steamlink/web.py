@@ -274,6 +274,7 @@ class WebApp(object):
 				i = int(i)
 			except:
 				pass
+			
 			if (key == "restrict_by"):
 				dc.data[partial][key][0]['value'] = i
 			else:
