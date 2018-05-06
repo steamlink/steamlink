@@ -10,12 +10,6 @@ from .steamlink import (
 	SL_OP,
 )
 
-from .linkage import (
-	registry,
-	Room,
-	Item,
-)
-
 
 import logging
 logger = logging.getLogger(__name__)

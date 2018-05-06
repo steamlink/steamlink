@@ -1,8 +1,11 @@
 
 import asyncio
+from asyncio import Queue
 import shelve
 import os
+import sys
 import socket
+import time
 
 import logging
 logger = logging.getLogger()
@@ -11,373 +14,199 @@ logger = logging.getLogger()
 _WEBAPP = None
 _DB = None
 
-def Attach(app, db):
+def Attach(webapp, db):
 	global _WEBAPP, _DB
 	if _WEBAPP is not None:
 		logger.error("Linkage: Attach already done")
 		return
-	_WEBAPP = app
+	_WEBAPP = webapp
 	_DB = db
 
-	logger.debug("linkage: Attached apps '%s, %s'", _WEBAPP.name, _DB.name)
+	if _WEBAPP is None:
+		webapp_name = "-"
+	else:
+		webapp_name = _WEBAPP.name
+	if _DB is None:
+		db_name = "-"
+	else:
+		db_name = _DB.name
+
+	logger.debug("linkage: Attached apps '%s, %s'", webapp_name, db_name)
 
 
 import yaml
 from yaml import Loader, Dumper
 
+class CSearchKey:
+	def __init__(self, table_name, key_field, start_key, end_key, stream_tag, count):
+		if count == 0: count = 1		# historic
+
+		self.table_name = table_name
+		self.key_field = key_field
+		self.start_key = start_key
+		self.end_key = end_key
+		self.count = count
+		self.at_start = False
+		self.at_end = False
+
+		self.stream_tag = stream_tag
+		self.search_id =  self.__repr__()	#used to undex CSearches 
+
+		self.restrict_field = None
+		self.restrict_value = None
+
+	def __repr__(self):
+		return  "%s(%s:%s:%s)_%s" %\
+		 (self.table_name, self.key_field, self.start_key, self.end_key, self.stream_tag)
+
+	def __str__(self):
+		at_start = "S" if self.at_start else "-"
+		at_end = "E" if self.at_end else "-"
+		return "CS: %s %s(%s->%s) [%s(%s) cnt %s %s%s" % \
+		 (self.table_name, self.key_field, self.start_key, self.end_key, 
+				self.restrict_field, self.restrict_value, self.count, at_start, at_end)
 #
-# Registry
+# CSearch 
 #
-class Registry:
-	def __init__(self):
-		logger.debug("Registry: instance")
-		self.db_items = ['Steam', 'Mesh', 'Node', 'Packet']
-
-
-	def open(self):
-		# Note: load from file not implememted, only save
-		logger.debug("Registry: open")
-		self.reg =  {'name_idx': {}, 'id_idx': {}, 'ItemTypes': []}
-
-
-	def close(self):
-		return
-
-
-	def register(self, item):
-		if not item.itype in self.reg['ItemTypes']:
-			self.reg['ItemTypes'].append(item.itype)
-			self.reg['name_idx'][item.itype] = {}
-			self.reg['id_idx'][item.itype] = {}
-		if logging.DBG > 2: logger.debug("Registry: register %s", item)
-		self.reg['name_idx'][item.itype][item.name] = item
-		self.reg['id_idx'][item.itype][item._key] = item
-
-
-	def unregister(self, item):
-		if logging.DBG > 2: logger.debug("Registry: unregister %s", item)
-		del self.reg['name_idx'][item.itype][item.name]
-		del self.reg['id_idx'][item.itype][item._key]
-
-
-	def get_all(self, itype):
-		r = []
-		for key in self.reg['id_idx'][itype]:
-			r.append(self.reg['id_idx'][itype][key])
-		return r
-
-
-	def find_by_name(self, itype, name):
-		try:
-			t = self.reg['name_idx'][itype].get(name, None)
-		except:
-			t = None
-		return t
-
-
-	def find_by_id(self, itype, Id):
-		try:
-			t = self.reg['id_idx'][itype].get(Id, None)
-		except KeyError as e:
-			if logging.DBG > 1: logger.debug("find_by_id: %s not in id_idx", e)
-			t = None
-			
-		if logging.DBG > 2: logger.debug("find_by_id %s %s = %s", itype, Id, str(t))
-		return t
-
-
-	def XXXsave(self):
-		r = {}
-		for itype in self.reg['ItemTypes']:
-			kd = {}
-			for k in self.reg['id_idx'][itype]:
-				kd[k] = self.reg['id_idx'][itype][k].save()
-			r[itype] = kd		
+class CSearch:
+	def __init__(self,  webnamespace, table, csearchkey):
 		
-		return r
+		self.webnamespace = webnamespace
+		self.csearchkey = csearchkey
+		self.search_id = csearchkey.search_id
+		self.clients = {}		# users who registed, sid, stream_tag
+		self.cs_items = {}		# current list if items in sarch, key if key_field
 
-
-#
-# Registry linkage
-#
-registry = Registry()
-
-def OpenRegistry():
-	registry.open()
-
-def CloseRegistry():
-	logger.info("closing registry")
-	registry.close()
-	logger.info("registry closed")
-
-
-#
-# BaseItem
-#
-class BaseItem:
-	def __init__(self, itype, key, name = None):
-		self.itype = itype
-		self._key = key
-		self.keyfield = 'key'
-		if name is None:
-			self.name = self.mkname()
-		else:
-			self.name = name
-		if logging.DBG > 1: logger.debug("BaseItem: created %s", self)
-
-
-	def __del__(self):
-		if logging.DBG > 2: logger.debug("BaseItem: __del__ %s", self)
-		logger.info("BaseItem: __del__ %s", self)
-
-
-	def mkname(self):
-		return "%s:%s" % (self.itype, self._key)
+		self.table = table
+		if csearchkey.key_field is None:
+			csearchkey.key_field = self.table.keyfield
+		for item in self.table.get_range(self.csearchkey):
+			self.add_item(item)
+		if logging.DBG > 2: logger.debug("CSearch csearch key: %s", str(csearchkey))
 
 
 	def __str__(self):
-		try:
-			return "%s %s(%s)" % (self.itype, self.name, self._key)
-		except:
-			return "SomeBaseItem"
+		return "CSearch[%s]" % self.search_id
 
 
-	def load(self, data):	#N.B.
-		assert(type(data) == type({}))
-		for k in data:
-			self.__dict__[k] = data[k]
+	def add_item(self, item):
+		if logging.DBG > 2: logging.debug("CSearch '%s' add_item %s in key %s", self.search_id, item, self.csearchkey.key_field)
+		self.cs_items[item.__dict__[self.csearchkey.key_field]] = CSearchItem(self, item)
 
 
-	def save(self):
-		r = self.__dict__.copy()
-		return r
+	def drop_item(self, item):
+		if logging.DBG > 2: logger.debug("CSearch '%s' drop_item %s", self.search_id, item)
+		self.cs_items[item.__dict__[self.csearchkey.key_field]].deleted = True
+#?		del self.cs_items[item.__dict__[self.csearchkey.key_field]]
 
 
-#
-# RegItem
-#
-class RegItem(BaseItem):
-	def __init__(self, itype, key, name = None):
-		super().__init__(itype, key, name)
-		registry.register(self)
-		self._key = key		# assure type identity
-		
-
-	def delete(self):
-		if logging.DBG > 2: logger.debug("RegItem %s: delete", self)
-		if registry.find_by_id(self.itype, self._key) is not None:
-			registry.unregister(self)
-			self.parent = None
-			if logging.DBG > 2: logger.debug("RegItem: deleted %s", self)
-
-	def find_by_id(self, Id):
-		return registry.find_by_id(self.itype, Id)
+	def add_sid(self, sid):
+		if logging.DBG > 2: logger.debug("CSearch '%s' add_sid %s csearchkey %s", self.search_id, sid, self.csearchkey)
+		self.clients[sid] = self.csearchkey.stream_tag
+		self.webnamespace.enter_room(sid, self.search_id, \
+			 self.webnamespace.namespace)
+		return self.csearchkey
 
 
-	def getkeyfield(self):
-		return self.keyfield	
-
-	def write(self):
-		return
-
-#
-# DBItem
-#
-class DBItem(RegItem):
-	def __init__(self, itype, key, name = None):
-		super().__init__(itype, key, name)
-		self.db_table = _DB.table(itype)
-		self.itype = itype
-		data = self.db_table.search(self.keyfield, '==', key)
-		if data is not None and len(data) == 1:
-			self.load(data[0])
-	
-	def write(self):
-		logger.debug("write %s %s", self.itype, self.keyfield)
-		self.db_table.upsert(self.keyfield, self.save())
-		
-
-	def delete(self):
-		if logging.DBG > 2: logger.debug("DBItem %s: delete", self)
-		self.db_table.remove(self.keyfield, self._key)
-		self.parent = None
-
-		if registry.find_by_id(self.itype, self._key) is not None:
-			registry.unregister(self)
-			self.parent = None
-			if logging.DBG > 2: logger.debug("DBItem: deleted %s", self)
+	def drop_sid(self, sid):
+		if sid in self.clients:
+			if logging.DBG > 2: logger.debug("CSearch '%s' drop_sid %s", self.search_id, sid)
+			del self.clients[sid]
+			self.webnamespace.leave_room(sid, self.search_id, \
+				 self.webnamespace.namespace)
 
 
-#
-# Item
-#
-class Item(RegItem):
-	def __init__(self, itype, key, name = None, parent_class = None,  key_in_parent = None):
-		self.parent_class = parent_class
-		self.parent = None
-		self.children = {}
-		self.my_room_list = []
-		super().__init__(itype, key, name)
-		if not key_in_parent is None:
-			self.set_parent(key_in_parent)
-		self.set_rooms()
+	def num_clients(self):
+		return len(self.clients)
 
 
-	def set_parent(self, key_in_parent):
-		self.parent = self.get_parent(key_in_parent)
-		if self.parent is not None:
-			self.parent.add_child(self)
+	def check_csearch(self, op, item):
+		""" check if item matches any registered searches, 
+			schedule update for all search clients it matched 
+			op is 'ins', 'upd' or 'del'
+			note that item is updated or inserted in db before check_csearch
+			but the delete will happen after
+		"""
+# find csitem for item
+		if logging.DBG > 1: logger.debug("CSearch %s check_csearch op %s for %s", self.search_id, op, item)
+		item_search_key = item.__dict__[self.csearchkey.key_field]
+		push = False
+		if self.csearchkey.restrict_field is not None:
+			if item.__dict__[self.csearchkey.restrict_field] != self.csearchkey.restrict_value:
+				return
+		if not item_search_key in self.cs_items:
+			if op in ['ins']:
+				if  self.csearchkey.at_end \
+					and  item_search_key > self.csearchkey.end_key:
+					push = True
+					self.csearchkey.end_key = item_search_key
+					self.add_item(item)
+				elif not push and op in ['ins' ,'upd'] \
+					and self.csearchkey.at_end \
+					and  item_search_key < self.csearchkey.start_key:
+					push = True
+					self.csearchkey.start_key = item_search_key
+					self.add_item(item)
+		elif item_search_key >= self.csearchkey.start_key and \
+				item_search_key <= self.csearchkey.end_key:
+			if op == 'upd':
+				pass
+			elif op == 'ins':
+				self.add_item(item)
+			elif op == 'del':
+				self.drop_item(item)
+
+			push = True
+
+		if push:
+			self.cs_items[item_search_key].push_update(False)
+		return 
 
 
-	def set_rooms(self):
-		for r in self.get_room_list():
-			if logging.DBG > 1: logger.debug("Item %s: add room %s", self, r)
-			room = registry.find_by_id('Room', r)
-			if room is None:
-				room = Room(sroom = r)
-			self.my_room_list.append(room)
-			room.add_item(self)
-
-		self.schedule_update()
-
-
-	def delete(self):
-		if logging.DBG > 2: logger.debug("Item %s: delete", self)
-		if registry.find_by_id(self.itype, self._key) is not None: # recursive delete
-			for room in self.my_room_list:
-				if logging.DBG > 2: logger.debug("Item %s: del room %s", self, room)
-				room.del_item(self)
-			if self.parent is not None:
-				self.parent.del_child(self)
-			children = list(self.children.keys())	# NB. dict shrinks!
-			for child in children:
-				self.children[child].delete()
-			self.children = {}
-			self.parent = None
-			self.schedule_update()	#XXX update type: del?
-			super().delete()
-
-
-	def get_parent(self, key_in_parent):
-		ptype =  self.parent_class.__name__
-		if ptype is None:
-			p = None
-		else:
-			p = registry.find_by_id(ptype, key_in_parent)
-		if logging.DBG > 1: logger.debug("Item: get_parent (%s) %s: %s", self, ptype, str(p))
-		return p
-
-
-	def add_child(self, item):
-		if logging.DBG > 2: logger.debug("Item: child %s added to %s", item._key, self)
-		self.children[item._key] = item
-		self.schedule_update()
-
-
-	def del_child(self, item):
-		if logging.DBG > 2: logger.debug("Item: child %s delete from %s", item._key, self)
-		del self.children[item._key]
-		self.schedule_update()
-
-
-	def schedule_update(self):
-		if logging.DBG > 2: logger.debug("Item %s: schedule_update", self.name)
-		for room in self.my_room_list:
-			if logging.DBG > 2: logger.debug("Item: schedule_update for item %s in room %s", self, room.name)
-			room.roomitems[self._key].push_update(False)
-
-
-	def gen_console_data(self):
-		cs = []
-		for c in self.children:
-			cs.append(str(self.children[c]))
-		data = {
-			'name': self.name,
-			'type': self.itype,
-			'id': self._key,
-			'children': str(cs),
-		}
-		return data
-
-
-	def get_room_list(self):
-		rooms = []
-		rooms.append( "%s_*" % (self.itype))
-		rooms.append( "%s_%s" % (self.itype, self._key))
-		if self.parent is not None:
-			rooms.append( "%s_%s_*" % (self.parent.itype, self.parent._key))
-		logger.debug("get_room_list %s", rooms)
-		return rooms
-
-
-	def load(self, data):	#N.B.
-		logger.debug("load: %s", data)
-		for k in data:
-			if k == 'parent':
-				if data[k] is not None:
-					self.parent = self.set_parent(data[k])
-				else:
-					self.parent = None
-			elif k == 'children':
-				pass 		# set by set_parent of child
-			else:
-				self.__dict__[k] = data[k]
-
-
-	def save(self):
-		r = super().save()
-		if self.parent:
-			r['parent'] = self.parent.k_ey
-		if self.children:
-			r['children'] = list(self.children.keys())
-		return r
+	def force_update(self, sid):
+		if not sid in self.clients:
+			return
+		if logging.DBG > 1: logger.debug("force_update ")
+		for cs in self.cs_items:
+			self.cs_items[cs].push_update(True)
 
 #
-# RoomItem
+# CSearchItem
 #
-class RoomItem:
-	def __init__(self, room, item):
-		self.room = room
+class CSearchItem:
+	def __init__(self, csearch, item):
+		self.csearch = csearch
 		self.item = item
 		# stash for when item is deleted
-		self.itemname = "%s" % item.name
+#		self.itemname = "%s" % item.name
 		self.deleted = False
 
-		self.last_update = 0		# roomitem's last update time stamp
+		self.last_update = 0		# csearchitem's last update time stamp
 		self.future_update = False	
-#		self.pack = {
-#			'name': self.item.name,		#XXX? extra fields
-#			'type': self.item.itype,
-#			'id': self.item._key,
-#			'header': self.room.is_header(),
-#		 	'display_vals': {},
-#		}
 		self.cache = {}
 		self.upd_in_progress = False
 
 
 	def __getstate__(self):
 		r = self.__dict__.copy()
-#		r = {'room': self.room.key, 'item': self.item._key}
-		r['room'] = self.room._key 
-		r['item'] = self.item._key
+		r['csearch'] = self.csearch.key 
+		r['item'] = self.item.key
 		return r
 
 	def __repr__(self):
 		return str(self.__getstate__())
 
 	def console_update(self, force):
-		if self.deleted:
-			data_to_emit = {}
-		elif not force and self.cache != {}:
+		if not force and self.cache != {}:
 			data_to_emit = self.cache
 		else:
 			data_to_emit = self.item.gen_console_data()
 			self.cache = data_to_emit
-#		self.pack['display_vals'] = data_to_emit
-		self.pack = data_to_emit
-		if logging.DBG > 2: logger.debug("console_update ROOM %s ITEM %s DATA %s", self.room, self.item, self.pack)
-		return self.pack
+		if self.deleted:
+			data_to_emit['_del_key'] = 1
+
+		if logging.DBG >  1: logger.debug("console_update CSearch %s Item %s Data %s", self.csearch, self.item, str(data_to_emit)[:32]+"...")
+		return data_to_emit
 
 
 	async def schedule_future_update(self, wait):
@@ -396,163 +225,425 @@ class RoomItem:
 				self.future_update = True
 			return
 
-		if sroom is None:
-			sroom = self.room.sroom
 		self.upd_in_progress = True
-		_WEBAPP.queue_item_update(self, sroom, True)
+		_WEBAPP.queue_item_update(self, True)
 
 
 	def update_sent(self):
 		self.upd_in_progress = False
 		self.last_update = _WEBAPP.loop.time()
 
-#
-# MemberRoom
-#
-class MemberRoom:
-	def __init__(self, room, sid):
-		self.m_room = room
-		self.m_sid = sid
-		self.m_roomitem_keys = []
-		self.cur_key = None
-		self.count = 1
 
-
-	def set_position(self, key, count = 20):
-		self.cur_key = key
-		self.count = count
-		keys = self.m_room.get_roomitem_keys()
-		if key == "FIRST":
-			key = keys[0]
-		elif key == "LAST":
-			key = keys[-1]
-		if not key in keys:
-			self.m_roomitem_keys = []
-		else:
-			k_idx = keys.index(key)
-			if count >= 0:
-				self.m_roomitem_keys = keys[k_idx:k_idx+count]
-			else:
-				end = k_idx + 1
-				start = k_idx + count + 1
-				if start < 0:
-					end = end - start + 1
-					start = 0
-				self.m_roomitem_keys = keys[start:end]
-				logger.debug("set_position: key %s start %s end %s", key, start, end)
-			# send out the item
-			for k in self.m_roomitem_keys:
-				self.m_room.roomitems[k].push_update(False, self.m_sid)
-
-	def has_roomitem(self, key):
-		return key in self.m_roomitem_keys
 
 #
-# Room
+# OCache
 #
-class Room(RegItem):
-	def __init__(self, ritype = None, rkey = None, detail = None, sroom = None):
+class OCache(dict):
+	def __init__(self, tablename, max_entries = 1000):
+		self.tablename = tablename
+		self.max_entries = max_entries
+		self.ts = {}
+		super().__init__()
 
-		self.stream_tag = None
-		if sroom is not None:
-			l = sroom.split('_')
-			if len(l) < 2 or len(l) > 3:
-				logger.error("Room: sroom string invalid: %s" % sroom)
-				l.append("*")	# XXX
-			self.ritype = l[0]
-			self.rkey = l[1]
-			self.detail = None if len(l) < 3 else l[2]
-			self.sroom = sroom
-		else:
-			self.ritype = ritype
-			self.rkey = rkey
-			self.detail = detail
-			self.sroom = self.mksroom()
-		super().__init__('Room', sroom)
+	def __getitem__(self, key):
+		self.ts[key] = time.time()
+		return super().__getitem__(key)
 
-		self.members = {}			# fake dict: web session in room
-		self.roomitems = {}			# RoomItem keys in room
+	def __setitem__(self, key, value):
+		super().__setitem__(key, value)
+		self.ts[key] = time.time()
+		if logging.DBG > 2: logger.debug("cache added %s %s at %s", key, value, self.ts[key])
+		if len(self) > self.max_entries:
+			if logging.DBG > 2: logger.debug("Cleaning!")
+			self.clean()
 
-		logger.debug("room created %s %s %s",self.ritype, self.rkey, self.detail)
-
-	def get_roomitem_keys(self):
-		return list(self.roomitems.keys())
-
-
-	def is_item_room(self):
-		return self.detail != None
-
-
-	def is_header(self):
-		if self.detail == '*' or self.rkey == '*':
-			return False
-		return True
-
-
-	def no_key(self):
-		return "%s_*" % (self.ritype)
-
-
-	def full_key(self):
-		return self.sroom
-
-
-	def add_member(self, sid, key = None, count = 0 ):
-		if sid in self.members:
-			if self.members[sid] == sid and key is not None:
-				logger.info("room add_member: id %s making room %s private", sid, self)
-			else:
-				logger.error("room add_member: id %s already a member in room %s", sid, self)
-				return "NAK"
-		if key is None:
-			self.members[sid] = sid
-		else:
-			self.members[sid] = MemberRoom(self, sid)
-
-
-	def del_member(self, sid):
-		if not sid in self.members:
-			logger.error("room del_member: id %s not a member in room %s", sid, self)
-		else:
-			del self.members[sid] 
-
-
-	def is_private(self, sid):
-		if not sid in self.members or type(self.members[sid]) == type(""):
-			return False
-		return isinstance(self.members[sid], MemberRoom)
-
-
-	def add_item(self, item):
-		if item._key in self.roomitems:
-			logger.error("room %s add_item: id %s already an item in room", self, item)
-			return
-		self.roomitems[item._key] = RoomItem(self, item)
-
-
-	def del_item(self, item):
-		if not item._key in self.roomitems:
-			logger.error("room %s del_member: item %s not an item in room", self, item)
-		else:
-			self.roomitems[item._key].deleted = True
-			self.roomitems[item._key].item = None
-
-
-	def schedule_update(self, rsid = None):
-		limit = 50		# XXX todo: make variable
-		for roomitem in self.get_roomitem_keys():
-			self.roomitems[roomitem].push_update(True, rsid)
-			for sid in self.members:
-				if self.is_private(sid) and self.members[sid].has_roomitem(roomitem):
-					self.roomitems[roomitem].push_update(True, sid)
-			limit -= 1
-			if limit == 0:
+	def clean(self):
+		to_prune =  len(self) - self.max_entries
+		for p in range(to_prune):
+			ts = time.time()
+			d = None
+			for i in self.keys():
+				if sys.getrefcount(super().__getitem__(i)) == 2:	# N.B sys.getrefcount and  self[i]
+					if ts > self.ts[i]:
+						d = i
+						ts = self.ts[i]
+			if d is None:
+				logger.warning("cache for index '%s' overcommited", self.tablename)
 				break
-					
+			del self[d]
+			del self.ts[d]
+		logger.debug("%s", self.status())
+		return 
 
+	def status(self):
+		in_use = 0
+		for i in self.keys():
+			if sys.getrefcount(super().__getitem__(i)) != 2:
+				in_use += 1
+		return "cache '%s' has %s entries of %s max (%s%%)" % \
+			(self.tablename, in_use, self.max_entries, (100.0 * in_use / self.max_entries))
+
+
+#
+# Table
+#
+class Table:
+	""" provide an index over items """
+	index = None
+	def __init__(self, itemclass, keyfield):
+		self.itemclass = itemclass
+		self.keyfield = keyfield
+		self.csearches = {}
+
+
+	def add_csearch(self, webnamespace, csearchkey, sid):
+
+		srch_id = csearchkey.search_id
+		if logging.DBG > 2: logger.debug("table add_csearch search_id '%s': %s", srch_id, str(csearchkey))
+		if not srch_id in self.csearches:
+			self.csearches[srch_id] = CSearch(webnamespace, self, csearchkey)
+		csearchkey = self.csearches[srch_id].add_sid(sid)
+		return csearchkey
+
+
+	def drop_sid_from_csearch(self, sid):
+		del_list = []
+		for cs in self.csearches:
+			self.csearches[cs].drop_sid(sid)
+			if self.csearches[cs].num_clients() == 0:
+				del_list.append(cs)
+		for cs in del_list:
+			del self.csearches[cs]
+
+
+	def find(self, key, keyfield = None):
+		pass
+
+	def find_one(self, key, keyfield = None):
+		pass
+
+	def insert(self, item):
+		self.check_csearch('ins', item)
+
+	def update(self, item):
+		self.check_csearch('upd', item)
+
+	def delete(self, item):
+		self.check_csearch('del', item)
+
+	def check_csearch(self, op, item):
+		for cs in self.csearches:
+			self.csearches[cs].check_csearch(op, item)
+		 
+	def register(self, item):
+		pass
+
+
+	
+class DbTable(Table):
+	""" database based Table """
+
+	def __init__(self, itemclass, keyfield, tablename):
+		self.tablename = tablename
+		self.cache = OCache(tablename, 1000)
+		self.dbtable = None
+		self.dbtable = _DB.table(self.tablename)
+		super().__init__(itemclass, keyfield)
+	
+
+	def register(self, item):
+		""" backload item from db if it exists, otherwise insert in db """
+		if item._key is None:		#  created by find
+			logger.debug("register %s not registred", self.tablename, item)
+			return False
+		if logging.DBG > 2: logger.debug("register %s %s", self.tablename, item)
+		r = self.dbtable.search(self.keyfield, '==', item.__dict__[self.keyfield])
+		if r is None or len(r) == 0:
+			item._wascreated = True
+			self.dbtable.insert(item.save())
+		else:
+			item._wascreated = False
+			item.load(r[0])
+			logger.debug("register item loaded: %s", item)
+		return item._wascreated
 			
-	def mksroom(self):
-		if not self.detail is None:
-			return "%s_%s_%s" % (self.ritype, self.rkey, self.detail)
-		return "%s_%s" % (self.ritype, self.rkey)
+
+	def get_range(self, csk):
+		drange =  self.dbtable.get_range(csk.key_field, csk.start_key, csk.end_key, csk.count)
+		if len(drange) == 0:
+			return []
+		ret = []
+		keys = []
+		to_load = csk.count
+		if logging.DBG > 1: logger.debug("get_range drange len %s %s", len(drange), drange)
+		for rkey in drange:
+			r = drange[rkey]
+			if csk.restrict_field is not None:
+				if r[csk.restrict_field] != csk.restrict_value:
+					logger.debug("csk.restrict %s %s", csk.restrict_field, csk.restrict_value)
+					continue
+			keys.append(r[csk.key_field])
+			if r[self.keyfield] in self.cache:
+				rn = self.cache[r[self.keyfield]]
+			else:
+				rn = self.itemclass()
+				rn.load(r)
+				self.cache[r[self.keyfield]] = rn
+			ret.append(rn)
+			to_load -= 1
+			if to_load == 0:
+				break
+#		keys_sorted = sorted(keys)
+		keys_sorted = keys
+		csk.at_start = keys[0] == list(drange.keys())[0]
+		csk.at_end = keys[-1] == list(drange.keys())[-1]
+		csk.start_key = keys_sorted[0]
+		ncount = min(len(keys_sorted), csk.count)
+		csk.end_key = keys_sorted[ncount-1]
+		logger.debug("get_range found %s recs %s", len(ret), str(csk))
+		return ret
+
+	def find(self, key, keyfield = None):
+		if keyfield is None:
+			keyfield = self.keyfield
+		res = self.dbtable.search(keyfield, '==', key)
+		if logging.DBG > 2: logger.debug("find %s %s=%s: found %s", self.tablename, keyfield, key,  len(res))
+		ret = []
+		for r in res:
+			if logging.DBG > 2: logger.debug("find->load %s", type(r))
+			if r[self.keyfield] in self.cache:
+				rn = self.cache[r[self.keyfield]]
+			else:
+				rn = self.itemclass()
+				rn.load(r)
+				self.cache[r[self.keyfield]] = rn
+			ret.append(rn)
+		return ret
+
+
+	def find_one(self, key, keyfield = None):
+		res = self.find(key, keyfield)
+		if logging.DBG > 1: logger.debug("find_one %s %s: %s", self.tablename, key,  res)
+		if len(res) == 1:
+			return res[0]
+		return None
+
+
+	def update(self, item):
+		self.dbtable.update(item.save(), self.keyfield, item.__dict__[self.keyfield])
+		super().update(item)
+
+
+	def insert(self, item):
+		if logging.DBG > 2: logger.debug("Table insert %s  %s", item.save(), self.keyfield)
+		self.dbtable.upsert(item.save(), self.keyfield)
+		super().insert(item)
+
+
+	def delete(self, item):
+		super().delete(item)
+		self.dbtable.delete(item.save(), self.keyfield)
+
+
+	def unregister(self, item):
+		self.dbtable.remove(self.keyfield, item.__dict__[self.keyfield])
+
+	def __len__(self):
+		return len(self.dbtable)
+
+	def __str__(self):
+		return "Dbndex(%s)%s" % (self.itemclass.__name__, len(self.dbtable))
+
+
+
+class DictTable(Table):
+	""" dict based Table """
+
+	def __init__(self, itemclass,  keyfield, index):
+		self.index = index
+		super().__init__(itemclass, keyfield)
+
+
+	def register(self, item):
+		self.index[item.key] = item
+
+
+	def get_range(self, csk):
+		raise Exception("NotYetImplemented")
+
+	def find(self, key, keyfield = None):
+		if keyfield is None or keyfield == self.keyfield:	# native key searc
+			try:
+				return self.index[key]
+			except:
+				return None
+		res = []
+		for k in self.index.keys():
+			if self.index[k][keyfield] == value:
+				res.append(self.index[k])
+		return res
+
+	def update(self, item):
+		pass
+
+
+	def insert(self, item):
+		if logging.DBG > 2: logger.debug("DictTable  insert %s", item.save())
+		pass
+
+
+	def delete(self, item):
+		pass
+
+
+	def unregister(self, item):
+		if item.key in self.index:
+			del self.index[item.key]
+
+
+	def __str__(self):
+		return "DictTable(%s)%s" %(self.itemclass.__name__, len(self.index))
+
+#
+# ItemLink
+#
+class ItemLink:
+	""" provide link to related classed """
+	def __init__(self, keyfield, link_class, link_field):
+		self.keyfield = keyfield
+		self.link_class = link_class
+		self.link_field = link_field
+
+	def get(self, rec):
+		k = rec.__dict__[self.keyfield]
+		logger.debug("ItemLink.get: keyfield %s key %s", self.keyfield, k)
+		res = self.link_class._table.find(k, self.link_field)
+		return res
+
+	def get_linked_table_name(self):
+		return self.link_class.__name__
+
+
+#
+# BaseItem
+#
+class BaseItem:
+	def __init__(self, key):
+		self._key = key
+
+
+	def __del__(self):
+		if logging.DBG > 2: logger.debug("BaseItem: __del__ %s", self)
+
+
+	def __str__(self):
+		try:
+			return "%s (%s)" % (self._itype, self._key)
+		except AttributeError:
+			return "SomeBaseItem"
+
+
+
+#
+# Item
+#
+class Item(BaseItem):
+	_table = None
+	_parent_link = None
+	_children_link = None
+
+	def __init__(self, key):
+		super().__init__(key)
+		self._table = self.__class__._table
+		self._itype = self.__class__.__name__
+		if self._key is None:
+			if logging.DBG > 1: logger.debug("Item: created %s", self)
+		else:
+			self._table.register(self)
+			if logging.DBG > 1: logger.debug("Item: created and registered %s", self)
+
+
+	def schedule_update(self, sid, stream_tag):
+		if logging.DBG >= 0: logger.debug("Item %s: schedule_update %s %s", self._key, sid, stream_tag)
+		pass
+
+
+	def load(self, data):	#N.B.
+		""" load class variable from provided data """
+		if logging.DBG > 2: logger.debug("%s loading data: %s", self.itype, data)
+		for k in data:
+			self.__dict__[k] = data[k]
+		self._key = self.__dict__[self._table.keyfield]
+
+
+	def save(self):
+		""" return dict of all non-private class variables """
+		r = {}
+		for k in self.__dict__:
+			if k[0] == '_':
+				continue
+			r[k] = self.__dict__[k]
+		return r
+
+	def insert(self):
+		if logging.DBG > 2: logger.debug("Item  insert %s %s", self._table.tablename, self.save())
+		self._table.insert(self)
+
+	def update(self):
+		self._table.update(self)
+
+	def delete(self):
+		self._table.delete(self)
+
+	def get_parent(self):
+		if self.__class__._parent_link is None:
+			return None
+		res = self.__class__._parent_link.get(self)
+		if len(res) > 1:
+			logger.error("get_parent %s found more than one parent %s", self.__class__.__name__, res)
+		elif len(res) == 0:
+			logger.error("get_parent %s found no parent %s", self.__class__.__name__, res)
+			return None
+		return res[0]
+
+	def get_children(self):
+		if self.__class__._children_link is None:
+			return None
+		return self.__class__._children_link.get(self)
+
+	def gen_console_data(self):
+		return self.save()
+
+
+# LogQ
+#
+class LogQ:
+	def __init__(self, conf, loop = None):
+		self.conf = conf
+		self.name = "logq"
+		self.q = Queue(loop=loop)
+		self.loop = loop
+
+	def write(self, msg):
+		asyncio.ensure_future(self.awrite(msg), loop=self.loop)
+	
+	async def awrite(self, msg):
+		msg = msg.rstrip('\n')
+		if len(msg) > 0:
+			await self.q.put(msg)
+
+	def flush(self):
+		pass
+
+	async def start(self):
+		logger.info("%s logq start")
+		while True:
+			msg = await self.q.get()
+			if msg is None:
+				break
+			if len(msg) == 0:
+				continue
+#			print("got one", msg)
+#			emit to web consoles!!
+
 

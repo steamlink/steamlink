@@ -11,7 +11,6 @@ from hbmqtt.broker import Broker
 import logging
 logger = logging.getLogger(__name__)
 
-from .linkage import registry
 
 from .steamlink import Packet
 

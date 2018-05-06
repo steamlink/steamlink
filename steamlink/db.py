@@ -3,6 +3,8 @@
 
 import asyncio
 import os
+from collections import  Mapping, OrderedDict
+
 from tinydb import TinyDB, Query, Storage, where
 from tinydb.database import  Document
 from tinydb.storages import JSONStorage, touch
@@ -75,38 +77,42 @@ class DBTable:
 
 	def insert(self, rec):
 		did = self.table.insert(rec)
-		if logging.DBG > 2: logger.debug("insert %s rec %s, %s: %s", self.name, did, type(rec), rec)
+		if logging.DBG >= 2: logger.debug("REC insert %s rec %s, %s: %s", self.name, did, type(rec), rec)
 
 
-	def upsert(self, keyfield, rec):
+	def upsert(self, rec, keyfield):
 		try:
 			r = rec[keyfield]
 		except:
 			logger.error("insert with no '%s' field: %s", keyfield, rec)
 			return
 		el = self.table.search(where(keyfield) == r)
-		logger.debug("upsert search %s return %s", (where(keyfield) == r), el)
+		if logging.DBG > 2: logger.debug("upsert search %s return %s", (where(keyfield) == r), el)
 		if el is not None and len(el) > 0:
 			if el[0] == rec:
-				logger.debug("upsert --nochange--")
+				if logging.DBG > 2: logger.debug("upsert --nochange--")
 				return
 			did = self.table.update(rec, where(keyfield) == r)
-			if logging.DBG >= 0: logger.debug("upsert update %s rec %s, %s: %s", self.name, did, type(rec), rec)
+			if logging.DBG >= 2: logger.debug("REC upsert update %s rec %s, %s: %s", self.name, did, type(rec), rec)
 		else:
 			did = self.table.insert(rec)
-			if logging.DBG >= 0: logger.debug("upsert insert %s rec %s, %s: %s", self.name, did, type(rec), rec)
+			if logging.DBG >= 2: logger.debug("upsert insert %s rec %s, %s: %s", self.name, did, type(rec), rec)
 
 
-	def remove(self, field, val):
+	def update(self, rec, keyfield, key):
+		if logging.DBG >= 2: logger.debug("REC update %s rec %s", self.name, rec)
+		did = self.table.update(rec, where(keyfield) == key)
+
+	def delete(self, field, val):
 		el = self.table.get(where(field) == val)
-		if el == None:
-			logger.error("remove in %s, no document with %s=%s", self.name, field, key)
+		if el is None:
+			logger.error("delete in %s, no document with %s=%s", self.name, field, key)
 			return
 		
 		try:
 			self.table.remove(eids=[el.eid])
 		except KeyError as e:
-			logger.error("remove in %s, no docid %s", self.name, el.eid)
+			logger.error("delete in %s, no docid %s", self.name, el.eid)
 
 
 	def search(self, field, op, val):
@@ -117,34 +123,79 @@ class DBTable:
 
 
 	def get_range(self, field, startv, endv, count=5):
-		if startv == None:
-			startv = 0
-		if endv == None:
+		if logging.DBG > 1: logger.debug("get_range: field '%s' startv '%s' endv '%s' count '%s'", \
+				field, startv, endv, count)
+
+		tab = self.table.all()
+		if len(tab) == 0:
+			return []
+
+		udict = {}
+		for t in tab:
+			udict[t[field]] = t
+		sdict = sorted(udict)
+		
+		if startv in [None, '', '<START>']:
+			sidx = 0
+			startv = sdict[sidx]
+		elif startv in [-1, '<END>']:
+			sidx = min(len(sdict)-1, count-1)
+			startv = sdict[sdix]
+		else:
+			sidx = None
+			for idx in range(len(sdict)):
+				if sdict[idx] >=  startv:
+					sidx = idx
+					startv = sdict[sidx]
+					break
+			if sidx is None:
+				return []
+		if endv in [None, '', -1]:
+			eidx = len(sdict)-1
+			endv = sdict[eidx]
+		else:
+			eidx = None
+			for idx in range(sidx, len(sdict)):
+				print("BBBB checking  %s >= %s", sdict[idx], startv)
+				if sdict[idx] < endv:
+					endv = sdict[idx]
+					eidx = idx
+					break
+			if eidx is None:
+				return []
+			
+		res = OrderedDict()
+		for idx in range(sidx, eidx+1):
+			res[sdict[idx]]  = udict[sdict[idx]]
+		if logging.DBG > 1: logger.debug("get_range res=%s", res)
+		return res
+
+
+	def Oldget_range(self, field, startv, endv, count=5):
+		logger.debug("get_range: field '%s' startv '%s' endv '%s' count '%s'", \
+				field, startv, endv, count)
+		if startv in [None, '']:
+			r0 = self.table.all()
+			if len(r0) > 0:
+				startv = r0[0][field]
+			else:
+				return []
+			print("ZZZZZ startv ", startv)
+		if endv is None:
 			r0 = self.table.search(where(field) >= startv)
 			if len(r0) == 0:
-				return (None, None, None)
+				return []
 			ulist = []
 			for x in r0:
 				ulist.append(x[field])
 			slist = sorted(ulist)
-			print('r0', slist, len(slist))
 			count = min(len(r0), count)
 			endv = slist[count-1]
+			print("ZZZZZ endv ", endv)
 		if startv > endv:
-			return (None, None, None)
+			return []
 
-		r1 = self.table.search((where(field) >= startv) & (where(field) <= endv))
-		if len(r1) == 0:
-			return (None, None, None)
-		ulist = []
-		for x in r1:
-			ulist.append(x[field])
-		slist = sorted(ulist)
-		print("r1", slist)
-		startv = slist[0]
-		count = min(len(slist), count)
-		endv = slist[count-1]
-		return (startv, endv, count)
+		return  self.table.search((where(field) >= startv) & (where(field) <= endv))
 
 
 	def __len__(self):
@@ -169,11 +220,13 @@ class DB:
 
 
 	async def start(self):
-		TinyDB.table_class = SmartCacheTable
+#		TinyDB.table_class = SmartCacheTable
 
 		logger.info("opening DB %s", self.conf['db_filename'])
 		self.db = TinyDB(self.conf['db_filename'], \
-				storage=CachingMiddleware(YAMLStorage))
+				sort_keys=True, indent=4, separators=(',', ': '), \
+#				storage=CachingMiddleware(YAMLStorage))
+				storage=CachingMiddleware(JSONStorage))
 #		self.db = TinyDB(self.conf['db_filename'])
 
 
@@ -203,5 +256,7 @@ class DB:
 		self.db = None
 
 
+	def flush(self):
+		self.db._storage.flush()
 
 

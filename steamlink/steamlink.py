@@ -19,9 +19,11 @@ logger = logging.getLogger(__name__)
 from .util import phex
 
 from .linkage import (
-	registry,
-	Room,
 	Item,
+	DictTable,
+	DbTable,
+	ItemLink,
+	CSearchKey,
 )
 
 
@@ -200,6 +202,13 @@ class SL_OP:
 			pass
 		return '??'
 
+	def val(val):
+		try:
+			return SL_OP.__dict__[val]
+		except:
+			pass
+		return 0x99	
+
 SL_AS_CODE = {0: 'Success', 1: 'Supressed duplicate pkt', 2: 'Unexpected pkt, dropping'}
 
 #
@@ -208,57 +217,31 @@ SL_AS_CODE = {0: 'Success', 1: 'Supressed duplicate pkt', 2: 'Unexpected pkt, dr
 class Steam(Item):
 	console_fields = {
  	 "Name": "self.name",
- 	 "Meshes": "list(self.children.keys())",
+ 	 "Meshes": "1",
 	 "Time": "time.asctime()",
 	 "Load": '"%3.1f%%" % self.cpubusy',
 	}
 
-	childclass = 'Mesh'
-	keyfield = 'key'
-	cache = {}
-
-	def find_by_id(Id):
-		return registry.find_by_id('Steam', Id)
-		if Id in Steam.cache:
-			return Steam.cache[Id]
-		rec = Steam.db_table.search(Steam.keyfield, "==", Id) 
-		if rec is None or len(rec) == 0:
-			return None
-		logger.debug("find_by_id %s found %s", Id, rec[0])
-		n = Steam(rec[0][Steam.keyfield])
-		Steam.cache[Id] = n
-		return n
-
-	def find_by_id(Id):
-		rec = Steam.db_table.search(Steam.keyfield, "==", Id) 
-		if rec is None or len(rec) == 0:
-			return None
-		return rec[0]
-
-
-	def __init__(self, conf):
-		self.desc = conf['description']
-		self.autocreate = conf['autocreate']
+	def __init__(self, conf = None):
+		self.steam_id = 0
+		self.autocreate = False
+		if conf:
+			self.desc = conf['description']
+			self.autocreate = conf['autocreate']
+			self.name = conf['name']
+			self.steam_id = int(conf['id'])
+		super().__init__(self.steam_id)
 		self.cpubusy = 0
-		self.key = int(conf['id'])
-		super().__init__('Steam', int(conf['id']))
-		self.keyfield = Steam.keyfield
+
 		_MQTT.set_msg_callback(self.on_data_msg)
 		_MQTT.set_public_control_callback(self.on_public_control_msg)
-		self.public_topic_control = _MQTT.get_public_control_topic()
-		self.public_topic_control_re = self.public_topic_control % "(.*)"
+		self._public_topic_control = _MQTT.get_public_control_topic()
+		self._public_topic_control_re = self._public_topic_control % "(.*)"
 
-
-		Steam.db_table = _DB.table('Steam')
-		Mesh.db_table = _DB.table('Mesh')
-		Node.db_table = _DB.table('Node')
-		Packet.db_table = _DB.table('Packet')
-
-		self.mqtt_test_succeeded  = False
+		self._mqtt_test_succeeded  = False
 
 		mq_cmd_msg = { "cmd": "boot" }
 		_MQTT.publish("store", json.dumps(mq_cmd_msg), sub="data")
-		self.write()
 
 
 	def gen_console_data(self):
@@ -293,13 +276,13 @@ class Steam(Item):
 			logger.warning("unreadable cmd %s", cmd)
 			return
 		if cmd['cmd'] == 'boot':
-			if self.mqtt_test_succeeded:
+			if self._mqtt_test_succeeded:
 				logger.error("there is a second system")
 				return
 			else:
 				logger.debug("mqtt test successfull")
 			_MQTT.publish("store", "Store Online", sub="control")
-			self.mqtt_test_succeeded = True
+			self._mqtt_test_succeeded = True
 		elif cmd['cmd'] == 'debug':
 			dbglvl = cmd.get('dbglvl', None)
 			slvl = cmd.get('level', None)
@@ -321,13 +304,13 @@ class Steam(Item):
 
 	def on_public_control_msg(self, client, userdata, msg):
 		if logging.DBG > 2: logger.debug("on_public_control_msg %s %s", msg.topic, msg.payload)
-		match = re.match(self.public_topic_control_re, msg.topic) 
+		match = re.match(self._public_topic_control_re, msg.topic) 
 		if match is None:
-			logger.warning("topic did not match public control topic: %s %s", topic, self.public_topic_control)
+			logger.warning("topic did not match public control topic: %s %s", topic, self._public_topic_control)
 			return
 		nodename = match.group(1)
 
-		node = Node.find_by_name(nodename)
+		node = Node._table.find_one(nodename, keyfield = "name")
 		if node is None:
 			logger.warning("public control: no such node node %s: %s", nodename, msg.payload)
 			return
@@ -357,7 +340,7 @@ class Steam(Item):
 			logger.warning("mqtt: pkt dropped: '%s', value error %s", msg.payload, e)
 			return
 
-		node = Node.find_by_id(sl_pkt.slid)
+		node = Node._table.find_one(sl_pkt.slid)
 		if node is None:		# Auto-create node
 			if not self.autocreate:
 				logger.warning("on_data_msg: no node for pkt %s", sl_pkt)
@@ -379,7 +362,7 @@ class Steam(Item):
 		while True:
 			await asyncio.sleep(wait)
 			self.heartbeat()
-
+			_DB.flush()
 			n_process_time = time.process_time()
 			n_now = time.time()
 
@@ -388,15 +371,14 @@ class Steam(Item):
 			self.cpubusy = ((n_process_time - process_time) / delta ) * 100.0
 			now = n_now
 			process_time = n_process_time
-			if logging.DBG == 0:	# N.B. reduce noise when debuging, i.e. no heartbeat
-				self.schedule_update()
+#			if logging.DBG == 0:	# N.B. reduce noise when debuging, i.e. no heartbeat
+#				self.schedule_update()
 
 
 	def heartbeat(self):
-		if not 'Node' in registry.reg['ItemTypes']:
-			return
 		n_now = time.time()
-		for node in registry.get_all('Node'):
+		for node in Node._table.find(1, 'mesh_id'):
+#		for node in registry.get_all('Node'):
 			if node.wait_for_AS['wait'] != 0:
 				rwait = int(node.wait_for_AS['wait'] - n_now)
 				logger.debug("heartbeat: %s wait %s sec for AS ", node.name, rwait)
@@ -407,7 +389,7 @@ class Steam(Item):
 					node.wait_for_AS['count'] += 1
 			elif node.is_overdue() and node.is_state_up():
 				node.set_state("OVERDUE")
-				node.schedule_update()
+				node.update()
 			if not node.is_state_up():		#XXX not offline or sleeping
 				if node.last_packet_tx_ts != 0 and node.last_packet_tx_ts + MAXSILENCE < n_now:
 					node.send_get_status()
@@ -415,7 +397,7 @@ class Steam(Item):
 
 	def save(self, withvirtual=False):
 		r = {}
-		r['key'] = self.key
+		r['steam_id'] = self.steam_id
 		r['name'] = self.name
 		r['desc'] = self.desc
 		if withvirtual:
@@ -433,45 +415,26 @@ class Mesh(Item):
 	 "mesh_id": "self.mesh_id",
 	 "Name": "self.name",
 	 "Description": "self.desc",
-	 "Total Nodes": "len(self.children)",
-	 "Active Nodes": "len(self.children)",
+	 "Total Nodes": "len(Node._table)",
+	 "Active Nodes": "len(Node._table)",
 	 "Packets sent": "self.packets_sent",
 	 "Packets received": "self.packets_received",
 	 }
-
-	childclass = 'Node'
 	keyfield = 'mesh_id'
-	cache = {}
 
-	def find_by_id(Id):
-		return registry.find_by_id('Mesh', Id)
-		if Id in Mesh.cache:
-			return Mesh.cache[Id]
-		rec = Mesh.db_table.search(Mesh.keyfield, "==", Id) 
-		if rec is None or len(rec) == 0:
-			return None
-		logger.debug("find_by_id %s found %s", Id, rec[0])
-		n = Mesh(rec[0][Mesh.keyfield])
-		Mesh.cache[Id] = n
-		return n
-
-
-	def __init__(self, mesh_id):
-		self.mesh_id = int(mesh_id)
-		logger.debug("Mesh creating: %s", mesh_id)
+	def __init__(self, mesh_id=None):
+		self.mesh_id = mesh_id
+		if mesh_id is None:
+			self.name = "Mesh??" 
+		else:
+			self.name = "Mesh%s" % self.mesh_id
+		self.desc = "Description for %s" % self.name
+		self.steam_id = 0	# XXX
 		self.packets_sent = 0
 		self.packets_received = 0
-		self.desc = "Description for mesh %s" % mesh_id
-
-		super().__init__('Mesh', mesh_id, parent_class=Steam, key_in_parent=0)
-		self.keyfield = Mesh.keyfield
-		self.desc = "Description for %s" % self.name
-		logger.info("Mesh created: %s", self)
-		self.write()
-
-
-	def mkname(self):
-		return "Mesh%x" % int(self.mesh_id)
+		super().__init__(self.mesh_id)
+		if self.mesh_id is not None:
+			logger.info("Mesh created: %s", self)
 
 
 	def gen_console_data(self):
@@ -488,12 +451,13 @@ class Mesh(Item):
 
 	def save(self, withvirtual=False):
 		r = {}
-		r[Mesh.keyfield] = self.mesh_id
+		r['mesh_id'] = self.mesh_id
+		r['steam_id'] = self.steam_id
 		r['name'] = self.name
 		r['desc'] = self.desc
 		if withvirtual:
-			r["Total Nodes"] = len(self.children)
-			r["Active Nodes"] = len(self.children)
+			r["Total Nodes"] = len(Node._table)
+			r["Active Nodes"] = len(Node._table)
 			r["Packets sent"] = self.packets_sent
 			r["Packets received"] = self.packets_received
 		return r
@@ -515,65 +479,37 @@ class Node(Item):
 	 "Packets dropped": "self.packets_dropped",
 	 "Packets missed": "self.packets_missed",
 	 "Packets duplicate": "self.packets_duplicate",
-	 "Packets cached": "len(self.children)",
-	 "Child 1": "str(self.children[12])",
+	 "Packets cached": "Packet._table.cache.status()",
 	 "gps_lat": "self.nodecfg.gps_lat",
 	 "gps_lon": "self.nodecfg.gps_lon",
 	 "slid": "self.slid",
 	}
+	keyfield = 'slid'
 	UPSTATES = ["ONLINE", "OK", "UP", "TRANSMITTING"]
 
-	childclass = 'Packet'
-	keyfield = 'slid'
-	cache = {}
-
-	def find_by_id(Id):
-		return registry.find_by_id('Node', Id)
-
-		if Id in Node.cache:
-			return Node.cache[Id]
-		rec = Node.db_table.search(Node.keyfield, "==", Id) 
-		if rec is None or len(rec) == 0:
-			return None
-		logger.debug("Node find_by_id %s found: %s", Id, rec[0])
-		n = Node(rec[0][Node.keyfield], rec[0]['nodecfg'])
-		Node.cache[Id] = n
-		return n
-#		return rec[0]
-
-
-	def find_by_name(name):
-		return registry.find_by_name('Node', name)
-
-		if Id in Node.cache:
-			return Node.cache[Id]
-		rec = Node.db_table.search(Node.keyfield, "==", Id) 
-		if rec is None or len(rec) == 0:
-			return None
-		logger.debug("Node find_by_id %s found: %s", Id, rec[0])
-		n = Node(rec[0][Node.keyfield], rec[0]['nodecfg'])
-		Node.cache[Id] = n
-		return n
-#		return rec[0]
-
-
 	""" a node in a mesh set """
-	def __init__(self, slid, nodecfg = None):
-		slid = int(slid)
-		logger.debug("Node creating : %s" % slid)
-		if nodecfg is None:
-			self.nodecfg = SL_NodeCfgStruct(slid, "Node%08x" % slid)
-			logger.debug("Node config is %s", self.nodecfg)
-		elif type(nodecfg) == type({}):
-			self.nodecfg = SL_NodeCfgStruct(slid, **nodecfg)
-			logger.debug("Node config is %s", self.nodecfg)
-		else:
-			self.nodecfg = nodecfg
+	def __init__(self, slid=None, nodecfg = None):
+		if slid is not None:
+			slid = int(slid)
+			logger.debug("Node creating : %s" % slid)
+			if nodecfg is None:
+				self.nodecfg = SL_NodeCfgStruct(slid, "Node%08x" % slid)
+				logger.debug("Node config is %s", self.nodecfg)
+			elif type(nodecfg) == type({}):
+				self.nodecfg = SL_NodeCfgStruct(slid, **nodecfg)
+				logger.debug("Node config is %s", self.nodecfg)
+			else:
+				self.nodecfg = nodecfg
 			self.name = nodecfg.name
-		self.response_q = Queue(maxsize=1)
+			self.slid = slid
+			self.mesh_id = (slid >> 8)
+			self.set_mesh()
+		else:
+			self.name = ""
+			self.slid = None
+			self.mesh_id = None
+		self._response_q = Queue(maxsize=1)
 
-		self.slid = slid
-		self.mesh_id = (slid >> 8)
 		self.packets_sent = 0
 		self.packets_received = 0
 		self.packets_resent = 0
@@ -591,16 +527,16 @@ class Node(Item):
 		self.wait_for_AS = { 'wait': 0, 'pkt': None, 'count': 0}	# deadline for AS ack
 		self.packet_log = TimeLog(MAX_NODE_LOG_LEN)
 
-		self.mesh = Mesh.find_by_id(self.mesh_id)
+		super().__init__(slid)
+		if slid is not None:
+			logger.info("Node created: %s" % self)
+
+
+	def set_mesh(self):
+		self.mesh = Mesh._table.find_one(self.mesh_id)
 		if self.mesh is None:		# Auto-create Mesh
 			logger.debug("Node %s: mesh %s autocreated", self.slid, self.mesh_id)
 			self.mesh = Mesh(self.mesh_id)
-
-		super().__init__('Node', slid, None, parent_class=Mesh, key_in_parent=self.mesh_id)
-		self.keyfield = Node.keyfield
-
-		logger.info("Node created: %s" % self)
-		self.write()
 
 
 	def set_pkt_number(self, pkt):
@@ -612,12 +548,14 @@ class Node(Item):
 
 
 	def load(self, data):	#N.B.
+		if logging.DBG > 1: logger.debug("load %s: %s", data)
 		for k in data:
-			logger.debug("load %s: %s", k, data[k])
 			if k == 'nodecfg':
 				self.nodecfg = SL_NodeCfgStruct(**data[k])
 			else:
 				self.__dict__[k] = data[k]
+		self._key = self.__dict__[self._table.keyfield]
+		self.set_mesh()
 
 
 	def save(self, withvirtual=False):
@@ -640,12 +578,6 @@ class Node(Item):
 			r['packets_duplicate'] = self.packets_duplicate
 			r['wait_for_AS'] = "%s %s" % (self.wait_for_AS[0], seld.wait_for_AS[1])
 		return r
-
-
-	def mkname(self):
-		if self.nodecfg is not None:
-			return self.nodecfg.name
-		return "Node%s" % int(self.slid)
 
 
 	def get_firsthop(self):
@@ -700,9 +632,8 @@ class Node(Item):
 		if logging.DBG > 1: logger.debug("publish_pkt %s to node %s", sl_pkt, self.get_firsthop())
 		_MQTT.publish(self.get_firsthop(), sl_pkt.pkt, sub=sub)
 		self.last_packet_tx_ts = time.time()
-		self.schedule_update()
-		self.mesh.schedule_update()
-		self.write()
+		self.update()
+		self.mesh.update()
 
 
 	def send_ack_to_node(self, code):
@@ -733,6 +664,7 @@ class Node(Item):
 		sl_pkt = Packet(slnode=self, sl_op=SL_OP.DN, payload=bpayload)
 		self.publish_pkt(sl_pkt)
 		self.set_wait_for_AS(sl_pkt)
+		sl_pkt.insert()
 		return
 
 
@@ -791,9 +723,9 @@ class Node(Item):
 		if sl_pkt.sl_op != SL_OP.DS:		# actual data
 			logger.warning("store_data NOT storing non-DS data: %s", sl_pkt.sl_op)
 			return
-		if logging.DBG > 2: logger.debug("store_data inserting into db")
+		if logging.DBG >= 1: logger.debug("store_data inserting into db")
 
-#		_DB.insert(sl_pkt.save())
+		sl_pkt.insert()
 		self.send_ack_to_node(0)
 
 		_MQTT.public_publish(self.name, sl_pkt.payload)
@@ -817,13 +749,12 @@ class Node(Item):
 
 		# set ts for all nodes on the via route
 		for slid in sl_pkt.via:
-			node = Node.find_by_id(slid)
+			node = Node._table.find_one(slid)
 			if node:
-				node.last_packet_rx_ts = sl_pkt.ts
+				node.last_packet_rx_ts = float(sl_pkt.ts)
 				if not node.is_state_up():
 					node.set_state('TRANSMITTING')
-				node.schedule_update()
-				node.write()
+				node.update()
 			else:
 				self.packets_dropped += 1
 				logger.error("post_data: via node %s not on file", slid)
@@ -866,7 +797,7 @@ class Node(Item):
 						SL_AS_CODE[int(sl_pkt.bpayload[0])])
 			self.set_wait_for_AS(None)		# done waiting
 #			try:
-#				self.response_q.put(sl_op)
+#				self._response_q.put(sl_op)
 #			except Full:
 #				logger.warning('post_data: node %s queue, dropping: %s', int(self.slid), sl_pkt)
 		elif sl_op == SL_OP.TR:
@@ -886,15 +817,14 @@ class Node(Item):
 			self.tr[test_pkt.pkt['slid']].append((test_pkt.pkt['pktno'], test_pkt.pkt['rssi']))
 #			sl_log.post_incoming(test_pkt)
 
-		self.last_packet_rx_ts = sl_pkt.ts
+		self.last_packet_rx_ts = float(sl_pkt.ts)
 
 		# any pkt from node indicates it's up
 		if not self.is_state_up():
 			self.set_state('TRANSMITTING')
 
-		self.write()
-		self.schedule_update()
-		self.mesh.schedule_update()
+		self.update()
+		self.mesh.update()
 
 
 	def set_wait_for_AS(self, pkt):
@@ -912,7 +842,7 @@ class Node(Item):
 
 	def get_response(self, timeout):
 		try:
-			data = self.response_q.get(timeout=timeout)
+			data = self._response_q.get(timeout=timeout)
 		except Empty:
 			data = SL_OP.NC
 		return data
@@ -930,26 +860,6 @@ class Node(Item):
 		return data
 
 
-#	def console_tail(self, room):
-#		v = self.packet_log.get('',-1)
-#		r = {
-#		  'id': slid,
-#		  'type': 'pkt',
-#		  'display_vals': { 'data': v }
-#		}
-#		emit_to_room(r, room)
-
-
-#	async def console_pkt_log(self, room, slid, count):
-#		v = self.packet_log.get(slid, count)
-#		r = {
-#		  'id': slid,
-#		  'type': 'pkt',
-#		  'display_vals': v
-#		}
-#		a_emit_to_room(r, room, self.steam)
-
-
 #
 # Packet
 #
@@ -959,52 +869,34 @@ class Packet(Item):
 	 "rssi": "self.rssi",
 	 "via": "self.via",
 	 "payload": "self.payload",
-	 "ts": "time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(self.ts))",
+	 "ts": "time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(float(self.ts)))",
 	}
 
 
-	PacketID = 0
+	keyfield = 'ts'
 	data_header_fmt = '<BLHB%is'		# op, slid, pkt_num, rssi, payload"
 	control_header_fmt = '<BLH%is'		# op, slid, pkt_num, payload"
 
-	childclass = ''
-	keyfield = 'ts'
-	cache = {}
-	def find_by_id(Id):
-		return registry.find_by_id('Packet', Id)
-		if Id in Packet.cache:
-			return Packet.cache[Id]
-		rec = Packet.db_table.search(Packet.keyfield, "==", Id) 
-		if rec is None or len(rec) == 0:
-			return None
-		logger.debug("Node find_by_id %s found: %s", Id, rec[0])
-		n = Packet(rec[0][Packet.keyfield])
-		Packet.cache[Id] = n
-		return n
-
-
 	def __init__(self, slnode = None, sl_op = None, rssi = 0, payload = None, pkt = None):
+
 		self.rssi = 0
 		self.via = []
 		self.payload = None
-		self.itype = "Packet"
-		self.ts = time.time()
-#		self.node = None
+		self.ts = str(time.time())
 		self.nodecfg = None
+		if pkt is None and slnode is None:
+			return	# needs a load() to complete
 		self.is_outgoing = pkt is None
 
 		if self.is_outgoing:				# construct pkt
 			self.construct(slnode, sl_op, rssi, payload)
+#			super().__init__(self.ts)
+			self.set_node(slnode)
 		else:								# deconstruct pkt
 			if not self.deconstruct(pkt):
 				logger.error("deconstruct pkt to short: %s", len(pkt))
 				raise SteamLinkError("deconstruct pkt to short");
-		Packet.PacketID += 1
-		super().__init__('Packet', Packet.PacketID, parent_class=Node)
-		self.keyfield = Packet.keyfield
-		if self.is_outgoing:
-			self.set_node(slnode)
-		self.write()
+		super().__init__(None)
 
 
 	def __str__(self):
@@ -1018,11 +910,17 @@ class Packet(Item):
 
 
 	def set_node(self, node):
-		ULOn = "[4m"
-		BOn = "[7m"
-		BOff = "[0m"
+		if logging.console:
+			ULOn = "[4m"
+			BOn = "[7m"
+			BOff = "[0m"
+		else:
+			ULOn = ""
+			BOn = ""
+			BOff = ""
+
 		self.node = node
-		self.set_parent(self.slid)
+#		self.set_parent(self.slid)
 		if self.is_outgoing:
 			direction = "send"
 			via = "direct" if self.node.via == [] else "via %s" % self.node.via
@@ -1130,45 +1028,32 @@ class Packet(Item):
 
 		return True
 
-
 	def load(self, data):
 		super().load(data)
-			
+		self.sl_op = SL_OP.val(self.sl_op)	# xlate from 2-letter-code to val
+
 
 	def save(self, withvirtual=False):
 		r = {}
-		r['sl_op'] = self.sl_op
+		r['sl_op'] = SL_OP.code(self.sl_op) # self.sl_op ?
 		r['pkt_num'] = self.pkt_num
 		r['slid'] = self.slid
-		r[Packet.keyfield] = self.ts
+		r[Packet.keyfield] = str(self.ts)
 		r['rssi'] = self.rssi
 		r['via'] = self.via
-		r['payload'] = self.payload
-		r['bpayload'] = repr(self.bpayload)	#??
+		if type(self.payload) == type(b''):
+			r['payload'] = repr(self.payload)
+		else:
+			r['payload'] = self.payload
+#		r['bpayload'] = repr(self.bpayload)	#??
 		if withvirtual:
-			r["ts"] = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(self.ts))
-			r["op"] = SL_OP.code(self.sl_op)
+			r["ts"] = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(float(self.ts)))
+#			r["op"] = SL_OP.code(self.sl_op)
 		return r
 
 
 	def post_data(self):
 		self.node.post_data(self)
-
-
-	def o__str__(self):
-		if self.slid is None:
-			via = "-%s-" % "??"
-		else:
-			via = "%d" % self.slid
-		if len(self.via) > 0:
-			for v in self.via[::-1]: via += "->%d" % v
-		s = "SL(op %s, id %s" % (SL_OP.code(self.sl_op), via)
-		if self.rssi is not None:
-			s += " rssi %s" % (self.rssi)
-		if self.payload is not None:
-			s += " payload %s" % (self.payload)
-		s += ")"
-		return s
 
 
 	def gen_console_data(self):
@@ -1182,17 +1067,6 @@ class Packet(Item):
 			data[label] = v
 		if logging.DBG > 1: logger.debug("pkt console data: %s", data)
 		return data
-
-
-	def get_room_list(self):
-		#logger.debug("get_room_list %s", self)
-		rooms = []
-		rooms.append( "%s_*" % (self.itype))
-		# Packets don't have a 'header' room
-		rooms.append( "%s_%s" % (self.itype, self.slid))
-		if self.parent is not None:
-			rooms.append( "%s_%s_*" % (self.parent.itype, self.parent._key))
-		return rooms
 
 
 #
@@ -1316,3 +1190,101 @@ class LogData:
 			lwait -= waited
 
 
+# req_dict is
+""" {'record_type':
+	 'key_field':
+	 'start_key':
+	 'end_key':
+	 'count':
+	 'return_children':
+	 'stream_tag':
+	 'force':
+"""
+
+
+def add_csearch(webnamespace, sid, table_name, key_field, start_key, end_key, stream_tag, count, return_children, force):
+
+	
+	try:
+		table = tables[table_name]
+	except KeyError as e:
+		return { 'Success': False, 'ERROR': 'Table %s not found' % str(e) }
+
+	csearchkey = CSearchKey(table_name, key_field, start_key, end_key, stream_tag, count, )
+
+	if return_children:
+		if csearchkey.key_field is None:
+			csearchkey.key_field = table.itemclass._children_link.keyfield
+		new_table = table.itemclass._children_link.link_class._table
+
+		csearchkey.restrict_field = table.itemclass._children_link.link_field
+		csearchkey.restrict_value = csearchkey.start_key
+		csearchkey.start_key = None
+
+		csearchkey.table_name = new_table.tablename
+		csearchkey.key_field = new_table.keyfield
+		table_name = new_table.tablename
+		table = new_table
+
+	try:
+		csearchkey = table.add_csearch(webnamespace, csearchkey, sid)
+	except KeyError as e:
+		msg = 'could not add search %s' % (str(e))
+		logger.info('add_search fail: %s', msg)
+		return { 'Success': False, 'ERROR': msg }
+
+
+	if force:
+		for cs in table.csearches:
+			table.csearches[cs].force_update(sid)
+		force = True
+
+
+	if logging.DBG > 1: logger.debug("add_csearch sid %s csearchkey %s", sid, csearchkey)
+	res = {'key_field': csearchkey.key_field,
+			'record_type': csearchkey.table_name,
+			'start_key': csearchkey.start_key,
+			'end_key': csearchkey.end_key,
+			'count': csearchkey.count,
+		}
+	return res
+
+
+def drop_csearch(webnamespace, sid, table_name=None, key_field=None, start_key=None, end_key=None, stream_tag=None, count=None, return_children=None):
+
+	if table_name == None:		# all all tables, i.e. disconnect
+		table_list = list(tables.values())
+	else:
+		try:
+			table_name, table = find_table(table_name)
+		except KeyError as e:
+			return { 'Success': False, 'ERROR': 'Table %s not found' % str(e) }
+		table_list = [table]
+
+	for tab in table_list:
+		tab.drop_sid_from_csearch(sid)
+
+	return { 'Success': True }
+
+
+tables = {}
+def SteamSetup():
+	Steam._table = DbTable(Steam, keyfield="steam_id", tablename="Steam")
+	tables['Steam'] = Steam._table
+	Steam._children_link = ItemLink('steam_id', Mesh, 'steam_id')
+	
+	Mesh._table = DbTable(Mesh, keyfield="mesh_id", tablename="Mesh")
+	tables['Mesh'] = Mesh._table
+	Mesh._parent_link = ItemLink('steam_id', Steam, 'key')
+	Mesh._children_link = ItemLink('mesh_id', Node, 'mesh_id')
+	
+	Node._table = DbTable(Node, keyfield="slid", tablename="Node")
+	tables['Node'] = Node._table
+	Node._parent_link = ItemLink('mesh_id', Mesh, 'mesh_id')
+	Node._children_link = ItemLink('slid', Packet, 'slid')
+	
+	Packet._table = DbTable(Packet, keyfield="ts", tablename="Packet")
+	tables['Packet'] = Packet._table
+	Node._parent_link = ItemLink('slid', Node, 'slid')
+
+	

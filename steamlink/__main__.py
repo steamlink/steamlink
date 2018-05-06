@@ -17,9 +17,9 @@ import yaml
 from collections import  Mapping, OrderedDict
 
 import logging
+import logging.handlers
 logger = logging.getLogger()
 
-from .linkage import OpenRegistry, CloseRegistry, registry
 from .linkage import Attach as linkageAttach
 
 # SteamLink project imports
@@ -28,8 +28,8 @@ from .mqtt import (
 	Mqtt_Broker
 )
 
-
-from .steamlink import Steam, Mesh, Node, SL_NodeCfgStruct
+from .linkage import LogQ
+from .steamlink import SteamSetup, Steam, Mesh, Node, SL_NodeCfgStruct
 from .steamlink import Attach as steamlinkAttach
 
 from .web import WebApp
@@ -66,6 +66,8 @@ def raise_graceful_exit():
 	raise GracefulExit()
 
 home = str(pathlib.Path.home())	
+
+		
 
 #
 # Default config
@@ -148,54 +150,10 @@ DEFAULT_CONF = OrderedDict({
 
 
 #
-# 
-#
-def save_to_cache(fname):
-	return
-	meshes = {}
-	if 'Mesh' in registry.get_itypes():
-		for mesh in registry.get_all('Mesh'):
-			meshes[mesh.key] = mesh.save()
-	nodes = {}
-	if 'Node' in registry.get_itypes():
-		for node in registry.get_all('Node'):
-			nodes[node.key] = node.save()
-	r = {'Mesh': meshes, 'Node': nodes }
-
-	with open(fname, 'w') as outfile:
-		yaml.dump(r, outfile, default_flow_style=False)
-
-
-def load_from_cache(fname):
-	return
-	if not os.path.exists(fname):
-		return
-
-	with open(fname, "r") as infile:
-		stream = "".join(infile.readlines())
-	data = yaml.load(stream)
-	if data is None or not 'Mesh' in data or not 'Node' in data:
-		logger.error("load_from_cache: cache file corrupt, ignoring")
-		return
-
-	for mesh in data['Mesh']:
-		m = Mesh(data['Mesh'][mesh]['key'])
-		logger.info("restored mesh %s", m)
-
-	for node in data['Node']:
-		if 'nodecfg' in data['Node'][node]:
-			nodecfg = SL_NodeCfgStruct(**data['Node'][node]['nodecfg'])
-		else:
-			nodecfg = None
-		n = Node(data['Node'][node]['slid'], nodecfg)
-		n.via = data['Node'][node].get('via',[])
-		logger.info("restored node %s", n)
-
-#
 # Main
 #
 def steamlink_main(cl_args, conf):
-	global daemon
+	global daemon, conf_working_dir, logq
 
 	""" start steamlink """
 
@@ -265,10 +223,10 @@ def steamlink_main(cl_args, conf):
 
 	ping_timeout = conf_general['ping_timeout']
 
-	logger.debug("startup: create socketio")
 	ll = logging.getLogger('AsyncServer')
 	# use different logging level socketio/engineio modules
 	ll.setLevel(logging.WARN)
+	logger.debug("startup: create socketio")
 	sio = socketio.AsyncServer(
 		logger = ll,
 		async_mode = 'aiohttp',
@@ -282,6 +240,7 @@ def steamlink_main(cl_args, conf):
 	db = DB(conf_db, loop=aioloop)
 
 	logger.debug("startup: create WebApp")
+	webapp = None
 	webapp = WebApp(namespace, sio, conf_console, loop=aioloop)
 
 	linkageAttach(webapp, db)
@@ -290,18 +249,25 @@ def steamlink_main(cl_args, conf):
 	logger.debug("startup: start db")
 	aioloop.run_until_complete(db.start())
 
-	logger.debug("startup: Open Registry")
-#	OpenRegistry(None)
-#	OpenRegistry(conf_working_dir+"/steamlink.reg")
-	OpenRegistry()
+	coros = []
+
+	logq = LogQ(conf, aioloop)
+	coros.append(logq.start())
+
+	msghandler = logging.StreamHandler(logq)
+	QFORMAT = '%(levelname)s %(module)s %(message)s'
+	qfmt = logging.Formatter(QFORMAT)
+	msghandler.setFormatter(qfmt)
+	msghandler.setLevel(logging.INFO)
+	logger.addHandler(msghandler)
 
 	logger.debug("startup: start webapp")
 	aioloop.run_until_complete(webapp.start())
+	
+	SteamSetup()
 	steam = Steam(conf_steam)
 	logger.debug("startup: create Steam")
-	load_from_cache(conf_working_dir+"/steamlink.cache")
 
-	coros = []
 	if cl_args.testdata:
 		testconfigs = conf['tests']
 		logger.debug("startup: create TestData")
@@ -341,15 +307,14 @@ def steamlink_main(cl_args, conf):
 	if TestTask:
 		logger.debug("stopping TestTask")
 		TestTask.stop()
-	save_to_cache(conf_working_dir+"/steamlink.cache")
 
 	aioloop.run_until_complete(mqtt.stop())
 	if not conf_broker is None:
 		aioloop.run_until_complete(mqtt_broker.stop())
-	CloseRegistry()
 
 	logger.info("done")
 	return restart
+
 
 #
 # Main
@@ -369,12 +334,24 @@ def steamlink_command():
 		loglevel = logging.DEBUG if cl_args.debug > 0 else logging.INFO
 
 	FORMAT = '%(asctime)-15s: %(levelname)s %(module)s %(message)s'
-	logging.basicConfig(format=FORMAT, filename=cl_args.logfile)
+#	logging.basicConfig(format=FORMAT)
 	logger.setLevel(loglevel)
+	if cl_args.logfile is not None:
+		logging.console = False
+		handler = logging.handlers.RotatingFileHandler(
+              cl_args.logfile, maxBytes=10**6, backupCount=3)
+	else:
+		logging.console = True
+		handler = logging.StreamHandler()
+
+	fmt = logging.Formatter(FORMAT)
+	handler.setFormatter(fmt)
+	logger.addHandler(handler)
+
 	DBG = cl_args.debug
 	logging.DBG = DBG
 
-	if DBG >= 2:
+	if DBG >= 3:
 		logger.info("DBG: logging all warnings")
 		import warnings
 		warnings.simplefilter("always")
