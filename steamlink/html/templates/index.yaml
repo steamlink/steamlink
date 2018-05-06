@@ -5,9 +5,9 @@ home:
   # Query information
   record_type: Steam
   start_key: 0
-  key_field: "null"
+  key_field: null
   count: 0
-  end_key: "null"
+  end_key: null
   return_children: false
   stream_tag: home_header
   force: false
@@ -24,9 +24,9 @@ meshes:
   # Query information
   record_type: Steam
   start_key: 0
-  key_field: "null"
+  key_field: null
   count: 20
-  end_key: "null"
+  end_key: null
   return_children: true
   stream_tag: table_item_area
   force: false

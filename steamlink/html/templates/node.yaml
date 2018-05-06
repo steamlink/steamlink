@@ -5,9 +5,9 @@ node:
   # Query information
   record_type: Node
   start_key: 1
-  key_field: "null"
+  key_field: null
   count: 0
-  end_key: "null"
+  end_key: null
   return_children: false
   stream_tag: node_header
   force: false
@@ -22,11 +22,11 @@ packets:
   type: table
   title: Packets in the Node
   # Query information
-  record_type: Packet
+  record_type: Node
   start_key: 1
-  key_field: "null"
+  key_field: null
   count: 20
-  end_key: "null"
+  end_key: null
   return_children: true
   stream_tag: table_item_area
   force: false
