@@ -274,7 +274,10 @@ class WebApp(object):
 				i = int(i)
 			except:
 				pass
-			dc.data[partial][key] = i
+			if (key == "restrict_by"):
+				dc.data[partial][key][0].value = i
+			else:
+				dc.data[partial][key] = i
 
 		if logging.DBG > 0: logger.debug("webapp handler %s", dc.data)
 		context = { 'context' : dc.row_wise(), 'navbar' : nav.yamls }

@@ -46,4 +46,4 @@ meshes:
     - "Active Nodes"
     - "Packets sent"
     - "Packets received"
-  record_link: "/mesh?mesh.start_key={key}&nodes.start_key={key}"
+  record_link: "/mesh?mesh.start_key={key}&nodes.restricted_by={key}"

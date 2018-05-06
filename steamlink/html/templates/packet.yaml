@@ -3,14 +3,13 @@ packet:
   type: tile
   title: Packet Summary
   # Query information
-  record_type: Packet
-  start_key: 1
-  key_field: null
-  count: 0
+  table_name: Packet
+  key_field: ts
+  start_key: null
+  start_item_number: -1
+  count: 1
   end_key: null
-  return_children: false
   stream_tag: pkt_header
-  force: false
   # Layout
   row: 1
   grid_columns: 'twelve'
