@@ -751,7 +751,7 @@ class Node(Item):
 		for slid in sl_pkt.via:
 			node = Node._table.find_one(slid)
 			if node:
-				node.last_packet_rx_ts = float(sl_pkt.ts)
+				node.last_packet_rx_ts = sl_pkt.ts
 				if not node.is_state_up():
 					node.set_state('TRANSMITTING')
 				node.update()
@@ -817,7 +817,7 @@ class Node(Item):
 			self.tr[test_pkt.pkt['slid']].append((test_pkt.pkt['pktno'], test_pkt.pkt['rssi']))
 #			sl_log.post_incoming(test_pkt)
 
-		self.last_packet_rx_ts = float(sl_pkt.ts)
+		self.last_packet_rx_ts = sl_pkt.ts
 
 		# any pkt from node indicates it's up
 		if not self.is_state_up():
@@ -869,7 +869,7 @@ class Packet(Item):
 	 "rssi": "self.rssi",
 	 "via": "self.via",
 	 "payload": "self.payload",
-	 "ts": "time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(float(self.ts)))",
+	 "ts": "time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(self.ts))",
 	}
 
 
@@ -882,7 +882,7 @@ class Packet(Item):
 		self.rssi = 0
 		self.via = []
 		self.payload = None
-		self.ts = str(time.time())
+		self.ts = time.time()
 		self.nodecfg = None
 		if pkt is None and slnode is None:
 			return	# needs a load() to complete
@@ -1038,7 +1038,7 @@ class Packet(Item):
 		r['sl_op'] = SL_OP.code(self.sl_op) # self.sl_op ?
 		r['pkt_num'] = self.pkt_num
 		r['slid'] = self.slid
-		r[Packet.keyfield] = str(self.ts)
+		r[Packet.keyfield] = self.ts
 		r['rssi'] = self.rssi
 		r['via'] = self.via
 		if type(self.payload) == type(b''):
@@ -1047,7 +1047,7 @@ class Packet(Item):
 			r['payload'] = self.payload
 #		r['bpayload'] = repr(self.bpayload)	#??
 		if withvirtual:
-			r["ts"] = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(float(self.ts)))
+			r["ts"] = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(self.ts))
 #			r["op"] = SL_OP.code(self.sl_op)
 		return r
 
