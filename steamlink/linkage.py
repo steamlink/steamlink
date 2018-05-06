@@ -558,7 +558,6 @@ class BaseItem:
 class Item(BaseItem):
 	_table = None
 	_parent_link = None
-	_children_link = None
 
 	def __init__(self, key):
 		super().__init__(key)
@@ -613,11 +612,6 @@ class Item(BaseItem):
 			logger.error("get_parent %s found no parent %s", self.__class__.__name__, res)
 			return None
 		return res[0]
-
-	def get_children(self):
-		if self.__class__._children_link is None:
-			return None
-		return self.__class__._children_link.get(self)
 
 	def gen_console_data(self):
 		return self.save()

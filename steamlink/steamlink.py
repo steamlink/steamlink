@@ -401,7 +401,7 @@ class Steam(Item):
 		r['name'] = self.name
 		r['desc'] = self.desc
 		if withvirtual:
-			r["Meshes"] = list(self.children.keys())
+			r["Meshes"] = len(Mesh._table)
 			r["Time"] = time.asctime()
 			r["Load"] = "%3.1f%%" % self.cpubusy
 		return r
@@ -1238,8 +1238,9 @@ def add_csearch(webnamespace, sid, message):
 	return res
 
 
-def drop_csearch(webnamespace, sid, table_name=None, key_field=None, start_key=None, end_key=None, stream_tag=None, count=None, return_children=None):
+def drop_csearch(webnamespace, sid, messages):
 
+	table_name = message.get('table_name', None)
 	if table_name == None:		# all all tables, i.e. disconnect
 		table_list = list(tables.values())
 	else:
@@ -1259,20 +1260,13 @@ tables = {}
 def SteamSetup():
 	Steam._table = DbTable(Steam, keyfield="steam_id", tablename="Steam")
 	tables['Steam'] = Steam._table
-	Steam._children_link = ItemLink('steam_id', Mesh, 'steam_id')
 	
 	Mesh._table = DbTable(Mesh, keyfield="mesh_id", tablename="Mesh")
 	tables['Mesh'] = Mesh._table
-	Mesh._parent_link = ItemLink('steam_id', Steam, 'key')
-	Mesh._children_link = ItemLink('mesh_id', Node, 'mesh_id')
 	
 	Node._table = DbTable(Node, keyfield="slid", tablename="Node")
 	tables['Node'] = Node._table
-	Node._parent_link = ItemLink('mesh_id', Mesh, 'mesh_id')
-	Node._children_link = ItemLink('slid', Packet, 'slid')
 	
 	Packet._table = DbTable(Packet, keyfield="ts", tablename="Packet")
 	tables['Packet'] = Packet._table
-	Node._parent_link = ItemLink('slid', Node, 'slid')
 
-	
