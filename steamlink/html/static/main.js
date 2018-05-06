@@ -135,8 +135,18 @@ $(function() {
   };
   
   socket = io.connect(socketNamespace);
-
+  
   var alertWrapper = $('#dashboard_socket_alerts');
+  /*
+  var alerts = [];
+ 
+  var alertTemplate = '<div class="alert-msg" style="display:inline-block"></div><a class="alert-partial close-icon" style="display:inline-block"></a>'
+  
+  var createNewAlert = function(a) {
+    alert = push
+  }
+  */
+  
   var alertElement =  $('#dashboard_socket_alerts > .alert-msg')[0];
   var alertCloseElement = $('#dashboard_socket_alerts a')[0];
 
@@ -159,4 +169,6 @@ $(function() {
         });
       }
   });
+
+  
 });

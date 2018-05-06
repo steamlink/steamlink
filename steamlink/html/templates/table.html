@@ -64,7 +64,7 @@
                 htmlString += "<tr>";
                 headers.forEach( (header) => {
                     if(header in item) {
-                        htmlString += "<td>" + "<a href =" + window.format(record_link, {"key" : item[tableStream.key_field] }) + ">" + item[header] + "</a></td>";
+                        htmlString += "<td>" + "<a href =" + window.format(record_link, {"key" : item[tableStream.config.key_field] }) + ">" + item[header] + "</a></td>";
                     } else {
                         htmlString += "<td></td>";   
                     }
