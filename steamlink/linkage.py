@@ -124,11 +124,11 @@ class CSearch:
 		return len(self.clients)
 
 
-	def check_restrictions(restrict_by, item):
+	def check_restrictions(self, restrict_by, item):
 		for restrict in restrict_by:
 			field =  restrict['field_name'] 
 			op =  restrict['op'] 
-			val =  restrict['value'] 
+			value =  restrict['value'] 
 			ex = "item['%s'] %s %s" % (field, op, repr(value))
 			return eval(ex)
 
@@ -141,10 +141,10 @@ class CSearch:
 			but the delete will happen after
 		"""
 # find csitem for item
-		if logging.DBG > 1: logger.debug("CSearch %s check_csearch op %s for %s", self.search_id, op, item)
+		if logging.DBG >= 0: logger.debug("CSearch %s check_csearch op %s for %s", self.search_id, op, item)
 		item_search_key = item.__dict__[self.csearchkey.key_field]
 		push = False
-		go = check_restrictions(self.csearchkey.restrict_by, item.__dict__)
+		go = self.check_restrictions(self.csearchkey.restrict_by, item.__dict__)
 		if not go:
 			return
 

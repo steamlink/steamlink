@@ -95,6 +95,7 @@ class WebNamespace(socketio.AsyncNamespace):
 
 
 	async def on_startstream(self, sid, message):
+		logger.debug("WebNamespace on_startstream --> %s", message)
 		try:
 			res = add_csearch(self, sid, message)
 		except KeyError as e:

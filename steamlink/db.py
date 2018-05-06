@@ -122,11 +122,11 @@ class DBTable:
 		return res
 
 
-	def check_restrictions(restrict_by, item):
+	def check_restrictions(self, restrict_by, item):
 		for restrict in restrict_by:
 			field =  restrict['field_name']
 			op =  restrict['op']
-			val =  restrict['value']
+			value =  restrict['value']
 			ex = "item['%s'] %s %s" % (field, op, repr(value))
 			return eval(ex)
 
@@ -137,7 +137,7 @@ class DBTable:
 		- if start_item_number is negative start from the end
 		if logging.DBG > 1: logger.debug("get_range: %s", str(csk))
 		"""
-
+		logger.debug("get_range csk %s", str(csk))
 		field = csk.key_field
 		startv = csk.start_key
 		endv = csk.end_key
@@ -147,7 +147,7 @@ class DBTable:
 		if len(tab) == 0:
 			csk.total_item_count = 0
 			csk.count = 0
-			return []
+			return {}
 
 		udict = {}
 		for t in tab:
@@ -156,8 +156,11 @@ class DBTable:
 	
 		sdict = []
 		for r in fullsdict:
-			if check_restrictions(csk.restrict_by, udict[r]):
+			if self.check_restrictions(csk.restrict_by, udict[r]):
 				sdict.append(r)
+
+		if len(sdict) == 0:
+			return {}
 
 		if startv in [None]:
 			if csk.start_item_number < 0:
@@ -173,7 +176,7 @@ class DBTable:
 					startv = sdict[sidx]
 					break
 			if sidx is None:
-				return []
+				return {}
 		if endv in [None,]:
 			eidx = min(sidx + count-1, len(sdict)-1)
 			endv = sdict[eidx]
@@ -185,7 +188,7 @@ class DBTable:
 					eidx = idx
 					break
 			if eidx is None:
-				return []
+				return {}
 			count = eidx - sidx + 1
 		res = {}
 		for idx in range(sidx, eidx+1):
