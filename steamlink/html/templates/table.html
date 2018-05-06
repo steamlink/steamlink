@@ -25,9 +25,10 @@
             <tbody >
             </tbody>
         </table>
-
-        <button id="{{ partial_item.name }}_prev">Previous</button>
-        <button id="{{ partial_item.name }}_next">Next</button>
+        <button id="{{ partial_item.name }}_first">&lt;&lt;</button>
+        <button id="{{ partial_item.name }}_prev">&lt;</button>
+        <button id="{{ partial_item.name }}_next">&gt;</button>
+        <button id="{{ partial_item.name }}_last">&gt;&gt;</button>
 
     </div>
 </div>
@@ -38,6 +39,8 @@
         var scrolledDiv = $('#{{ partial_item.name }} > table > tbody')[0];
         var nextButton = $('{{ partial_item.name }}_next');
         var prevButton = $('{{ partial_item.name }}_prev');
+        var firstButton = $('{{ partial_item.name }}_first');
+        var lastButton = $('{{ partial_item.name }}_last');
 
         var headers = {{ partial_item.headers|tojson|safe }};
 
@@ -69,9 +72,6 @@
                 htmlString += "</tr>";
                 scrolledDiv.innerHTML = htmlString;
             });
-            if ( Math.abs(scrolledDiv.scrollTop - scrolledDiv.scrollHeight) < 300) {
-                scrolledDiv.scrollTop = scrolledDiv.scrollHeight;
-            }
         }
         
         nextButton.onclick = function() {
@@ -94,6 +94,26 @@
                 newConfig.count = table_rows;
                 tableStream.updateStream(newConfig);
             }            
+        };
+
+        firstButton.onclick = function() {
+            var newConfig = tableStream.config;
+            newConfig.start_key = null;
+            newConfig.end_key = null;
+            newConfig.start_item_number = 0;
+            newConfig.count = table_rows;
+            tableStream.updateStream(newConfig);
+            
+        };
+
+        lastButton.onclick = function() {
+            var newConfig = tableStream.config;
+            newConfig.start_key = null;
+            newConfig.end_key = null;
+            newConfig.start_item_number = -1 * table_rows;
+            newConfig.count = table_rows;
+            tableStream.updateStream(newConfig);
+            
         };
 
         var tableStream = new Stream(socket, startStreamConfig, onNewMessage);

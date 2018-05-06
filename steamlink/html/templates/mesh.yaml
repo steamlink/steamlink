@@ -3,14 +3,14 @@ mesh:
   type: tile
   title: Mesh Summary
   # Query information
-  record_type: Mesh
-  start_key: 1
-  key_field: null
-  count: 0
+  table_name: Mesh
+  key_field: mesh_id
+  restrict_by: []
+  start_key: null
+  start_item_number: 0
+  count: 1
   end_key: null
-  return_children: false
   stream_tag: mesh_header
-  force: false
   # Layout
   row: 1
   grid_columns: 'six'
@@ -22,14 +22,17 @@ nodes_map:
   type: map
   title: Node Locations
   # Query information
-  record_type: Mesh
-  start_key: 1
-  key_field: null
-  count: 20
+  table_name: Node
+  key_field: slid
+  restrict_by:
+    - field_name: mesh_id
+      op: "=="
+      value: 1
+  start_key: null
+  start_item_number: 0
+  count: 1
   end_key: null
-  return_children: true
-  stream_tag: map_item_area
-  force: false
+  stream_tag: nodes_map
   # Fields
   center:
     - -79.3894
@@ -47,15 +50,19 @@ nodes:
   type: table
   title: Nodes in the Mesh
   # Query information
-  record_type: Mesh
-  start_key: 1
-  key_field: null
-  count: 20
+  table_name: Node
+  key_field: slid
+  restrict_by:
+    - field_name: mesh_id
+      op: "=="
+      value: 1
+  start_key: null
+  start_item_number: 0
+  count: 10
   end_key: null
-  return_children: true
-  stream_tag: table_item_area
-  force: false
+  stream_tag: nodes_area
   # Fields
+  table_rows: 10 # should be the same as count
   headers:
     - "Name"
     - "Description"

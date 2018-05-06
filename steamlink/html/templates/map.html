@@ -27,18 +27,17 @@
     $(function () {
 
         var streamConfig = {
-            record_type: {{ partial_item.record_type|tojson|safe }},
-            start_key: {{ partial_item.start_key|tojson|safe }},
+            table_name: {{ partial_item.table_name|tojson|safe }},
             key_field: {{ partial_item.key_field|tojson|safe }},
+            restrict_by: {{ partial_item.restrict_by|tojson|safe }},
+            start_key: {{ partial_item.start_key|tojson|safe }},
+            start_item_number: {{ partial_item.start_item_number|tojson|safe }},
             count: {{ partial_item.count|tojson|safe }},
             end_key: {{ partial_item.end_key|tojson|safe }},
-            return_children: {{ partial_item.return_children|tojson|safe }},
-            stream_tag: {{ partial_item.stream_tag|tojson|safe }},
-            force: {{ partial_item.force|tojson|safe}}
+            stream_tag: {{ partial_item.stream_tag|tojson|safe }}
         };
 
         var record_link = "{{ partial_item.record_link }}";
-
 
         var vectorSource = new ol.source.Vector({
             features: []
