@@ -277,7 +277,7 @@ class Steam(Item):
 			return
 		if cmd['cmd'] == 'boot':
 			if self._mqtt_test_succeeded:
-				logger.error("there is a second system")
+				logger.warning("there is a second system")
 				return
 			else:
 				logger.debug("mqtt test successfull")
@@ -1234,6 +1234,8 @@ def add_csearch(webnamespace, sid, message):
 			'count': csearchkey.count,
 			'start_item_number': csearchkey.start_item_number,
 			'total_item_count':  csearchkey.total_item_count,
+			'at_start':  csearchkey.at_start,
+			'at_end':  csearchkey.at_end,
 		}
 	return res
 
