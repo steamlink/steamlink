@@ -244,6 +244,15 @@ class WebApp(object):
 		logger.debug("console_update_loop done")
 
 
+	async def console_alert(self, lvl, msg):
+		alert = {'lvl': lvl, 'msg': msg }
+		await self.sio.emit('alert', alert, namespace = self.namespace)
+
+
+	def send_console_alert(self, lvl, msg):
+		asyncio.ensure_future(self.console_alert(lvl, msg), loop=self.loop)
+
+
 	async def favicon_handler(self, request):
 		return None
 

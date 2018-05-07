@@ -608,16 +608,19 @@ class Item(BaseItem):
 #
 # LogItem
 class LogItem(Item):
-	console_fields = {
-		"Time": "time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(self.ts))",	
-		"lvl": "self.lvl",
-		"ts": "self.ts",
-		"line": "self.line",
-	}
+#	console_fields = {
+#		"Time": "time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(self.ts))",	
+#		"lvl": "self.lvl",
+#		"ts": "self.ts",
+#		"line": "self.line",
+#	}
 
 	keyfield = "ts"
 	def __init__(self, lvl = None, line = None):
-		self.ts = time.time()
+		if lvl == None:
+			self.ts = None
+		else:
+			self.ts = time.time()
 		self.lvl = lvl
 		self.line = line
 		super().__init__(self.ts)
@@ -626,9 +629,14 @@ class LogItem(Item):
 		r = {}
 		r["ts"] = self.ts
 		r["lvl"] = self.lvl
-		r["line"] = self.line
 		if withvirtual:
 			r['Time'] = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(self.ts))
+			if len(self.line) > 70:
+				r["line"] = self.line[:70] + "..."
+			else:
+				r["line"] = self.line
+		else:
+			r["line"] = self.line
 		return r
 
 # LogQ
@@ -663,4 +671,6 @@ class LogQ(Item):
 
 			lvl, line = msg.split(None, 1)
 			logitem = LogItem(lvl, line)
+			if lvl in ['INFO', 'ERROR', 'CRITICAL', 'ALERT', 'EMERGENCY']:
+				_WEBAPP.send_console_alert(lvl, msg)				
 

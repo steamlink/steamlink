@@ -77,3 +77,11 @@ restrict_by: [
 start_key: null
 end_key: null
 count: 20
+
+
+Alerts: publish on event 'alert'
+{ 
+	'msg': 'message',
+	'lvl':  just like unix
+}
+
