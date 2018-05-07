@@ -52,9 +52,9 @@ function Stream(sock, config, on_new_message) {
   };
 
   // TODO: refactor
-  this.updateStream = function(newConfig) {
+  this.updateStream = function() {
     self.cache = [];
-    self.config = newConfig;
+    // self.config = newConfig;
     console.log("Updating stream with config:");
     console.log(self.config);
     sock.emit("startstream", {
@@ -118,35 +118,60 @@ function Stream(sock, config, on_new_message) {
     on_new_message(data);
   };
 
-
   window.socketStreams.streams.push(this);
-
-
   sock.on(self.config.stream_tag, self.newStreamData);
+}
+
+function sendCommand(sock, command) {
+  console.log(sendingCommand);
+  sock.emit("cmd", command);
 }
 
 // On Document Ready
 $(function() {
   // Setup socket.io
-
+  
   window.socketStreams = {
     'streams' : [],
     'reconnect' : false
   };
   
   socket = io.connect(socketNamespace);
-  
+
   var alertWrapper = $('#dashboard_socket_alerts');  
   var alertElement =  $('#dashboard_socket_alerts > .alert-msg')[0];
   var alertCloseElement = $('#dashboard_socket_alerts a')[0];
 
+  lvlColors = {
+    "EMERGENCY" : "lightred",
+    "ALERT" : "lightred",
+    "CRITICAL" : "orange",
+    "ERROR" : "orange",
+    "WARNING" : "yellow",
+    "NOTICE" : "green",
+    "INFO": "blue",
+    "DEBUG": "blue"    
+  }
+
+  var renderAlert= function (msg, lvl) {
+    // TODO: Map lvl to color
+    console.log("socket connection dead");
+    alertElement.innerHTML = lvl + ": " + msg;
+    alertCloseElement.innerHTML = "[ ✕ ]"; 
+    $(alertWrapper).css({"color": "black"})
+    $(alertWrapper).css({"background-color": lvlColors[lvl]})
+    $(alertWrapper).show();
+  }
+
+  alertCloseElement.onclick = function(){
+    $(alertWrapper).hide();
+  }
+
   socket.on("disconnect", () => {
       console.log("socket connection dead");
-      alertElement.innerHTML = "Websocket disconnected..."
-      alertCloseElement.innerHTML = "[ ✕ ]"; 
-      $(alertWrapper).css({"color": "white"})
-      $(alertWrapper).css({"background-color": "lightcoral"})
-      $(alertWrapper).show();
+      msg = "Websocket disconnected...";
+      lvl = "WARNING";
+      renderAlert(msg, lvl);
       window.socketStreams.connected = true;
   });
 
@@ -160,5 +185,8 @@ $(function() {
       }
   });
 
+  socket.on("alert", (data) => {
+    renderAlert(data.msg, data.lvl);
+  });
   
 });
