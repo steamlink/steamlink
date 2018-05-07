@@ -42,7 +42,10 @@ class CSearchKey:
 
 		self.table_name = table_name
 		self.key_field = key_field
-		self.start_key = start_key
+		if key_field == 'ts' and start_key is not None:					# to help javascript...
+			self.start_key = float(start_key)
+		else:
+			self.start_key = start_key
 		self.start_item_number = start_item_number
 		self.end_key = end_key
 		self.count = count
@@ -671,6 +674,6 @@ class LogQ(Item):
 
 			lvl, line = msg.split(None, 1)
 			logitem = LogItem(lvl, line)
-			if lvl in ['INFO', 'ERROR', 'CRITICAL', 'ALERT', 'EMERGENCY']:
-				_WEBAPP.send_console_alert(lvl, msg)				
+			if lvl in ['INFO', 'WARNING', 'ERROR', 'CRITICAL', 'ALERT', 'EMERGENCY']:
+				_WEBAPP.send_console_alert(lvl, line)				
 
