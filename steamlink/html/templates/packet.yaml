@@ -5,8 +5,9 @@ packet:
   # Query information
   table_name: Packet
   key_field: ts
+  restrict_by: []
   start_key: null
-  start_item_number: -1
+  start_item_number: 0
   count: 1
   end_key: null
   stream_tag: pkt_header
