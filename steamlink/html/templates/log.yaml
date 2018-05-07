@@ -1,0 +1,42 @@
+log:
+  name: log
+  type: tile
+  title: Steamlink Summary
+  # Query information
+  table_name: Steam
+  key_field: steam_id
+  restrict_by: []
+  start_key: null
+  start_item_number: 0
+  count: 1
+  end_key: null
+  stream_tag: log_header
+  # Layout
+  row: 1
+  grid_columns: 'twelve'
+  grid_rows: 3
+  template: 'tile.html'
+
+logitems:
+  name: logitems
+  type: table
+  title: Log
+  # Layout
+  row: 2
+  grid_columns: 'twelve'
+  # Query information
+  table_name: LogItem
+  key_field: ts
+  start_key: null
+  start_item_number: -10
+  restrict_by: []
+  count: 10
+  end_key: null
+  stream_tag: logitem_area
+  # Template fields
+  table_rows: 10 # should be the same as count
+  template: 'table.html'
+  headers:
+    - "Time"
+    - "lvl"
+    - "line"
