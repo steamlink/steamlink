@@ -14,7 +14,7 @@ node:
   # Layout
   row: 1
   grid_columns: 'twelve'
-  grid_rows: 4
+  grid_rows: 7
   template: 'tile.html'
 
 packets:
