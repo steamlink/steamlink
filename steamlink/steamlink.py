@@ -548,7 +548,7 @@ class Node(Item):
 
 
 	def load(self, data):	#N.B.
-		if logging.DBG > 1: logger.debug("load %s: %s", data)
+		if logging.DBG > 1: logger.debug("load %s: %s", self, data)
 		for k in data:
 			if k == 'nodecfg':
 				self.nodecfg = SL_NodeCfgStruct(**data[k])
@@ -1206,7 +1206,6 @@ class LogData:
 
 def add_csearch(webnamespace, sid, message):
 
-	
 	table_name = message['table_name']
 	try:
 		table = Table.tables[table_name]
