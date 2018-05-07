@@ -50,25 +50,23 @@ class CSearchKey:
 
 		self.at_start = False
 		self.at_end = False
-		self.search_id =  self.__repr__()	#used to index CSearches 
-
-		self.total_item_count = None
+		self.total_item_count = 0
 
 		self.restrict_by = restrict_by
+		self.search_id =  self.__repr__()	#used to index CSearches 
 
-		self.restrict_field = None
-		self.restrict_value = None
 
 	def __repr__(self):
-		return  "%s(%s:%s:%s)_%s" %\
-		 (self.table_name, self.key_field, self.start_key, self.end_key, self.stream_tag)
+		return  "%s(%s:%s:%s)_%s_%s_%s" %\
+			(self.table_name, self.key_field, self.start_key, self.end_key,  \
+			self.restrict_by, self.start_item_number, self.stream_tag)
 
 	def __str__(self):
 		at_start = "S" if self.at_start else "-"
 		at_end = "E" if self.at_end else "-"
 		return "CS: %s %s(%s->%s) -%s- tot %s  cnt %s %s%s" % \
-		 (self.table_name, self.key_field, self.start_key, self.end_key, 
-				self.restrict_by, self.total_item_count, self.count, at_start, at_end)
+			(self.table_name, self.key_field, self.start_key, self.end_key, 
+			self.restrict_by, self.total_item_count, self.count, at_start, at_end)
 #
 # CSearch 
 #
@@ -310,15 +308,31 @@ class Table:
 		self.itemclass = itemclass
 		self.keyfield = keyfield
 		self.csearches = {}
+		self.sid_stream_tags = {}
 		Table.tables[self.itemclass.__name__] = self
 
 
 	def add_csearch(self, webnamespace, csearchkey, sid):
 
+#		sid_stream_tag = "%s_%s" % (sid, csearchkey.stream_tag)
+#		if sid_stream_tag in self.sid_stream_tags:
+		del_client = None
+		for cs in self.csearches:
+			if sid in self.csearches[cs].clients \
+				and csearchkey.stream_tag == self.csearches[cs].csearchkey.stream_tag:
+				del_client = cs
+
+		if del_client is not None:
+			del self.csearches[del_client].clients[sid]
+			if len(self.csearches[del_client].clients) == 0:
+				del self.csearches[del_client]
+
 		srch_id = csearchkey.search_id
-		if logging.DBG > 2: logger.debug("table add_csearch search_id '%s': %s", srch_id, str(csearchkey))
+		if logging.DBG >= 0: logger.debug("table add_csearch search_id '%s': %s", srch_id, str(csearchkey))
 		if not srch_id in self.csearches:
 			self.csearches[srch_id] = CSearch(webnamespace, self, csearchkey)
+		else:
+			if logging.DBG >= 0: logger.debug("table add_csearch search_id '%s' from cache", srch_id)
 		csearchkey = self.csearches[srch_id].add_sid(sid)
 		return csearchkey
 
@@ -391,7 +405,6 @@ class DbTable(Table):
 			return []
 		ret = []
 		keys = []
-		to_load = csk.count
 		if logging.DBG > 1: logger.debug("get_range drange len %s %s", len(drange), drange)
 		for rkey in drange:
 			r = drange[rkey]
@@ -403,13 +416,6 @@ class DbTable(Table):
 				rn.load(r)
 				self.cache[r[self.keyfield]] = rn
 			ret.append(rn)
-			to_load -= 1
-			if to_load == 0:
-				break
-		csk.at_start = keys[0] == list(drange.keys())[0]
-		csk.at_end = keys[-1] == list(drange.keys())[-1]
-		csk.start_key = keys[0]
-		csk.count = min(len(keys), csk.count)
 
 		logger.debug("get_range found %s recs %s", len(ret), str(csk))
 		return ret
@@ -566,7 +572,7 @@ class Item(BaseItem):
 		self._key = self.__dict__[self._table.keyfield]
 
 
-	def save(self):
+	def save(self, withvirtual=False):
 		""" return dict of all non-private class variables """
 		r = {}
 		for k in self.__dict__:
@@ -597,17 +603,33 @@ class Item(BaseItem):
 		return res[0]
 
 	def gen_console_data(self):
-		return self.save()
+		return self.save(withvirtual=True)
 
 #
 # LogItem
 class LogItem(Item):
-	def __init__(self, lvl, line):
+	console_fields = {
+		"Time": "time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(self.ts))",	
+		"lvl": "self.lvl",
+		"ts": "self.ts",
+		"line": "self.line",
+	}
+
+	keyfield = "ts"
+	def __init__(self, lvl = None, line = None):
 		self.ts = time.time()
 		self.lvl = lvl
 		self.line = line
 		super().__init__(self.ts)
 
+	def save(self, withvirtual=False):
+		r = {}
+		r["ts"] = self.ts
+		r["lvl"] = self.lvl
+		r["line"] = self.line
+		if withvirtual:
+			r['Time'] = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(self.ts))
+		return r
 
 # LogQ
 #
@@ -640,9 +662,5 @@ class LogQ(Item):
 				continue
 
 			lvl, line = msg.split(None, 1)
-			litem = LogItem(lvl, line)
-
-#			print("got one", msg)
-#			emit to web consoles!!
-
+			logitem = LogItem(lvl, line)
 

@@ -207,6 +207,9 @@ class DBTable:
 		csk.end_key = sdict[eidx]
 		csk.start_item_number = sidx
 		csk.total_item_count = len(sdict)
+		csk.at_start = csk.start_key == sdict[0]
+		csk.at_end = csk.end_key == sdict[-1]
+
 		if logging.DBG > 1: logger.debug("get_range res=%s", res)
 		return res
 
