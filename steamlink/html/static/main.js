@@ -145,12 +145,12 @@ $(function() {
   lvlColors = {
     "EMERGENCY" : "lightred",
     "ALERT" : "lightred",
-    "CRITICAL" : "orange",
-    "ERROR" : "orange",
-    "WARNING" : "yellow",
-    "NOTICE" : "green",
-    "INFO": "blue",
-    "DEBUG": "blue"    
+    "CRITICAL" : "lightsalmon",
+    "ERROR" : "lightsalmon",
+    "WARNING" : "lightyellow",
+    "NOTICE" : "lightgreen",
+    "INFO": "lightblue",
+    "DEBUG": "lightblue"    
   }
 
   var renderAlert= function (msg, lvl) {
