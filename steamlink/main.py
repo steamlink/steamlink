@@ -402,6 +402,6 @@ def steamlink_command():
 		os.execv(sys.argv[0], [sys.argv[0]])
 	return rc
 
-if __name__ == "__main__":
+if __name__ == "main":
 	rc = steamlink_command()
 	sys.exit(rc)

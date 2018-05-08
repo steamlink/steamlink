@@ -43,7 +43,7 @@ setup(
 	keywords=['iot', 'LoRa'],
 	entry_points={
 		'console_scripts': [
-			'steamlink = steamlink.__main__:steamlink_command'
+			'steamlink = steamlink.main:steamlink_command'
 		]
 	},
 	classifiers=PROJECT_CLASSIFIERS,

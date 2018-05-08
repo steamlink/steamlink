@@ -296,7 +296,7 @@ class Steam(Item):
 			if dbglvl is not None:
 				logging.DBG = int(dbglvl)
 		elif cmd['cmd'] == 'shutdown':
-			from .__main__ import GracefulExit, GracefulRestart
+			from .main import GracefulExit, GracefulRestart
 			if cmd.get('restart',False):
 				raise GracefulRestart
 			else:
