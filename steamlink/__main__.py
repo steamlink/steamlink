@@ -207,6 +207,23 @@ def steamlink_main(cl_args, conf):
 
 	namespace = conf_steam['namespace']
 
+
+	# confugure subsystems
+	coros = []
+
+	LogQ._table = DictTable(LogQ, keyfield="name", index = {})
+	logq = LogQ(conf, aioloop)
+	coros.append(logq.start())
+
+	msghandler = logging.StreamHandler(logq)
+	QFORMAT = '%(levelname)s %(module)s %(message)s'
+	qfmt = logging.Formatter(QFORMAT)
+	msghandler.setFormatter(qfmt)
+	msghandler.setLevel(logging.INFO)
+	logger.addHandler(msghandler)
+
+	logger.info("%s version %s" % (PROJECT_PACKAGE_NAME, __version__))
+
 	if conf_broker is not None:
 		logger.debug("startup: create MQTT Broker")
 		mqtt_broker = Mqtt_Broker(conf_broker, loop=aioloop)
@@ -250,20 +267,6 @@ def steamlink_main(cl_args, conf):
 	logger.debug("startup: start db")
 	aioloop.run_until_complete(db.start())
 
-	coros = []
-
-	LogQ._table = DictTable(LogQ, keyfield="name", index = {})
-	logq = LogQ(conf, aioloop)
-
-	coros.append(logq.start())
-
-	msghandler = logging.StreamHandler(logq)
-	QFORMAT = '%(levelname)s %(module)s %(message)s'
-	qfmt = logging.Formatter(QFORMAT)
-	msghandler.setFormatter(qfmt)
-	msghandler.setLevel(logging.INFO)
-	logger.addHandler(msghandler)
-
 	logger.debug("startup: start webapp")
 	aioloop.run_until_complete(webapp.start())
 	
@@ -305,7 +308,7 @@ def steamlink_main(cl_args, conf):
 		logger.notice("coros run_until: hbmqtt.errors.NoDataException: %s", e)
 
 	# Shutdown
-#	webapp.stop()	# N.B. take 20 seconds to shutdown
+#	webapp.stop()	# N.B. take 20 seconds to shutdown gracefully
 	aioloop.run_until_complete(db.stop())
 	if TestTask:
 		logger.debug("stopping TestTask")
@@ -362,8 +365,6 @@ def steamlink_command():
 		import warnings
 		warnings.simplefilter("always")
 		logging.captureWarnings(True)
-
-	logger.info("%s version %s" % (PROJECT_PACKAGE_NAME, __version__))
 
 	if cl_args.config is None:
 		conff = home + "/" + DEFAULT_CONFIG_FILE

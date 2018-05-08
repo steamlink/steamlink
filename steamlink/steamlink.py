@@ -362,6 +362,7 @@ class Steam(Item):
 		now = time.time()
 		delta = 0
 		wait = 1
+		logger.info("%s starting heartbeat", self.name)
 		while True:
 			await asyncio.sleep(wait)
 			self.heartbeat()

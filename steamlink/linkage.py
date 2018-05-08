@@ -778,8 +778,8 @@ class LogQ(Item):
 			self.conf = conf
 			self.q = Queue(loop=loop)
 			self.loop = loop
-			LogItem._table = DbTable(LogItem, keyfield="ts", tablename="LogItem")
 		super().__init__(self.name)
+		logger.info("%s logq init", self)
 
 	def save(self, withvirtual=False):
 		r = {}
@@ -805,6 +805,7 @@ class LogQ(Item):
 		pass
 
 	async def start(self):
+		LogItem._table = DbTable(LogItem, keyfield="ts", tablename="LogItem")
 		logger.info("%s logq start", self)
 		while True:
 			msg = await self.q.get()
@@ -817,4 +818,5 @@ class LogQ(Item):
 			logitem = LogItem(lvl, line)
 			if lvl in ['INFO', 'WARNING', 'ERROR', 'CRITICAL', 'ALERT', 'EMERGENCY']:
 				_WEBAPP.send_console_alert(lvl, line)				
+		logger.info("%s logq stop", self)
 

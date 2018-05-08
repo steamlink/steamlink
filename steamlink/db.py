@@ -231,7 +231,7 @@ class DB:
 	async def start(self):
 #		TinyDB.table_class = SmartCacheTable
 
-		logger.info("opening DB %s", self.conf['db_filename'])
+		logger.info("%s opening DB %s", self.name, self.conf['db_filename'])
 		self.db = TinyDB(self.conf['db_filename'], \
 				sort_keys=True, indent=4, separators=(',', ': '), \
 #				storage=CachingMiddleware(YAMLStorage))
@@ -250,11 +250,11 @@ class DB:
 
 
 	async def stop(self):
-		if logging.DBG > 2: logger.debug("closing db")
 		self.close()
 
 
 	def close(self):
+		logger.info("%s closing DB", self.name)
 		for tab in self.db_tables:
 			try:
 				self.db_tables[tab].close()
