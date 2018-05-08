@@ -274,7 +274,7 @@ class WebApp(object):
 			return web.Response(text='OK')
 		elif request.method == 'POST':
 			# Store the IP address of the requester
-			request_ip = ipaddress.ip_address(u'{0}'.format(request.remote_addr))
+			request_ip = request.remote
 
 			# If VALIDATE_SOURCEIP is set to false, do not validate source IP
 			if self.conf.get('repo_validate_sourceip', False):
@@ -294,7 +294,8 @@ class WebApp(object):
 					if str(request_ip) != '127.0.0.1':
 						return web.Response(text='invalid IP', status=403)
 
-			payload = json.loads(request.data)
+			request_data = await request.text()
+			payload = json.loads(request_data)
 
 			if request.headers.get('X-GitHub-Event') == "ping":
 				logger.warning("ghwh ping data %s", payload)
@@ -302,26 +303,25 @@ class WebApp(object):
 			if request.headers.get('X-GitHub-Event') != "push":
 				return web.json_response({'msg': "wrong event type"})
 
-			repo_meta = {
-				'name': payload['repository']['name'],
-				'owner': payload['repository']['owner']['name'],
-			}
-			if conf['repo_name'] == repo_meta['name'] and \
-					 conf['repo_owner'] == repo_meta['owner']:
-
-				logger.warning("ghwh push %s", payload)
+			full_name = "%s/%s" % (conf['repo_owner'], conf['repo_name'])
+			if full_name != payload['repository']['full_name']:
+				logger.warning("ghwh push repo not ours %s", payload['repository']['full_name'])
+			else:
+				logger.warning("ghwh push for repo %s", full_name)
 
 				# Check if POST request signature is valid
 				key = conf.get('repo_key', None)
 				if key:
-					signature = request.headers.get('X-Hub-Signature').split(
-						'=')[1]
+					signature = request.headers.get('X-Hub-Signature').split('=')[1]
 					if type(key) == unicode:
 						key = key.encode()
 					mac = hmac.new(key, msg=request.data, digestmod=sha1)
 					if not hmac.compare_digest(mac.hexdigest(), signature):
 						return web.Response(text='auth fail', status=403)
+
 					logger.warning("ghwh push request valid")
+				else:
+					logger.warning("ghwh no key")
 
 			return web.Response(text='OK')
 
