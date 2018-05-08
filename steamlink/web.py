@@ -336,8 +336,10 @@ class WebApp(object):
 			file_name = request.match_info['file_name']
 			# file_name = str(request.rel_url.path).rstrip('/')
 		logger.debug("web route_handler: filename: %s, request.rel_url %s", file_name, request.rel_url)
-		dc = DisplayConfiguration(self.templates_dir + '/' + file_name + '.yaml')
-
+		try:
+			dc = DisplayConfiguration(self.templates_dir + '/' + file_name + '.yaml')
+		except FileNotFoundError as e:
+			return web.Response(text="No such file: %s" % file_name, status=404)
 		for qk in request.query:
 			if 'web' in logging.DBGK: logger.debug("web route_handler: Query' : %s =%s", qk, request.query[qk])
 			try:
