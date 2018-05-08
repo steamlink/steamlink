@@ -121,6 +121,9 @@ DEFAULT_CONF = OrderedDict({
 		'index': "",           # root page
         'ssl_certificate': None,
         'ssl_key': None,
+		'repo_name': 'steamlink',
+		'repo_owner': 'steamlink',
+		'repo_key': 'SteamLinkIsIoT',
 	}),
 	'mqtt_broker':  OrderedDict({
 		'listeners': OrderedDict({

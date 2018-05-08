@@ -1,5 +1,9 @@
 import asyncio
 import socketio
+import io
+import re
+import ipaddress
+import hmac
 import os
 import json
 import aiohttp_jinja2
@@ -96,16 +100,16 @@ class WebNamespace(socketio.AsyncNamespace):
 		try:
 			res = add_csearch(self, sid, message)
 		except KeyError as e:
-			msg = '%s field missing in request' % e 
+			msg = '%s field missing in request' % e
 			logger.warning(msg)
 			raise
 			return {'error': msg }
 		except TypeError as e:
-			msg = '%s, probably incorrect value for start_key' % e 
+			msg = '%s, probably incorrect value for start_key' % e
 			logger.warning(msg)
 			raise
 			return {'error': msg }
-	
+
 		logger.debug("WebNamespace on_startstream <-- %s", res)
 		return res
 
@@ -142,14 +146,16 @@ class WebApp(object):
 		self.templates_dir = self.libdir+'/html/templates'
 		self.app.router.add_route('GET', '/', self.route_handler)
 		self.app.router.add_route('GET', '/favicon.ico', self.favicon_handler)
+		self.app.router.add_route('GET', '/ghwh', self.ghwh_handler)
+		self.app.router.add_route('POST', '/ghwh', self.ghwh_handler)
 		self.app.router.add_route('GET', '/{file_name}', self.route_handler)
 
-		
+
 		self.app.router.add_static('/static', self.static_dir)
 		self.app.on_cleanup.append(self.web_on_cleanup)
 		self.app.on_shutdown.append(self.web_on_shutdown)
 		self.backlog = 128
-		
+
 		aiohttp_jinja2.setup(self.app, loader=jinja2.FileSystemLoader(self.templates_dir))
 
 		self.shutdown_timeout = self.conf['shutdown_timeout']
@@ -260,6 +266,67 @@ class WebApp(object):
 	async def favicon_handler(self, request):
 		return None
 
+
+	async def ghwh_handler(self, request):
+		""" GitHub WebHook handler """
+
+		if request.method == 'GET':
+			return web.Response(text='OK')
+		elif request.method == 'POST':
+			# Store the IP address of the requester
+			request_ip = ipaddress.ip_address(u'{0}'.format(request.remote_addr))
+
+			# If VALIDATE_SOURCEIP is set to false, do not validate source IP
+			if self.conf.get('repo_validate_sourceip', False):
+
+				# If GHE_ADDRESS is specified, use it as the hook_blocks.
+				if self.conf.get('repo_ghe_address', None):
+					hook_blocks = [unicode(self.conf.get('GHE_ADDRESS'))]
+				# Otherwise get the hook address blocks from the API.
+				else:
+					hook_blocks = requests.get('https://api.github.com/meta').json()['hooks']
+
+				# Check if the POST request is from github.com or GHE
+				for block in hook_blocks:
+					if ipaddress.ip_address(request_ip) in ipaddress.ip_network(block):
+						break  # the remote_addr is within the network range of github.
+				else:
+					if str(request_ip) != '127.0.0.1':
+						return web.Response(text='invalid IP', status=403)
+
+			payload = json.loads(request.data)
+
+			if request.headers.get('X-GitHub-Event') == "ping":
+				logger.warning("ghwh ping data %s", payload)
+				return web.json_response({'msg': 'Hi!'})
+			if request.headers.get('X-GitHub-Event') != "push":
+				return web.json_response({'msg': "wrong event type"})
+
+			repo_meta = {
+				'name': payload['repository']['name'],
+				'owner': payload['repository']['owner']['name'],
+			}
+			if conf['repo_name'] == repo_meta['name'] and \
+					 conf['repo_owner'] == repo_meta['owner']:
+
+				logger.warning("ghwh push %s", payload)
+
+				# Check if POST request signature is valid
+				key = conf.get('repo_key', None)
+				if key:
+					signature = request.headers.get('X-Hub-Signature').split(
+						'=')[1]
+					if type(key) == unicode:
+						key = key.encode()
+					mac = hmac.new(key, msg=request.data, digestmod=sha1)
+					if not hmac.compare_digest(mac.hexdigest(), signature):
+						return web.Response(text='auth fail', status=403)
+					logger.warning("ghwh push request valid")
+
+			return web.Response(text='OK')
+
+
+
 	async def route_handler(self, request):
 		nav = NavBar(self.templates_dir)
 
@@ -287,7 +354,7 @@ class WebApp(object):
 				i = int(i)
 			except:
 				pass
-			
+
 			if (key == "restrict_by"):
 				dc.data[partial][key][0]['value'] = i
 			else:
@@ -295,7 +362,7 @@ class WebApp(object):
 
 		if 'web' in logging.DBGK: logger.debug("webapp handler %s", dc.data)
 		context = { 'context' : dc.row_wise(), 'navbar' : nav.yamls }
-		
+
 		if not (os.path.isfile(self.templates_dir + '/'+ file_name + '.html')):
 			file_name = 'index'
 		response = aiohttp_jinja2.render_template(file_name + '.html', request, context)
