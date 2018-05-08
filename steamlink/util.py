@@ -92,6 +92,9 @@ def getargs():
 	parser.add_argument("-X", "--debug",
 							help="increase debug level, bumps loglevel to 'debug'",
 							default=0, action="count")
+	parser.add_argument("-x", "--debugkey",
+							help="set of debug keywords, bumps loglevel to ''debug'. Available keywords are: csearch ocache web webupd",
+							default=[], action="append")
 	return parser.parse_args()
 
 
