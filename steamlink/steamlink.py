@@ -63,35 +63,6 @@ SL_RESPONSE_WAIT_SEC = 10
 MAX_NODE_LOG_LEN = 1000		# maximum packets stored in per node log
 
 
-RoomSyntax = """
-<ritype>_<key>_<detail>
-
-ritype = Steam, Mesh, Node, Packet
-key = ID or *
-detail = None or *
-
-
-Steam_*					-> all (1) root records
-Steam_0					-> root record 0
-Steam_0_*				-> all meshes
-
-Mesh_*					-> all meshes
-Mesh_Mesh000001			-> mesh 1
-Mesh_Mesh000001_*		-> all nodes in mesh 1
-
-Node_*					-> all nodes
-Node_Node00000001		-> node 1
-Node_Node00000001_*		-> all pkt logs for node 1
-
-#PacketType_*				-> all pkt types
-#PacketType_ON				-> ??
-#PacketType_ON_*			-> all ON packets
-
-Packet_*
-Packet_1
-Packet_1_*					XXX nothing below pkt
-
-"""
 
 NODEVER = 1
 MAXSILENCE = 45
@@ -363,10 +334,16 @@ class Steam(Item):
 		delta = 0
 		wait = 1
 		logger.info("%s starting heartbeat", self.name)
+		FLUSHWAIT = 10
+		flushwait = FLUSHWAIT
 		while True:
 			await asyncio.sleep(wait)
 			self.heartbeat()
-#			_DB.flush()		# N.B. expensive
+			flushwait -= 1
+			if flushwait == 0:
+				_DB.flush()		# N.B. expensive
+				flushwait = FLUSHWAIT
+
 			n_process_time = time.process_time()
 			n_now = time.time()
 
