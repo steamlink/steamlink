@@ -220,6 +220,9 @@ class Steam(Item):
  	 "Meshes": "1",
 	 "Time": "time.asctime()",
 	 "Load": '"%3.1f%%" % self.cpubusy',
+	 "Mesh records": "len(Mesh._table)",
+	 "Node records": "len(Node._table)",
+	 "Packet records": "len(Packet._table)",
 	}
 
 	def __init__(self, conf = None):
@@ -362,7 +365,7 @@ class Steam(Item):
 		while True:
 			await asyncio.sleep(wait)
 			self.heartbeat()
-			_DB.flush()
+#			_DB.flush()		# N.B. expensive
 			n_process_time = time.process_time()
 			n_now = time.time()
 
@@ -372,28 +375,12 @@ class Steam(Item):
 			now = n_now
 			process_time = n_process_time
 #			if logging.DBG == 0:	# N.B. reduce noise when debuging, i.e. no heartbeat
-#				self.schedule_update()
+			self.update(True)
 
 
 	def heartbeat(self):
-		n_now = time.time()
 		for node in Node._table.find(1, 'mesh_id'):
-#		for node in registry.get_all('Node'):
-			if node.wait_for_AS['wait'] != 0:
-				rwait = int(node.wait_for_AS['wait'] - n_now)
-				logger.debug("heartbeat: %s wait %s sec for AS ", node.name, rwait)
-				if rwait <= 0:
-					pkt = node.wait_for_AS['pkt']
-					node.publish_pkt(pkt, resend=True)
-					node.set_wait_for_AS(pkt)
-					node.wait_for_AS['count'] += 1
-			elif node.is_overdue() and node.is_state_up():
-				node.set_state("OVERDUE")
-				node.update()
-			if not node.is_state_up():		#XXX not offline or sleeping
-				if node.last_packet_tx_ts != 0 and node.last_packet_tx_ts + MAXSILENCE < n_now:
-					node.send_get_status()
-
+			node.check_for_AS()
 
 	def save(self, withvirtual=False):
 		r = {}
@@ -525,7 +512,7 @@ class Node(Item):
 		self.via = []		# not initiatized
 		self.tr = {}		# dict of sending nodes, each holds a list of (pktno, rssi)
 		self.wait_for_AS = { 'wait': 0, 'pkt': None, 'count': 0}	# deadline for AS ack
-		self.packet_log = TimeLog(MAX_NODE_LOG_LEN)
+#		self.packet_log = TimeLog(MAX_NODE_LOG_LEN)
 
 		super().__init__(slid)
 		if slid is not None:
@@ -548,13 +535,9 @@ class Node(Item):
 
 
 	def load(self, data):	#N.B.
-		if logging.DBG > 1: logger.debug("load %s: %s", self, data)
-		for k in data:
-			if k == 'nodecfg':
-				self.nodecfg = SL_NodeCfgStruct(**data[k])
-			else:
-				self.__dict__[k] = data[k]
-		self._key = self.__dict__[self._table.keyfield]
+		if 'nodecfg' in data:
+			data['nodecfg'] = SL_NodeCfgStruct(**data['nodecfg'])
+		super().load(data)
 		self.set_mesh()
 
 
@@ -604,6 +587,7 @@ class Node(Item):
 
 #		if new_state == "TRANSMITTING":		#XXX check if node is sleeping or offline
 #			self.send_get_status()
+		self.update()
 
 
 	def is_state_up(self):
@@ -626,14 +610,14 @@ class Node(Item):
 		if len(sl_pkt.pkt) > SL_MAX_MESSAGE_LEN:
 			logger.error("publish pkt to long(%s): %s", len(sl_pkt.pkt), sl_pkt)
 			return
-		self.log_pkt(sl_pkt)
+#		self.log_pkt(sl_pkt)
 		self.packets_sent += 1
 		self.mesh.packets_sent += 1
 		if logging.DBG > 1: logger.debug("publish_pkt %s to node %s", sl_pkt, self.get_firsthop())
 		_MQTT.publish(self.get_firsthop(), sl_pkt.pkt, sub=sub)
 		self.last_packet_tx_ts = time.time()
 		self.update()
-		self.mesh.update()
+		self.mesh.update(True)
 
 
 	def send_ack_to_node(self, code):
@@ -691,8 +675,8 @@ class Node(Item):
 		return rc
 
 
-	def log_pkt(self, sl_pkt):
-		self.packet_log.add(sl_pkt)
+#	def log_pkt(self, sl_pkt):
+#		self.packet_log.add(sl_pkt)
 
 
 	def check_pkt_num(self, sl_pkt):
@@ -733,7 +717,7 @@ class Node(Item):
 
 	def post_data(self, sl_pkt):
 		""" handle incoming messages on the ../data topic """
-		self.log_pkt(sl_pkt)
+#		self.log_pkt(sl_pkt)
 		if sl_pkt.is_data():
 			if not self.check_pkt_num(sl_pkt):	# duplicate packet
 				if sl_pkt.sl_op in [SL_OP.DS]:
@@ -824,7 +808,7 @@ class Node(Item):
 			self.set_state('TRANSMITTING')
 
 		self.update()
-		self.mesh.update()
+		self.mesh.update(True)
 
 
 	def set_wait_for_AS(self, pkt):
@@ -838,6 +822,24 @@ class Node(Item):
 			self.wait_for_AS['wait'] = time.time() + SL_ACK_WAIT
 			logger.debug("wait_for_AS on %s for %s sec", self, SL_ACK_WAIT)
 		self.wait_for_AS['pkt'] = pkt
+
+
+	def check_for_AS(self):
+		n_now = time.time()
+		if self.wait_for_AS['wait'] != 0:
+			rwait = int(self.wait_for_AS['wait'] - n_now)
+			logger.debug("check_for_AS: %s wait %s sec for AS ", self.name, rwait)
+			if rwait <= 0:
+				pkt = self.wait_for_AS['pkt']
+				self.publish_pkt(pkt, resend=True)
+				self.set_wait_for_AS(pkt)
+				self.wait_for_AS['count'] += 1
+		elif self.is_overdue() and self.is_state_up():
+			self.set_state("OVERDUE")
+#			self.update()
+		if not self.is_state_up():		#XXX not offline or sleeping
+			if self.last_packet_tx_ts != 0 and self.last_packet_tx_ts + MAXSILENCE < n_now:
+				self.send_get_status()
 
 
 	def get_response(self, timeout):
@@ -921,7 +923,6 @@ class Packet(Item):
 			BOff = ""
 
 		self.node = node
-#		self.set_parent(self.slid)
 		if self.is_outgoing:
 			direction = "send"
 			via = "direct" if self.node.via == [] else "via %s" % self.node.via
@@ -1036,7 +1037,7 @@ class Packet(Item):
 
 	def save(self, withvirtual=False):
 		r = {}
-		r['sl_op'] = SL_OP.code(self.sl_op) # self.sl_op ?
+		r['sl_op'] = SL_OP.code(self.sl_op)
 		r['pkt_num'] = self.pkt_num
 		r['slid'] = self.slid
 		r[Packet.keyfield] = self.ts
@@ -1048,8 +1049,8 @@ class Packet(Item):
 			r['payload'] = self.payload
 #		r['bpayload'] = repr(self.bpayload)	#??
 		if withvirtual:
-			r["ts"] = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(self.ts))
-#			r["op"] = SL_OP.code(self.sl_op)
+			r["Time"] = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(self.ts))
+			r["op"] = SL_OP.code(self.sl_op)
 		return r
 
 
@@ -1247,7 +1248,7 @@ def drop_csearch(webnamespace, sid, message):
 		table_list = list(Table.tables.values())
 	else:
 		try:
-			table_name, table = find_table(table_name)
+			table = Table.tables[table_name]
 		except KeyError as e:
 			return { 'error': 'Table %s not found' % str(e) }
 		table_list = [table]
