@@ -1,15 +1,15 @@
 log:
   name: log
   type: tile
-  title: Steamlink Summary
+  title: Steamlink Status
   # Query information
-  table_name: Steam
-  key_field: steam_id
+  table_name: LogQ
+  key_field: name
   restrict_by: []
-  start_key: null
+  start_key: logq
   start_item_number: 0
   count: 1
-  end_key: null
+  end_key: logq
   stream_tag: log_header
   # Layout
   row: 1
