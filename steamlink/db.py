@@ -15,6 +15,8 @@ from tinydb_smartcache import SmartCacheTable
 import logging
 logger = logging.getLogger()
 
+from .linkage import check_restrictions
+
 import yaml
 def represent_doc(dumper, data):
 	# Represent `Document` objects as their dict's string representation
@@ -99,7 +101,7 @@ class DBTable:
 			if logging.DBG >= 2: logger.debug("upsert insert %s rec %s, %s: %s", self.name, did, type(rec), rec)
 
 
-	def update(self, rec, keyfield, key):
+	def db_update(self, rec, keyfield, key):
 		if logging.DBG >= 2: logger.debug("REC update %s rec %s", self.name, rec)
 		did = self.table.update(rec, where(keyfield) == key)
 
@@ -122,22 +124,13 @@ class DBTable:
 		return res
 
 
-	def check_restrictions(self, restrict_by, item):
-		for restrict in restrict_by:
-			field =  restrict['field_name']
-			op =  restrict['op']
-			value =  restrict['value']
-			ex = "item['%s'] %s %s" % (field, op, repr(value))
-			return eval(ex)
-
-
 	def get_range(self, csk):
 		""" get a range of records, obeying restrictions
 		- if start_key is null, use start_item_number.
 		- if start_item_number is negative start from the end
 		if logging.DBG > 1: logger.debug("get_range: %s", str(csk))
 		"""
-		logger.debug("get_range csk %s", str(csk))
+		if logging.DBG > 1: logger.debug("get_range csk %s", str(csk))
 		field = csk.key_field
 		startv = csk.start_key
 		endv = csk.end_key
@@ -147,7 +140,7 @@ class DBTable:
 
 		tab = self.table.all()
 		if len(tab) == 0:
-			logger.debug("get_range table empty")
+			if logging.DBG > 1: logger.debug("get_range table empty")
 			csk.count = 0
 			return {}
 
@@ -155,18 +148,18 @@ class DBTable:
 		for t in tab:
 			udict[t[field]] = t
 		fullsdict = sorted(udict)
-		logger.debug("get_range table %s items", len(fullsdict))
+		if logging.DBG > 1: logger.debug("get_range table %s items", len(fullsdict))
 	
 		if len(csk.restrict_by) == 0:
 			sdict = fullsdict
 		else:
 			sdict = []
 			for r in fullsdict:
-				if self.check_restrictions(csk.restrict_by, udict[r]):
+				if check_restrictions(csk.restrict_by, udict[r]):
 					sdict.append(r)
 
 		if len(sdict) == 0:
-			logger.debug("get_range table empty after destrict")
+			if logging.DBG > 1: logger.debug("get_range table empty after destrict")
 			return {}
 
 		if startv in [None]:
@@ -183,7 +176,7 @@ class DBTable:
 					startv = sdict[sidx]
 					break
 			if sidx is None:
-				logger.debug("get_range no start key found")
+				if logging.DBG > 1: logger.debug("get_range no start key found")
 				return {}
 		if endv in [None]:
 			eidx = min(sidx + count-1, len(sdict)-1)
@@ -196,7 +189,7 @@ class DBTable:
 					eidx = idx
 					break
 			if eidx is None:
-				logger.debug("get_range no end key found")
+				if logging.DBG > 1: logger.debug("get_range no end key found")
 				return {}
 			count = eidx - sidx + 1
 		res = {}
@@ -212,33 +205,6 @@ class DBTable:
 
 		if logging.DBG > 1: logger.debug("get_range res=%s", res)
 		return res
-
-
-	def Oldget_range(self, field, startv, endv, count=5):
-		logger.debug("get_range: field '%s' startv '%s' endv '%s' count '%s'", \
-				field, startv, endv, count)
-		if startv in [None, '']:
-			r0 = self.table.all()
-			if len(r0) > 0:
-				startv = r0[0][field]
-			else:
-				return []
-			print("ZZZZZ startv ", startv)
-		if endv is None:
-			r0 = self.table.search(where(field) >= startv)
-			if len(r0) == 0:
-				return []
-			ulist = []
-			for x in r0:
-				ulist.append(x[field])
-			slist = sorted(ulist)
-			count = min(len(r0), count)
-			endv = slist[count-1]
-			print("ZZZZZ endv ", endv)
-		if startv > endv:
-			return []
-
-		return  self.table.search((where(field) >= startv) & (where(field) <= endv))
 
 
 	def __len__(self):
