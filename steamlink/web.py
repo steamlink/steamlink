@@ -303,14 +303,14 @@ class WebApp(object):
 			if request.headers.get('X-GitHub-Event') != "push":
 				return web.json_response({'msg': "wrong event type"})
 
-			full_name = "%s/%s" % (conf['repo_owner'], conf['repo_name'])
+			full_name = "%s/%s" % (self.conf['repo_owner'], self.conf['repo_name'])
 			if full_name != payload['repository']['full_name']:
 				logger.warning("ghwh push repo not ours %s", payload['repository']['full_name'])
 			else:
 				logger.warning("ghwh push for repo %s", full_name)
 
 				# Check if POST request signature is valid
-				key = conf.get('repo_key', None)
+				key = self.conf.get('repo_key', None)
 				if key:
 					signature = request.headers.get('X-Hub-Signature').split('=')[1]
 					if type(key) == unicode:
