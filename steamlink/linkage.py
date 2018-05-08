@@ -34,11 +34,25 @@ def Attach(webapp, db):
 	logger.debug("linkage: Attached apps '%s, %s'", webapp_name, db_name)
 
 
+
+def check_restrictions( restrict_by, item):
+	if len(restrict_by) == 0:
+		return True
+	res = True
+	for restrict in restrict_by:
+		field =  restrict['field_name'] 
+		op =  restrict['op'] 
+		value =  restrict['value'] 
+		ex = "item['%s'] %s %s" % (field, op, repr(value))
+		res = res and eval(ex)
+	return res
+
+
 import yaml
 from yaml import Loader, Dumper
 
 class CSearchKey:
-	def __init__(self, table_name, key_field, restrict_by, start_key, start_item_number, end_key, count, stream_tag):
+	def __init__(self, table_name, key_field, start_key, start_item_number, count, stream_tag, end_key = None, restrict_by = []):
 
 		self.table_name = table_name
 		self.key_field = key_field
@@ -87,7 +101,7 @@ class CSearch:
 			csearchkey.key_field = self.table.keyfield
 		for item in self.table.get_range(self.csearchkey):
 			self.add_item(item)
-		if logging.DBG > 2: logger.debug("CSearch csearch key: %s", str(csearchkey))
+		if 'csearch' in logging.DBGK: logger.debug("CSearch csearch key: %s", str(csearchkey))
 
 
 	def __str__(self):
@@ -95,18 +109,18 @@ class CSearch:
 
 
 	def add_item(self, item):
-		if logging.DBG > 2: logging.debug("CSearch '%s' add_item %s in key %s", self.search_id, item, self.csearchkey.key_field)
+		if 'csearch' in logging.DBGK: logging.debug("CSearch '%s' add_item %s in key %s", self.search_id, item, self.csearchkey.key_field)
 		self.cs_items[item.__dict__[self.csearchkey.key_field]] = CSearchItem(self, item)
 
 
 	def drop_item(self, item):
-		if logging.DBG > 2: logger.debug("CSearch '%s' drop_item %s", self.search_id, item)
+		if 'csearch' in logging.DBGK: logger.debug("CSearch '%s' drop_item %s", self.search_id, item)
 		self.cs_items[item.__dict__[self.csearchkey.key_field]].deleted = True
 #?		del self.cs_items[item.__dict__[self.csearchkey.key_field]]
 
 
 	def add_sid(self, sid):
-		if logging.DBG > 2: logger.debug("CSearch '%s' add_sid %s csearchkey %s", self.search_id, sid, self.csearchkey)
+		if 'csearch' in logging.DBGK: logger.debug("CSearch '%s' add_sid %s csearchkey %s", self.search_id, sid, self.csearchkey)
 		self.clients[sid] = self.csearchkey.stream_tag
 		self.webnamespace.enter_room(sid, self.search_id, \
 			 self.webnamespace.namespace)
@@ -115,7 +129,7 @@ class CSearch:
 
 	def drop_sid(self, sid):
 		if sid in self.clients:
-			if logging.DBG > 2: logger.debug("CSearch '%s' drop_sid %s", self.search_id, sid)
+			if 'csearch' in logging.DBGK: logger.debug("CSearch '%s' drop_sid %s", self.search_id, sid)
 			del self.clients[sid]
 			self.webnamespace.leave_room(sid, self.search_id, \
 				 self.webnamespace.namespace)
@@ -125,16 +139,7 @@ class CSearch:
 		return len(self.clients)
 
 
-	def check_restrictions(self, restrict_by, item):
-		for restrict in restrict_by:
-			field =  restrict['field_name'] 
-			op =  restrict['op'] 
-			value =  restrict['value'] 
-			ex = "item['%s'] %s %s" % (field, op, repr(value))
-			return eval(ex)
-
-
-	def check_csearch(self, op, item):
+	def check_csearch(self, op, item, force = False):
 		""" check if item matches any registered searches, 
 			schedule update for all search clients it matched 
 			op is 'ins', 'upd' or 'del'
@@ -142,10 +147,11 @@ class CSearch:
 			but the delete will happen after
 		"""
 # find csitem for item
-		if logging.DBG >= 2: logger.debug("CSearch %s check_csearch op %s for %s", self.search_id, op, item)
+		if 'csearch' in logging.DBGK: logger.debug("check_csearch (CSearch) %s force=%s op=%s item=%s",\
+				 self, force, op, item)
 		item_search_key = item.__dict__[self.csearchkey.key_field]
 		push = False
-		go = self.check_restrictions(self.csearchkey.restrict_by, item.__dict__)
+		go = check_restrictions(self.csearchkey.restrict_by, item.__dict__)
 		if not go:
 			return
 
@@ -173,15 +179,16 @@ class CSearch:
 
 			push = True
 
-		if push:
-			self.cs_items[item_search_key].push_update(False)
+		if push or force:
+			if 'csearch' in logging.DBGK: logger.debug("check_csearch (push) %s force=%s", self, force)
+			self.cs_items[item_search_key].push_update(force)
 		return 
 
 
 	def force_update(self, sid):
 		if not sid in self.clients:
 			return
-		if logging.DBG > 1: logger.debug("force_update ")
+		if 'csearch' in logging.DBGK: logger.debug("force_update ")
 		for cs in self.cs_items:
 			self.cs_items[cs].push_update(True)
 
@@ -198,29 +205,25 @@ class CSearchItem:
 
 		self.last_update = 0		# csearchitem's last update time stamp
 		self.future_update = False	
-		self.cache = {}
 		self.upd_in_progress = False
 
 
-	def __getstate__(self):
-		r = self.__dict__.copy()
-		r['csearch'] = self.csearch.key 
-		r['item'] = self.item.key
-		return r
+#	def __getstate__(self):
+#		r = self.__dict__.copy()
+#		r['csearch'] = self.csearch.csearchkey 
+#		r['item'] = self.item.key
+#		return r
 
 	def __repr__(self):
-		return str(self.__getstate__())
+		return str("CSI %s %s" % (self.csearch.csearchkey, self.item))
 
 	def console_update(self, force):
-		if not force and self.cache != {}:
-			data_to_emit = self.cache
-		else:
-			data_to_emit = self.item.gen_console_data()
-			self.cache = data_to_emit
+		if 'csearch' in logging.DBGK: logger.debug("console_update %s %s", self, force)
+		data_to_emit = self.item.gen_console_data()
 		if self.deleted:
 			data_to_emit['_del_key'] = 1
 
-		if logging.DBG >  1: logger.debug("console_update CSearch %s Item %s Data %s", self.csearch, self.item, str(data_to_emit)[:32]+"...")
+		if 'csearch' in logging.DBGK: logger.debug("console_update CSearch %s Item %s Data %s", self.csearch, self.item, str(data_to_emit)[:32]+"...")
 		return data_to_emit
 
 
@@ -234,14 +237,16 @@ class CSearchItem:
 		if self.upd_in_progress or _WEBAPP is None:
 			return
 		next_update = (self.last_update + _WEBAPP.minupdinterval) - _WEBAPP.loop.time()
+		if 'csearch' in logging.DBGK: logger.debug("push_update %s %s %s next: %s", self, force, sroom, next_update)
 		if not force and next_update > 0:
 			if not self.future_update:
 				asyncio.ensure_future(self.schedule_future_update(next_update))
 				self.future_update = True
 			return
 
+		if 'csearch' in logging.DBGK: logger.debug("push_update %s %s %s next: %s", self, force, sroom, next_update)
 		self.upd_in_progress = True
-		_WEBAPP.queue_item_update(self, True)
+		_WEBAPP.queue_item_update(self, force)
 
 
 	def update_sent(self):
@@ -259,21 +264,54 @@ class OCache(dict):
 		self.max_entries = max_entries
 		self.ts = {}
 		super().__init__()
+		self.warned = False
+		self.gets = 0
+		self.sets = 0
+		self.hits = 0
+		self.misses = 0
+		self.replaces = 0
+		if 'ocache' in logging.DBGK: logger.debug("OCache %s created", self.tablename)
+
+	def __del__(self):
+		if 'ocache' in logging.DBGK: logger.debug("OCache %s destroyed", self.tablename)
+		return super().__del__()
 
 	def __getitem__(self, key):
+		self.gets += 1
 		self.ts[key] = time.time()
+		if 'ocache' in logging.DBGK: logger.debug("OCache %s __getitem %s", self.tablename, key)
 		return super().__getitem__(key)
 
+
+	def __delitem__(self, key):
+		if 'ocache' in logging.DBGK: logger.debug("OCache %s __delitem %s", self.tablename, key)
+		return super().__delitem__(key)
+
+
+	def has(self, key):
+		if key in self:
+			self.hits += 1
+			return True
+		self.misses += 1
+		return False
+
 	def __setitem__(self, key, value):
+		if key in self:
+			self.replaces += 1
 		super().__setitem__(key, value)
+		self.sets += 1
 		self.ts[key] = time.time()
-		if logging.DBG > 2: logger.debug("cache added %s %s at %s", key, value, self.ts[key])
+		if 'ocache' in logging.DBGK: logger.debug("OCache %s __setitem__ %s %s at %s", self.tablename, key, value, self.ts[key])
 		if len(self) > self.max_entries:
-			if logging.DBG > 2: logger.debug("Cleaning!")
 			self.clean()
+		else:
+			self.warned = False
+
 
 	def clean(self):
-		to_prune =  len(self) - self.max_entries
+		if 'ocache' in logging.DBGK: logger.debug("OCache %s clean!", self.tablename)
+#		to_prune =  len(self) - self.max_entries
+		to_prune =  int(self.max_entries / 10)
 		for p in range(to_prune):
 			ts = time.time()
 			d = None
@@ -283,20 +321,26 @@ class OCache(dict):
 						d = i
 						ts = self.ts[i]
 			if d is None:
-				logger.warning("cache for index '%s' overcommited", self.tablename)
 				break
 			del self[d]
 			del self.ts[d]
-		logger.debug("%s", self.status())
+
+		if len(self) >= self.max_entries:
+				self.warned = True
+				logger.warning("cache overcommited: "+self.status())
+
+		if 'ocache' in logging.DBGK: logger.debug("OCache cleaned: %s", self.status())
 		return 
 
 	def status(self):
 		in_use = 0
+		occupied = len(self)
 		for i in self.keys():
 			if sys.getrefcount(super().__getitem__(i)) != 2:
 				in_use += 1
-		return "cache '%s' has %s entries of %s max (%s%%)" % \
-			(self.tablename, in_use, self.max_entries, (100.0 * in_use / self.max_entries))
+		return "'%s' %s in use, %s of %s ocupied (%s%%) m %s h %s s %s g %s r %s" % \
+			(self.tablename, in_use, occupied, self.max_entries, (100.0 * occupied / self.max_entries),
+				self.misses, self.hits, self.sets, self.gets, self.replaces)
 
 
 #
@@ -316,38 +360,49 @@ class Table:
 
 
 	def add_csearch(self, webnamespace, csearchkey, sid):
+		""" add a cserarch for sid to this table """
 
-#		sid_stream_tag = "%s_%s" % (sid, csearchkey.stream_tag)
-#		if sid_stream_tag in self.sid_stream_tags:
-		del_client = None
-		for cs in self.csearches:
-			if sid in self.csearches[cs].clients \
-				and csearchkey.stream_tag == self.csearches[cs].csearchkey.stream_tag:
-				del_client = cs
-
-		if del_client is not None:
-			del self.csearches[del_client].clients[sid]
-			if len(self.csearches[del_client].clients) == 0:
-				del self.csearches[del_client]
-
+		self.drop_stream_tag_from_csearch(sid, csearchkey.stream_tag)
 		srch_id = csearchkey.search_id
-		if logging.DBG >= 0: logger.debug("table add_csearch search_id '%s': %s", srch_id, str(csearchkey))
 		if not srch_id in self.csearches:
+			if 'webupd' in logging.DBGK: logger.debug("table add_csearch '%s' new: %s", srch_id, csearchkey)
 			self.csearches[srch_id] = CSearch(webnamespace, self, csearchkey)
 		else:
-			if logging.DBG >= 0: logger.debug("table add_csearch search_id '%s' from cache", srch_id)
+			if 'webupd' in logging.DBGK: logger.debug("table add_csearch search_id '%s' from cache", srch_id)
 		csearchkey = self.csearches[srch_id].add_sid(sid)
 		return csearchkey
 
 
+	def drop_stream_tag_from_csearch(self, sid, stream_tag):
+		""" delete sid from any csearches with the same stream_tag """
+		del_client = []
+		for cs in self.csearches:
+			if sid in self.csearches[cs].clients \
+				and stream_tag == self.csearches[cs].csearchkey.stream_tag:
+				del_client.append(cs)
+
+		for dc in  del_client:
+			if 'webupd' in logging.DBGK: logger.debug("table drop_stream_tag_from_csearch t %s", dc)
+			del self.csearches[dc].clients[sid]
+			if len(self.csearches[dc].clients) == 0:
+				del self.csearches[dc]
+
+
 	def drop_sid_from_csearch(self, sid):
+		""" delete sid from all csearches """
 		del_list = []
 		for cs in self.csearches:
 			self.csearches[cs].drop_sid(sid)
+			if 'webupd' in logging.DBGK: logger.debug("table drop_sid_from_csearch '%s'", sid)
 			if self.csearches[cs].num_clients() == 0:
 				del_list.append(cs)
 		for cs in del_list:
+			if 'webupd' in logging.DBGK: logger.debug("table drop_sid_from_csearch csearch empty! '%s'", cs)
 			del self.csearches[cs]
+
+	def register(self, item):
+		""" either load item from backing store, if it exists, or store it there """
+		pass
 
 
 	def find(self, key, keyfield = None):
@@ -357,22 +412,19 @@ class Table:
 		pass
 
 	def insert(self, item):
-		self.check_csearch('ins', item)
+		self.check_csearch('ins', item, force=False)
 
-	def update(self, item):
-		self.check_csearch('upd', item)
+	def db_update(self, item, force):
+		self.check_csearch('upd', item, force)
 
 	def delete(self, item):
-		self.check_csearch('del', item)
+		self.check_csearch('del', item, force=False)
 
-	def check_csearch(self, op, item):
+	def check_csearch(self, op, item, force):
 		for cs in self.csearches:
-			self.csearches[cs].check_csearch(op, item)
+			if 'webupd' in logging.DBGK: logger.debug("check_csearch (Table) %s force=%s", cs, force)
+			self.csearches[cs].check_csearch(op, item, force)
 		 
-	def register(self, item):
-		pass
-
-
 	
 class DbTable(Table):
 	""" database based Table """
@@ -380,48 +432,48 @@ class DbTable(Table):
 	def __init__(self, itemclass, keyfield, tablename):
 		self.tablename = tablename
 		self.cache = OCache(tablename, 1000)
-		self.dbtable = None
 		self.dbtable = _DB.table(self.tablename)
 		super().__init__(itemclass, keyfield)
 	
 
 	def register(self, item):
 		""" backload item from db if it exists, otherwise insert in db """
-		if item._key is None:		#  created by find
-			logger.debug("register %s not registred", self.tablename, item)
-			return False
 		if logging.DBG > 2: logger.debug("register %s %s", self.tablename, item)
 		r = self.dbtable.search(self.keyfield, '==', item.__dict__[self.keyfield])
 		if r is None or len(r) == 0:
 			item._wascreated = True
-			self.dbtable.insert(item.save())
+			self.insert(item)
 		else:
 			item._wascreated = False
 			item.load(r[0])
-			logger.debug("register item loaded: %s", item)
+			self.cache[item.__dict__[self.keyfield]] = item
+		super().register(item)
 		return item._wascreated
 			
 
-	def get_range(self, csk):
-		drange =  self.dbtable.get_range(csk)
-		if len(drange) == 0:
-			return []
+	def db_to_class(self, drange):
 		ret = []
-		keys = []
-		if logging.DBG > 1: logger.debug("get_range drange len %s %s", len(drange), drange)
 		for rkey in drange:
+			if logging.DBG > 2: logger.debug("find->load %s", type(r))
 			r = drange[rkey]
-			keys.append(r[csk.key_field])
-			if r[self.keyfield] in self.cache:
+			if self.cache.has(r[self.keyfield]):
 				rn = self.cache[r[self.keyfield]]
 			else:
 				rn = self.itemclass()
 				rn.load(r)
 				self.cache[r[self.keyfield]] = rn
 			ret.append(rn)
-
-		logger.debug("get_range found %s recs %s", len(ret), str(csk))
 		return ret
+
+
+	def get_range(self, csk):
+		""" get a range of items, defined by a CSearch """
+		drange =  self.dbtable.get_range(csk)
+		if len(drange) == 0:
+			return []
+		if logging.DBG > 1: logger.debug("get_range drange len %s %s", len(drange), drange)
+		return self.db_to_class(drange)
+
 
 	def find(self, key, keyfield = None):
 		if keyfield is None:
@@ -431,7 +483,7 @@ class DbTable(Table):
 		ret = []
 		for r in res:
 			if logging.DBG > 2: logger.debug("find->load %s", type(r))
-			if r[self.keyfield] in self.cache:
+			if self.cache.has(r[self.keyfield]):
 				rn = self.cache[r[self.keyfield]]
 			else:
 				rn = self.itemclass()
@@ -442,37 +494,47 @@ class DbTable(Table):
 
 
 	def find_one(self, key, keyfield = None):
+		""" find exactly one item with keyfield key """
+		if keyfield is None:
+			keyfield = self.keyfield
+		if keyfield == self.keyfield:	# i.e. native key
+			if self.cache.has(key):
+				return self.cache[key]
 		res = self.find(key, keyfield)
 		if logging.DBG > 1: logger.debug("find_one %s %s: %s", self.tablename, key,  res)
 		if len(res) == 1:
 			return res[0]
+		elif len(res) == 0:
+			return None
+		logger.error("multiple items with '%s' = %s in table %s", keyfield, key, self.tablename)
 		return None
 
 
-	def update(self, item):
-		self.dbtable.update(item.save(), self.keyfield, item.__dict__[self.keyfield])
-		super().update(item)
-
+	def db_update(self, item, force=False):
+		if 'webupd' in logging.DBGK: logger.debug("db_update (DBTable) %s force=%s", self, force)
+		self.dbtable.db_update(item.save(), self.keyfield, item.__dict__[self.keyfield])
+		self.cache[item.__dict__[self.keyfield]] = item
+		super().db_update(item, force)
+		
 
 	def insert(self, item):
 		if logging.DBG > 2: logger.debug("Table insert %s  %s", item.save(), self.keyfield)
 		self.dbtable.upsert(item.save(), self.keyfield)
+		self.cache[item.__dict__[self.keyfield]] = item
 		super().insert(item)
 
 
 	def delete(self, item):
+		del self.cache[item.__dict__[self.keyfield]]
+		self.dbtable.delete(item.save(), self.keyfield)		# ?? order
 		super().delete(item)
-		self.dbtable.delete(item.save(), self.keyfield)
 
-
-	def unregister(self, item):
-		self.dbtable.remove(self.keyfield, item.__dict__[self.keyfield])
 
 	def __len__(self):
 		return len(self.dbtable)
 
 	def __str__(self):
-		return "Dbndex(%s)%s" % (self.itemclass.__name__, len(self.dbtable))
+		return "Dbindex(%s)%s" % (self.itemclass.__name__, len(self.dbtable))
 
 
 
@@ -480,16 +542,98 @@ class DictTable(Table):
 	""" dict based Table """
 
 	def __init__(self, itemclass,  keyfield, index):
+		self.tablename = itemclass.__name__
 		self.index = index
 		super().__init__(itemclass, keyfield)
 
 
 	def register(self, item):
-		self.index[item.key] = item
+		logger.debug("DictTable register %s %s", item.__dict__[self.keyfield], item)
+		self.index[item.__dict__[self.keyfield]] = item
 
 
 	def get_range(self, csk):
-		raise Exception("NotYetImplemented")
+		if logging.DBG > 1: logger.debug("get_range csk %s", str(csk))
+		field = csk.key_field
+		startv = csk.start_key
+		endv = csk.end_key
+		count = csk.count
+
+		csk.total_item_count = 0
+
+		tab = self.index
+		if len(tab) == 0:
+			if logging.DBG > 1: logger.debug("get_range table empty")
+			csk.count = 0
+			return {}
+
+		udict = {}
+		for t in tab:
+			logger.debug("DictTable get_range %s %s", field, t)
+			
+			udict[tab[t].__dict__[field]] = tab[t]
+		fullsdict = sorted(udict)
+		if logging.DBG > 1: logger.debug("get_range table %s items", len(fullsdict))
+	
+		if len(csk.restrict_by) == 0:
+			sdict = fullsdict
+		else:
+			sdict = []
+			for r in fullsdict:
+				if check_restrictions(csk.restrict_by, udict[r]):
+					sdict.append(r)
+
+		if len(sdict) == 0:
+			if logging.DBG > 1: logger.debug("get_range table empty after destrict")
+			return {}
+
+		if startv in [None]:
+			if csk.start_item_number < 0:
+				sidx = max(0, len(sdict) + csk.start_item_number)
+			else:
+				sidx = min(csk.start_item_number, len(sdict)-1)
+			startv = sdict[sidx]
+		else:
+			sidx = None
+			for idx in range(len(sdict)):
+				if sdict[idx] >=  startv:
+					sidx = idx
+					startv = sdict[sidx]
+					break
+			if sidx is None:
+				if logging.DBG > 1: logger.debug("get_range no start key found")
+				return {}
+		if endv in [None]:
+			eidx = min(sidx + count-1, len(sdict)-1)
+			endv = sdict[eidx]
+		else:
+			eidx = None
+			for idx in range(sidx, len(sdict)):
+				if sdict[idx] <= endv:
+					endv = sdict[idx]
+					eidx = idx
+					break
+			if eidx is None:
+				if logging.DBG > 1: logger.debug("get_range no end key found")
+				return {}
+			count = eidx - sidx + 1
+		res = {}
+		for idx in range(sidx, eidx+1):
+			res[sdict[idx]]  = udict[sdict[idx]]
+
+		csk.start_key = sdict[sidx]
+		csk.end_key = sdict[eidx]
+		csk.start_item_number = sidx
+		csk.total_item_count = len(sdict)
+		csk.at_start = csk.start_key == sdict[0]
+		csk.at_end = csk.end_key == sdict[-1]
+
+		drange = []
+		for r in res:
+			drange.append(res[r])
+		if logging.DBG > 1: logger.debug("dict get_range drange len %s %s", len(drange), drange)
+		return drange
+
 
 	def find(self, key, keyfield = None):
 		if keyfield is None or keyfield == self.keyfield:	# native key searc
@@ -503,8 +647,9 @@ class DictTable(Table):
 				res.append(self.index[k])
 		return res
 
-	def update(self, item):
-		pass
+	def db_update(self, item, force=False):
+		if 'webupd' in logging.DBGK: logger.debug("db_update (DictTable)  %s force=%s", self, force)
+		super().db_update(item, force)
 
 
 	def insert(self, item):
@@ -516,9 +661,8 @@ class DictTable(Table):
 		pass
 
 
-	def unregister(self, item):
-		if item.key in self.index:
-			del self.index[item.key]
+	def __len__(self):
+		return len(self.index)
 
 
 	def __str__(self):
@@ -549,22 +693,16 @@ class BaseItem:
 #
 class Item(BaseItem):
 	_table = None
-	_parent_link = None
 
 	def __init__(self, key):
 		super().__init__(key)
 		self._table = self.__class__._table
 		self._itype = self.__class__.__name__
 		if self._key is None:
-			if logging.DBG > 1: logger.debug("Item: created %s", self)
-		else:
+			if logging.DBG >= 0: logger.debug("Item created: %s", self)
+		else: 		# skip key-less items, they will come in via load()
 			self._table.register(self)
-			if logging.DBG > 1: logger.debug("Item: created and registered %s", self)
-
-
-	def schedule_update(self, sid, stream_tag):
-		if logging.DBG >= 0: logger.debug("Item %s: schedule_update %s %s", self._key, sid, stream_tag)
-		pass
+			if logging.DBG >= 0: logger.debug("Item created and loaded: %s", self)
 
 
 	def load(self, data):	#N.B.
@@ -573,6 +711,7 @@ class Item(BaseItem):
 		for k in data:
 			self.__dict__[k] = data[k]
 		self._key = self.__dict__[self._table.keyfield]
+		logger.debug("Item loaded: %s", self)
 
 
 	def save(self, withvirtual=False):
@@ -588,22 +727,12 @@ class Item(BaseItem):
 		if logging.DBG > 2: logger.debug("Item  insert %s %s", self._table.tablename, self.save())
 		self._table.insert(self)
 
-	def update(self):
-		self._table.update(self)
+	def update(self, force=False):
+		if 'webupd' in logging.DBGK: logger.debug("Item update %s force=%s", self, force)
+		self._table.db_update(self, force)
 
 	def delete(self):
 		self._table.delete(self)
-
-	def get_parent(self):
-		if self.__class__._parent_link is None:
-			return None
-		res = self.__class__._parent_link.get(self)
-		if len(res) > 1:
-			logger.error("get_parent %s found more than one parent %s", self.__class__.__name__, res)
-		elif len(res) == 0:
-			logger.error("get_parent %s found no parent %s", self.__class__.__name__, res)
-			return None
-		return res[0]
 
 	def gen_console_data(self):
 		return self.save(withvirtual=True)
@@ -632,25 +761,37 @@ class LogItem(Item):
 		r = {}
 		r["ts"] = self.ts
 		r["lvl"] = self.lvl
+		r["line"] = self.line
 		if withvirtual:
 			r['Time'] = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(self.ts))
 			if len(self.line) > 70:
 				r["line"] = self.line[:70] + "..."
-			else:
-				r["line"] = self.line
-		else:
-			r["line"] = self.line
 		return r
 
 # LogQ
 #
 class LogQ(Item):
-	def __init__(self, conf, loop = None):
-		self.conf = conf
-		self.name = "logq"
-		self.q = Queue(loop=loop)
-		self.loop = loop
-		LogItem._table = DbTable(LogItem, keyfield="ts", tablename="LogItem")
+	def __init__(self, conf = None, loop = None):
+		self.name = None
+		if conf is not None:
+			self.name = "logq"
+			self.conf = conf
+			self.q = Queue(loop=loop)
+			self.loop = loop
+			LogItem._table = DbTable(LogItem, keyfield="ts", tablename="LogItem")
+		super().__init__(self.name)
+
+	def save(self, withvirtual=False):
+		r = {}
+		if withvirtual:
+			for t in Table.tables:
+				table = Table.tables[t]
+				r[ table.tablename + " table"] = len(table)
+				try:
+					r[ table.tablename + " cache"] = table.cache.status()
+				except:
+					pass
+		return r
 
 	def write(self, msg):
 		asyncio.ensure_future(self.awrite(msg), loop=self.loop)
@@ -664,7 +805,7 @@ class LogQ(Item):
 		pass
 
 	async def start(self):
-		logger.info("%s logq start")
+		logger.info("%s logq start", self)
 		while True:
 			msg = await self.q.get()
 			if msg is None:
