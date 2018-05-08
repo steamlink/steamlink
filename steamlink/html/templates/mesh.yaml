@@ -38,6 +38,9 @@ nodes_map:
     - -79.3894
     - 43.6575
   zoom: 13
+  popup:
+    - Name
+    - State
   row: 1
   grid_columns: 'six'
   grid_rows: 8

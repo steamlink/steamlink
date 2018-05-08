@@ -38,6 +38,8 @@
         };
 
         var record_link = "{{ partial_item.record_link }}";
+        
+        var headers = {{ partial_item.popup|tojson|safe }};
 
         var vectorSource = new ol.source.Vector({
             features: []
@@ -84,11 +86,11 @@
                 var vals = feature.get('vals');
                 var innerHTML = "<a href=" + window.format(record_link, vals) +">";
                 
-                // innerHTML = feature.get('vals');
-                
-                for (var k in vals) {
-                    innerHTML += "<p>" + k + " : " + vals[k] + "</p>";
-                }
+                headers.forEach( (header) => {
+                    if(header in vals) {
+                        innerHTML += header + " : " + vals[header] + "<br> <br>" ;                        
+                    }
+                });
                 innerHTML += "</a>";
                 popupElement.innerHTML = innerHTML;
                 $(popupElement).show();
