@@ -3,6 +3,7 @@ import socketio
 import io
 import re
 import ipaddress
+import hashlib
 import hmac
 import os
 import json
@@ -276,23 +277,23 @@ class WebApp(object):
 			# Store the IP address of the requester
 			request_ip = request.remote
 
-			# If VALIDATE_SOURCEIP is set to false, do not validate source IP
-			if self.conf.get('repo_validate_sourceip', False):
-
-				# If GHE_ADDRESS is specified, use it as the hook_blocks.
-				if self.conf.get('repo_ghe_address', None):
-					hook_blocks = [unicode(self.conf.get('GHE_ADDRESS'))]
-				# Otherwise get the hook address blocks from the API.
-				else:
-					hook_blocks = requests.get('https://api.github.com/meta').json()['hooks']
-
-				# Check if the POST request is from github.com or GHE
-				for block in hook_blocks:
-					if ipaddress.ip_address(request_ip) in ipaddress.ip_network(block):
-						break  # the remote_addr is within the network range of github.
-				else:
-					if str(request_ip) != '127.0.0.1':
-						return web.Response(text='invalid IP', status=403)
+#			# If VALIDATE_SOURCEIP is set to false, do not validate source IP
+#			if self.conf.get('repo_validate_sourceip', False):
+#
+#				# If GHE_ADDRESS is specified, use it as the hook_blocks.
+#				if self.conf.get('repo_ghe_address', None):
+#					hook_blocks = self.conf.get('repo_ghe_address')
+#				# Otherwise get the hook address blocks from the API.
+#				else:
+#					hook_blocks = requests.get('https://api.github.com/meta').json()['hooks']
+#
+#				# Check if the POST request is from github.com or GHE
+#				for block in hook_blocks:
+#					if ipaddress.ip_address(request_ip) in ipaddress.ip_network(block):
+#						break  # the remote_addr is within the network range of github.
+#				else:
+#					if str(request_ip) != '127.0.0.1':
+#						return web.Response(text='invalid IP', status=403)
 
 			request_data = await request.text()
 			payload = json.loads(request_data)
@@ -312,10 +313,12 @@ class WebApp(object):
 				# Check if POST request signature is valid
 				key = self.conf.get('repo_key', None)
 				if key:
-					signature = request.headers.get('X-Hub-Signature').split('=')[1]
-					if type(key) == unicode:
+					signature = request.headers.get('X-Hub-Signature')
+					if type(key) != type(b''):
 						key = key.encode()
-					mac = hmac.new(key, msg=request.data, digestmod=sha1)
+					if type(request_data) !=  type(b''):
+						request_data = request_data.encode()
+					mac = hmac.new(key, msg=request_data, digestmod=hashlib.sha1)
 					if not hmac.compare_digest(mac.hexdigest(), signature):
 						return web.Response(text='auth fail', status=403)
 
