@@ -51,14 +51,11 @@ class DisplayConfiguration:
 class NavBar:
 
 	def __init__(self, dir):
+		self.navbar_yaml = dir + '/navbar.yaml'
 		self.yamls = []
-		for file in os.listdir(dir):
-			name, ext = file.rsplit('.', 1)
-			if ext == 'yaml':
-				self.yamls.append(name)
-
-
-
+		f = open(self.navbar_yaml)
+		self.yamls = yaml.load(f)
+		f.close()
 
 #
 # WebNameSpace

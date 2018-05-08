@@ -22,7 +22,6 @@
 .hero {
     background-color: #F7F7F5;
     width: 100%;
-    margin-bottom: 2rem;
 }
 
 a {
@@ -36,4 +35,16 @@ a {
     float: right;
     color: black;
     padding-right: 5px;
+}
+
+.navbar {
+    background-color: black;
+    width:100%;
+    margin-bottom: 2rem;
+}
+
+.navbar-item {
+    margin-top: 1rem;
+    color: white;
+    border: none;
 }

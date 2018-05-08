@@ -27,9 +27,12 @@
         </table>
         <button id="{{ partial_item.name }}_first">&lt;&lt;</button>
         <button id="{{ partial_item.name }}_prev">&lt;</button>
+        <div style="display:inline-block; width:100px; height:15px; border: 1px solid grey;" id="{{ partial_item.name }}_outerbar">
+            <div id="{{ partial_item.name }}_page_num" style="background-color:grey; width:0%; height:100%;"></div>
+        </div>
         <button id="{{ partial_item.name }}_next">&gt;</button>
         <button id="{{ partial_item.name }}_last">&gt;&gt;</button>
-        <button id="{{ partial_item.name }}_sort_order">Toggle Sort Order</button>
+        <!-- <button id="{{ partial_item.name }}_sort_order">Toggle Sort Order</button>  -->
 
     </div>
 </div>
@@ -42,7 +45,8 @@
         var prevButton = $('#{{ partial_item.name }}_prev')[0];
         var firstButton = $('#{{ partial_item.name }}_first')[0];
         var lastButton = $('#{{ partial_item.name }}_last')[0];
-        var sortButton = $('#{{ partial_item.name }}_sort_order')[0];
+        var pageNum = $('#{{ partial_item.name }}_page_num')[0];
+        //var sortButton = $('#{{ partial_item.name }}_sort_order')[0];
 
         var headers = {{ partial_item.headers|tojson|safe }};
 
@@ -61,6 +65,8 @@
 
         var record_link = "{{ partial_item.record_link }}";
         var table_rows = {{ partial_item.table_rows|tojson|safe }};
+        var totalPages = 0;
+        var currentPage = 0;
 
 
 
@@ -81,6 +87,13 @@
                 htmlString += "</tr>";
                 scrolledDiv.innerHTML = htmlString;
             });
+            totalPages = Math.ceil(tableStream.config.total_item_count/table_rows);
+            currentPage = Math.floor(tableStream.config.start_item_number/table_rows) + 1;
+            if (totalPages != 0) {
+                pageNum.style.width = currentPage/totalPages*100 + "%";
+            } else {
+                pageNum.style.width = "0%";
+            }
         }
 
         var onNewMessage = function(data) {
@@ -94,7 +107,7 @@
                 newConfig.end_key = null;
                 newConfig.start_item_number = newConfig.start_item_number + table_rows;
                 newConfig.count = table_rows;
-                tableStream.updateStream(newConfig);
+                tableStream.updateStream(newConfig);                                
                 renderTable();
             }            
         };
@@ -133,11 +146,12 @@
             renderTable();
         };
 
+        /*
         sortButton.onclick = function() {
             sortMultiplier=sortMultiplier*(-1);
             renderTable();
         };
-
+        */
         var tableStream = new Stream(socket, startStreamConfig, onNewMessage);
         tableStream.startStream();
 
