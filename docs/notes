@@ -1,6 +1,6 @@
-- repository structure?
-  steamlink/steamlink-store -> pypi package
-  steamlink/steamlink-node	-> arduino library w/ samples
+- repository structure
+  steamlink/steamlink -> pypi package
+  steamlink/steamlink-arduino	-> arduino library w/ samples
 
 - to make a new release on pypi
 	cd ~/git/steamlink
@@ -13,6 +13,9 @@
 	. ~/sl/bin/activate
 	
 	python3 setup.py sdist upload -r pypi
+
+- to find all debug key tags run
+	 grep in\ logging.DBGK steamlink/*.py | sed "s/.*if '\(.*\)' in logging.*/\1/" | sort -u
 	
 ## TODOs:
 
