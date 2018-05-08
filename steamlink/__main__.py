@@ -29,6 +29,7 @@ from .mqtt import (
 )
 
 from .linkage import LogQ
+from .linkage import DictTable
 from .steamlink import SteamSetup, Steam, Mesh, Node, SL_NodeCfgStruct
 from .steamlink import Attach as steamlinkAttach
 
@@ -251,7 +252,9 @@ def steamlink_main(cl_args, conf):
 
 	coros = []
 
+	LogQ._table = DictTable(LogQ, keyfield="name", index = {})
 	logq = LogQ(conf, aioloop)
+
 	coros.append(logq.start())
 
 	msghandler = logging.StreamHandler(logq)
@@ -339,7 +342,7 @@ def steamlink_command():
 	if cl_args.logfile is not None:
 		logging.console = False
 		handler = logging.handlers.RotatingFileHandler(
-              cl_args.logfile, maxBytes=10**6, backupCount=3)
+              cl_args.logfile, maxBytes=10**7, backupCount=3)
 	else:
 		logging.console = True
 		handler = logging.StreamHandler()
@@ -350,6 +353,9 @@ def steamlink_command():
 
 	DBG = cl_args.debug
 	logging.DBG = DBG
+
+	DBGK = cl_args.debugkey
+	logging.DBGK = DBGK
 
 	if DBG >= 3:
 		logger.info("DBG: logging all warnings")
