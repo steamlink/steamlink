@@ -33,6 +33,7 @@ from .linkage import (
 )
 
 
+MAX_RESEND_COUNT = 25
 SL_MAX_MESSAGE_LEN = 255
 SL_ACK_WAIT = 3
 
@@ -838,9 +839,11 @@ class Node(Item):
 				self.publish_pkt(pkt, resend=True)
 				self.set_wait_for_AS(pkt)
 				self.wait_for_AS['count'] += 1
-		elif self.is_overdue() and self.is_state_up():
+				if self.wait_for_AS['count'] > MAX_RESEND_COUNT:
+					logger.info("resend limit reached for %s, giving up", pkt)
+					self.wait_for_AS['count'] = 0
+		if self.is_overdue() and self.is_state_up():
 			self.set_state("OVERDUE")
-#			self.update()
 		if not self.is_state_up():		#XXX not offline or sleeping
 			if self.last_packet_tx_ts != 0 and self.last_packet_tx_ts + MAXSILENCE < n_now:
 				self.send_get_status()
