@@ -817,10 +817,13 @@ class LogQ(Item):
 			if len(msg) == 0:
 				continue
 
-			lvl, line = msg.split(None, 1)
-			who = line.split(None,1)
-			if who in ['asyncio_server']:	# don't log these
-				continue
+			try:
+				lvl, line = msg.split(None, 1)
+				who, what = line.split(None,1)
+				if who in ['asyncio_server']:	# don't log these
+					continue
+			except:
+				continue		# loose badly formated log lines
 
 			logitem = LogItem(lvl, line)
 			if lvl in ['INFO', 'WARNING', 'ERROR', 'CRITICAL', 'ALERT', 'EMERGENCY']:
