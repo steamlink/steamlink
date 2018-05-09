@@ -334,6 +334,10 @@ def steamlink_command():
 	global daemon
 	cl_args = getargs()
 
+	if cl_args.version:
+		print("%s version %s" % (PROJECT_PACKAGE_NAME, __version__))
+		return 0
+
 	try:
 		loglevel = getattr(logging, cl_args.loglevel.upper())
 	except Exception as e:

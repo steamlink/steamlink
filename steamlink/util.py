@@ -95,6 +95,9 @@ def getargs():
 	parser.add_argument("-x", "--debugkey",
 							help="set of debug keywords, bumps loglevel to ''debug'. Available keywords are: csearch ocache web webupd",
 							default=[], action="append")
+	parser.add_argument("-V", "--version",
+							help="show version and exit",
+							default=False, action='store_true')
 	return parser.parse_args()
 
 
