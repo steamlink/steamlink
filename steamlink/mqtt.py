@@ -80,7 +80,7 @@ class Mqtt:
 		self.mq.message_callback_add(self.data_topic, callback)
 
 	def set_public_control_callback(self, callback):
-		logger.debug("set_public_control_callbac on %s", self.public_control_topic)
+		logger.debug("set_public_control_callback on %s", self.public_control_topic)
 		self.mq.message_callback_add(self.public_control_topic, callback)
 
 
