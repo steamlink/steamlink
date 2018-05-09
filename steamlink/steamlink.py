@@ -12,8 +12,6 @@ import asyncio
 import re
 import os
 
-from .timelog import TimeLog
-
 import logging
 logger = logging.getLogger(__name__)
 
