@@ -41,6 +41,4 @@ PLATFORM_FORMAT = '{}.{}'
 
 ###
 
-SL_RESPONSE_WAIT_SEC = 10
-MAX_NODE_LOG_LEN = 1000     # maximum packets stored in per node log
 DEFAULT_CONFIG_FILE = "steamlink.yaml"
