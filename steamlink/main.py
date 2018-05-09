@@ -61,9 +61,11 @@ class GracefulRestart(SystemExit):
 	code = 2
 
 def raise_graceful_restart():
+	logger.info("restarting")
 	raise GracefulRestart()
 
 def raise_graceful_exit():
+	logger.info("shutdown")
 	raise GracefulExit()
 
 home = str(pathlib.Path.home())	
@@ -406,7 +408,8 @@ def steamlink_command():
 				syslog.syslog(syslog.LOG_ERR, ' -> %s' % l.rstrip('\n'))
 				logger.error(' -> %s', l.rstrip('\n'))
 	if restart:
-		os.execv(sys.argv[0], [sys.argv[0]])
+		os.execve(sys.argv[0], sys.argv, os.environ)
+		print("os.execve returned")
 	return rc
 
 if __name__ == "main":
