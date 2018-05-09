@@ -66,5 +66,66 @@ TODO: This is not implemented in the client libraries by default.
 
 The sign on packet for the node was not seen by the backend but the node appears to be transmitting normaly.
 
+----------------
 
+# 
+Starting and Modifying Streams
+Web -> Store message:
+    table_name: [Steam, Mesh, Node, Packet, Log]
+    key_field: (ordered by this field)
+    restrict_by:
+        - list of dictionaries
+        {
+            field_name
+            op: ["==", "!=", ">=", ">", "<=" "<"]
+            value: 
+        }
+    start_key: (if start key is null use start_item_number)
+    start_item_number:
+    end_key: (if end key is null, use count)
+    count:
+	stream_tag:
+
+Store -> Web message:
+    start_key:
+    end_key:
+    count:
+    start_item_number:
+    total_item_count:
+
+Example query for mesh header tile
+
+table_name: Mesh
+restrict_by: [
+    {
+        field_name: steam_id
+        op: "=="
+        value: 1
+    }
+]
+start_key: null
+end_key: null
+count: 1
+
+
+Example query for nodes table
+
+table_name: Node
+restrict_by: [
+    {
+        field_name: mesh_id
+        op: "=="
+        value: ...
+    }
+]
+start_key: null
+end_key: null
+count: 20
+
+
+Alerts: publish on event 'alert'
+{ 
+	'msg': 'message',
+	'lvl':  just like unix
+}
 

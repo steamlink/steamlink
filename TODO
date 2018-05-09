@@ -7,81 +7,32 @@ X change ON opcode to transmit a SL_NodeCfgStruct packet
 X ACK handling
 X sign-on procedure
 X replace RadioHead driver with native driver (sandeepmistry/arduino-LoRa)
+- make radio parameters configurable again
+- provide method for store to force a node to ON again (node before store problem)
 
 Bridge:
+- collect packet count info and provide via SS
 
+Store: 
+X track and report missing or packets
+X new DB layer with continuous searchs for notification of web clients
+X save Mesh/Node info in TinyDB yaml DB
+- provide rc script
+- provide git ci script
+- provide an MDNS identity
 
-Store:
-X store: track and report missing or packets
-- store: new DB layer with continuous searchs for notification of web clients
-- store: save Mesh/Node info in TinyDB yaml DB
-- store: provide rc script
+SteamLink:
+- remove use of Node class from Packet class
+- use Packet for standalone mqtt monitor
+
 
 WebConsole:
 
 Bugs:
 fix: Adafruit MQTT library always sets 'retain' flag
 fix: mqtt client sometimes hangs on a 2nd or later connection attempt
+fix: asyncio_server Invalid session warnings from asyncio_server
 
+Future:
 Query Language
-
-Starting and Modifying Streams
-Web -> Store message:
-    table_name: [Steam, Mesh, Node, Packet, Log]
-    key_field: (ordered by this field)
-    restrict_by:
-        - list of dictionaries
-        {
-            field_name
-            op: ["==", "!=", ">=", ">", "<=" "<"]
-            value: 
-        }
-    start_key: (if start key is null use start_item_number)
-    start_item_number:
-    end_key: (if end key is null, use count)
-    count:
-	stream_tag:
-
-Store -> Web message:
-    start_key:
-    end_key:
-    count:
-    start_item_number:
-    total_item_count:
-
-Example query for mesh header tile
-
-table_name: Mesh
-restrict_by: [
-    {
-        field_name: steam_id
-        op: "=="
-        value: 1
-    }
-]
-start_key: null
-end_key: null
-count: 1
-
-
-Example query for nodes table
-
-table_name: Node
-restrict_by: [
-    {
-        field_name: mesh_id
-        op: "=="
-        value: ...
-    }
-]
-start_key: null
-end_key: null
-count: 20
-
-
-Alerts: publish on event 'alert'
-{ 
-	'msg': 'message',
-	'lvl':  just like unix
-}
 
