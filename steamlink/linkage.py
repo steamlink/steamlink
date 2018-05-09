@@ -181,7 +181,10 @@ class CSearch:
 
 		if push or force:
 			if 'csearch' in logging.DBGK: logger.debug("check_csearch (push) %s force=%s", self, force)
-			self.cs_items[item_search_key].push_update(force)
+			try:
+				self.cs_items[item_search_key].push_update(force)
+			except KeyError as e:
+				logger.error("check_csearch (push) keyerror: %s", e)
 		return 
 
 
@@ -815,6 +818,10 @@ class LogQ(Item):
 				continue
 
 			lvl, line = msg.split(None, 1)
+			who = line.split(None,1)
+			if who in ['asyncio_server']:	# don't log these
+				continue
+
 			logitem = LogItem(lvl, line)
 			if lvl in ['INFO', 'WARNING', 'ERROR', 'CRITICAL', 'ALERT', 'EMERGENCY']:
 				_WEBAPP.send_console_alert(lvl, line)				
