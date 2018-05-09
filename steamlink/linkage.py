@@ -702,7 +702,7 @@ class Item(BaseItem):
 		self._table = self.__class__._table
 		self._itype = self.__class__.__name__
 		if self._key is None:
-			if logging.DBG >= 0: logger.debug("Item created: %s", self)
+			if logging.DBG >= 1: logger.debug("Item created for load()")
 		else: 		# skip key-less items, they will come in via load()
 			self._table.register(self)
 			if logging.DBG >= 0: logger.debug("Item created and loaded: %s", self)

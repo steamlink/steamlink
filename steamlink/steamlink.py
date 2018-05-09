@@ -266,11 +266,12 @@ class Steam(Item):
 				return
 			else:
 				logger.debug("mqtt test successfull")
-			_MQTT.publish("store", "Store Online", sub="control")
+			response = "selfcheck '%s'" % self.identity
+			_MQTT.publish("store", response, sub="control")
 			self._mqtt_test_succeeded = True
 		elif cmd['cmd'] == 'ping':
-			response = "pong '%s'" % steam.identity
-			_MQTT.publish("store", pong, sub="control")
+			response = "pong '%s'" % self.identity
+			_MQTT.publish("store", response, sub="control")
 		elif cmd['cmd'] == 'debug':
 			dbglvl = cmd.get('dbglvl', None)
 			slvl = cmd.get('level', None)
@@ -297,10 +298,9 @@ class Steam(Item):
 			logger.warning("topic did not match public control topic: %s %s", topic, self._public_topic_control)
 			return
 		nodename = match.group(1)
-
 		node = Node._table.find_one(nodename, keyfield = "name")
 		if node is None:
-			logger.warning("public control: no such node node %s: %s", nodename, msg.payload)
+			logger.warning("public control: no such node %s: %s", nodename, msg.payload)
 			return
 		try:
 			jmsg = json.loads(msg.payload.decode('utf-8'))
