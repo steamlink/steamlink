@@ -5,6 +5,7 @@
 import struct
 from asyncio import Queue
 from queue import Empty, Full
+import socket
 import json
 import time
 import asyncio
@@ -17,6 +18,11 @@ import logging
 logger = logging.getLogger(__name__)
 
 from .util import phex
+
+from .const import (
+    PROJECT_PACKAGE_NAME,
+    __version__,
+}
 
 from .linkage import (
 	Item,
@@ -206,6 +212,8 @@ class Steam(Item):
 			self.steam_id = int(conf['id'])
 		super().__init__(self.steam_id)
 		self.cpubusy = 0
+		self.my_ip_address = socket.gethostbyname(socket.gethostname())
+		self.identity = "%s %s (%s)" % (PROJECT_PACKAGE_NAME, __version__, self.my_ip_address)
 
 		_MQTT.set_msg_callback(self.on_data_msg)
 		_MQTT.set_public_control_callback(self.on_public_control_msg)
@@ -214,7 +222,7 @@ class Steam(Item):
 
 		self._mqtt_test_succeeded  = False
 
-		mq_cmd_msg = { "cmd": "boot" }
+		mq_cmd_msg = { "cmd": "selfcheck" }
 		_MQTT.publish("store", json.dumps(mq_cmd_msg), sub="data")
 
 
@@ -249,14 +257,20 @@ class Steam(Item):
 		if type(cmd) != type({}):
 			logger.warning("unreadable cmd %s", cmd)
 			return
-		if cmd['cmd'] == 'boot':
+		if cmd['cmd'] == 'selfcheck':
 			if self._mqtt_test_succeeded:
 				logger.warning("there is a second system")
+				# send ping to find out where he is
+				mq_cmd_msg = { "cmd": "ping" }
+				_MQTT.publish("store", json.dumps(mq_cmd_msg), sub="data")
 				return
 			else:
 				logger.debug("mqtt test successfull")
 			_MQTT.publish("store", "Store Online", sub="control")
 			self._mqtt_test_succeeded = True
+		elif cmd['cmd'] == 'ping':
+			response = "pong '%s'" % steam.identity
+			_MQTT.publish("store", pong, sub="control")
 		elif cmd['cmd'] == 'debug':
 			dbglvl = cmd.get('dbglvl', None)
 			slvl = cmd.get('level', None)
@@ -288,7 +302,15 @@ class Steam(Item):
 		if node is None:
 			logger.warning("public control: no such node node %s: %s", nodename, msg.payload)
 			return
-		node.send_data_to_node(msg.payload+b'\0')
+		try:
+			jmsg = json.loads(msg.payload.decode('utf-8'))
+			to_send = jmsg['payload'].encode()
+		except Exception as e:
+			to_send = msg.payload
+			raise
+		ret = node.send_data_to_node(to_send+b'\0') 	# XXX should not need the b'\0' but nodes crash w/o
+		if ret is not "OK":
+			logger.warning("packet %s was not send to %s: %s", to_send, node.name, ret)
 
 
 	def on_data_msg(self, client, userdata, msg):
@@ -619,15 +641,18 @@ class Node(Item):
 	def send_data_to_node(self, data): 
 		if not self.is_state_up():
 			self.packets_dropped += 1
-			return SL_OP.NC
+			return "NodeDown"
+
+		if self.is_waiting_for_AS():
+			self.packets_dropped += 1
+			return "AckWait"
 
 		bpayload = data
 		logger.debug("send_data_to_node:: len %s, pkt %s", len(bpayload), bpayload)
 		sl_pkt = Packet(slnode=self, sl_op=SL_OP.DN, payload=bpayload)
 		self.publish_pkt(sl_pkt)
-		self.set_wait_for_AS(sl_pkt)
-		sl_pkt.insert()
-		return
+		self.set_wait_for_AS(sl_pkt, do_insert=True)
+		return "OK"
 
 
 	def send_set_config(self): 
@@ -789,12 +814,13 @@ class Node(Item):
 		self.mesh.update(True)
 
 
-	def set_wait_for_AS(self, pkt):
+	def set_wait_for_AS(self, pkt, do_insert=False):
 		if pkt == None:
 			if self.wait_for_AS['pkt'] is None:
 				logger.info("wait_for_AS: redundant AS from %s", self)
 			else:
 				logger.debug("wait_for_AS on %s done", self)
+				self.wait_for_AS['pkt'].insert()
 			self.wait_for_AS['wait'] = 0
 		else:
 			self.wait_for_AS['wait'] = time.time() + SL_ACK_WAIT
@@ -818,6 +844,9 @@ class Node(Item):
 		if not self.is_state_up():		#XXX not offline or sleeping
 			if self.last_packet_tx_ts != 0 and self.last_packet_tx_ts + MAXSILENCE < n_now:
 				self.send_get_status()
+
+	def is_waiting_for_AS(self):
+		return self.wait_for_AS['wait'] != 0
 
 
 	def get_response(self, timeout):
