@@ -21,8 +21,8 @@ from .util import phex
 
 from .const import (
     PROJECT_PACKAGE_NAME,
-    __version__,
-}
+    __version__
+)
 
 from .linkage import (
 	Item,
