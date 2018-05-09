@@ -316,6 +316,8 @@ class WebApp(object):
 					logger.warning("ghwh no key")
 				else:
 					signature = request.headers.get('X-Hub-Signature')
+					if signature[:5] == "sha1=":
+						signature = signature[5:]
 					logger.info("sig %s %s %s %s", type(key), key, type(signature), signature)
 					if type(key) != type(b''):
 						key = key.encode()
@@ -323,7 +325,7 @@ class WebApp(object):
 						request_data = request_data.encode()
 					mac = hmac.new(key, msg=request_data, digestmod=hashlib.sha1)
 					if not hmac.compare_digest(mac.hexdigest(), signature):
-						logger.warning("ghwh auth failed")
+						logger.warning("ghwh auth failed mac %s sig %s", mac.hexdigest(), signature)
 						return web.Response(text='auth fail', status=403)
 
 					ci_cmd = self.conf.get("repo_ci_command", None)
