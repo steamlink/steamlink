@@ -693,7 +693,7 @@ class Node(Item):
 			return True
 		if pkt_num == last_packet_num:		# duplicate
 			logger.info("%s: received duplicate pkt %s", self, sl_pkt)
-			return  sl_pkt.sl_op ==  SL_OP.ON	 # N.B.!
+#			return  sl_pkt.sl_op ==  SL_OP.ON	 # N.B.!
 			return False
 		if pkt_num == 1:					# remote restarted
 			logger.error("%s: restarted with pkt 1", self)
@@ -719,7 +719,6 @@ class Node(Item):
 
 	def post_data(self, sl_pkt):
 		""" handle incoming messages on the ../data topic """
-#		self.log_pkt(sl_pkt)
 		if sl_pkt.is_data():
 			if not self.check_pkt_num(sl_pkt):	# duplicate packet
 				if sl_pkt.sl_op in [SL_OP.DS]:
