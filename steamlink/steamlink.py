@@ -472,6 +472,7 @@ class Node(Item):
 	}
 	keyfield = 'slid'
 	UPSTATES = ["ONLINE", "OK", "UP", "TRANSMITTING"]
+	OPS_need_ack = [SL_OP.DS, SL_OP.ON]
 
 	""" a node in a mesh set """
 	def __init__(self, slid=None, nodecfg = None):
@@ -563,7 +564,7 @@ class Node(Item):
 			r['packets_dropped'] = self.packets_dropped
 			r['packets_missed'] = self.packets_missed
 			r['packets_duplicate'] = self.packets_duplicate
-			r['wait_for_AS'] = "%s %s" % (self.wait_for_AS('waituntil'), self.wait_for_AS('pkt'))
+			r['wait_for_AS'] = "%s %s" % (self.wait_for_AS['waituntil'], self.wait_for_AS['pkt'])
 		return r
 
 
@@ -607,7 +608,7 @@ class Node(Item):
 			logger.debug("resending pkt: %s", sl_pkt)
 			self.packets_resent += 1
 		else:
-			if self.wait_for_AS['waituntil'] != 0 and sl_pkt.sl_op != SL_OP.AN:
+			if self.is_waiting_for_AS() and sl_pkt.sl_op != SL_OP.AN:
 				logger.error("attempt to send pkt while waiting for AS, ignored: %s", sl_pkt)
 				self.packets_dropped += 1
 				return
@@ -718,9 +719,9 @@ class Node(Item):
 		""" handle incoming messages on the ../data topic """
 		if sl_pkt.is_data():
 			if self.check_duplicate_pkt_num(sl_pkt):	# duplicate packet
-				if sl_pkt.sl_op in [SL_OP.DS]:
-					logger.debug("post_data send AN on duplicate DS")
-					self.send_ack_to_node(1)
+				if sl_pkt.sl_op in Node.OPS_need_ack:
+					logger.debug("post_data send AN on duplicate %s", SL_OP.code(sl_pkt.sl_op))
+					self.send_ack_to_node(0)
 				self.packets_duplicate += 1
 				self.packets_dropped += 1
 				return	# duplicate
@@ -810,7 +811,7 @@ class Node(Item):
 
 
 	def clear_wait_for_AS(self):
-		self.wait_for_AS['wait'] = 0
+		self.wait_for_AS['waituntil'] = 0
 		self.wait_for_AS['pkt'] = None
 		self.wait_for_AS['count'] = 0
 		self.wait_for_AS['do_insert'] = False
@@ -839,15 +840,15 @@ class Node(Item):
 
 	def periodic_check_for_AS(self):
 		if self.is_waiting_for_AS():
-			n_now = int(time.time())
-			rwait = self.wait_for_AS['waituntil'] - n_now
+			rwait = self.wait_for_AS['waituntil'] - int(time.time())
 			logger.debug("periodic_check: %s wait %s sec for AS ", self.name, rwait)
 			if rwait <= 0:
 				self.wait_for_AS['count'] += 1
 				if self.wait_for_AS['count'] > MAX_RESEND_COUNT:
-					logger.info("resend limit reached for %s, giving up", pkt)
+					logger.info("resend limit reached for %s, giving up", self.wait_for_AS['pkt'])
 					self.clear_wait_for_AS()
 				else:
+					self.wait_for_AS['waituntil'] = int(time.time()) + SL_ACK_WAIT
 					self.publish_pkt(self.wait_for_AS['pkt'], resend=True)
 
 
@@ -856,7 +857,7 @@ class Node(Item):
 		if self.is_overdue() and self.is_state_up():
 			self.set_state("OVERDUE")
 		if not self.is_state_up():		#XXX not offline or sleeping
-			if self.last_packet_tx_ts != 0 and self.last_packet_tx_ts + MAXSILENCE < n_now:
+			if self.last_packet_tx_ts != 0 and self.last_packet_tx_ts + MAXSILENCE < time.time():
 				self.send_get_status()
 
 	def get_response(self, timeout):
