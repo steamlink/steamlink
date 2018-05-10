@@ -839,7 +839,8 @@ class Node(Item):
 				self.wait_for_AS['count'] += 1
 				if self.wait_for_AS['count'] > MAX_RESEND_COUNT:
 					logger.info("resend limit reached for %s, giving up", pkt)
-					self.wait_for_AS['count'] = 0
+					self.wait_for_AS['wait'] = 0
+					self.wait_for_AS['pkt'] = None
 		if self.is_overdue() and self.is_state_up():
 			self.set_state("OVERDUE")
 		if not self.is_state_up():		#XXX not offline or sleeping
