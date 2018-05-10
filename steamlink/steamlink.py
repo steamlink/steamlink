@@ -694,7 +694,7 @@ class Node(Item):
 		if pkt_num == last_packet_num:		# duplicate
 			logger.info("%s: received duplicate pkt %s", self, sl_pkt)
 			return  sl_pkt.sl_op ==  SL_OP.ON	 # N.B.!
-#			return False
+			return False
 		if pkt_num == 1:					# remote restarted
 			logger.error("%s: restarted with pkt 1", self)
 			return True
