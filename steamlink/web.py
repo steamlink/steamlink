@@ -299,21 +299,21 @@ class WebApp(object):
 			payload = json.loads(request_data)
 
 			if request.headers.get('X-GitHub-Event') == "ping":
-				logger.warning("ghwh ping data %s", payload)
+				logger.debug("ghwh ping data %s", payload)
 				return web.json_response({'msg': 'Hi!'})
 			if request.headers.get('X-GitHub-Event') != "push":
 				return web.json_response({'msg': "wrong event type"})
 
 			full_name = "%s/%s" % (self.conf['repo_owner'], self.conf['repo_name'])
 			if full_name != payload['repository']['full_name']:
-				logger.warning("ghwh push repo not ours %s", payload['repository']['full_name'])
+				logger.debug("ghwh push repo not ours %s", payload['repository']['full_name'])
 			else:
-				logger.warning("ghwh push for repo %s", full_name)
+				logger.debug("ghwh push for repo %s", full_name)
 
 				# Check if POST request signature is valid
 				key = self.conf.get('repo_key', None)
 				if key is None:
-					logger.warning("ghwh no key")
+					logger.debug("ghwh no key")
 				else:
 					signature = request.headers.get('X-Hub-Signature')
 					if signature[:5] == "sha1=":
