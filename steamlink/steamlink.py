@@ -379,7 +379,7 @@ class Steam(Item):
 
 	def heartbeat(self):
 		for node in Node._table.find(1, 'mesh_id'):
-			node.check_for_AS()
+			node.periodic_check()
 
 	def save(self, withvirtual=False):
 		r = {}
@@ -510,7 +510,12 @@ class Node(Item):
 		self.last_packet_num = 0
 		self.via = []		# not initiatized
 		self.tr = {}		# dict of sending nodes, each holds a list of (pktno, rssi)
-		self.wait_for_AS = { 'wait': 0, 'pkt': None, 'count': 0}	# deadline for AS ack
+		self.wait_for_AS = {# deadline for AS ack
+			'waituntil': 0,
+			'pkt': None,
+			'count': 0,
+			'do_insert': False
+		}	
 #		self.packet_log = TimeLog(MAX_NODE_LOG_LEN)
 
 		super().__init__(slid)
@@ -558,7 +563,7 @@ class Node(Item):
 			r['packets_dropped'] = self.packets_dropped
 			r['packets_missed'] = self.packets_missed
 			r['packets_duplicate'] = self.packets_duplicate
-			r['wait_for_AS'] = "%s %s" % (self.wait_for_AS[0], seld.wait_for_AS[1])
+			r['wait_for_AS'] = "%s %s" % (self.wait_for_AS('waituntil'), self.wait_for_AS('pkt'))
 		return r
 
 
@@ -602,7 +607,7 @@ class Node(Item):
 			logger.debug("resending pkt: %s", sl_pkt)
 			self.packets_resent += 1
 		else:
-			if self.wait_for_AS['wait'] != 0 and sl_pkt.sl_op != SL_OP.AN:
+			if self.wait_for_AS['waituntil'] != 0 and sl_pkt.sl_op != SL_OP.AN:
 				logger.error("attempt to send pkt while waiting for AS, ignored: %s", sl_pkt)
 				self.packets_dropped += 1
 				return
@@ -677,32 +682,24 @@ class Node(Item):
 		return rc
 
 
-#	def log_pkt(self, sl_pkt):
-#		self.packet_log.add(sl_pkt)
-
-
-	def check_pkt_num(self, sl_pkt):
+	def check_duplicate_pkt_num(self, sl_pkt):
 		pkt_num = sl_pkt.pkt_num
 		last_packet_num = self.last_packet_num
 		self.last_packet_num = pkt_num
 		if last_packet_num == 0:			# we did not see packets from this node before
-			return True
+			return False
 		if pkt_num == 0xFFFF:				# wrap
 			self.last_packet_num = 0		# remote will skip 0
 		if pkt_num == last_packet_num + 1:	# proper sequence
-			return True
+			return False
 		if pkt_num == last_packet_num:		# duplicate
 			logger.info("%s: received duplicate pkt %s", self, sl_pkt)
-#			return  sl_pkt.sl_op ==  SL_OP.ON	 # N.B.!
-			return False
-		if pkt_num == 1:					# remote restarted
-			logger.error("%s: restarted with pkt 1", self)
 			return True
-
-		missed = pkt_num-(last_packet_num+1)
-		self.packets_missed += missed
-		logger.error("%s: %s pkts missed before %s", self, missed, sl_pkt)
-		return True	#XXX
+		if pkt_num != 1:					# remote restarted
+			missed = pkt_num-(last_packet_num+1)
+			self.packets_missed += missed
+			logger.error("%s: %s pkts missed before %s", self, missed, sl_pkt)
+		return False
 
 
 	def store_data(self, sl_pkt):
@@ -720,7 +717,7 @@ class Node(Item):
 	def post_data(self, sl_pkt):
 		""" handle incoming messages on the ../data topic """
 		if sl_pkt.is_data():
-			if not self.check_pkt_num(sl_pkt):	# duplicate packet
+			if self.check_duplicate_pkt_num(sl_pkt):	# duplicate packet
 				if sl_pkt.sl_op in [SL_OP.DS]:
 					logger.debug("post_data send AN on duplicate DS")
 					self.send_ack_to_node(1)
@@ -762,7 +759,7 @@ class Node(Item):
 		sl_op = sl_pkt.sl_op
 
 		if sl_op == SL_OP.ON: # autocreate did set nodecfg
-			self.set_wait_for_AS(None)		# give up 
+			self.clear_wait_for_AS()		# give up 
 			logger.debug('post_data: slid %d ONLINE', int(self.slid))
 			self.nodecfg = SL_NodeCfgStruct(pkt=sl_pkt.bpayload)
 			self.send_set_config()
@@ -812,43 +809,55 @@ class Node(Item):
 		self.mesh.update(True)
 
 
+	def clear_wait_for_AS(self):
+		self.wait_for_AS['wait'] = 0
+		self.wait_for_AS['pkt'] = None
+		self.wait_for_AS['count'] = 0
+		self.wait_for_AS['do_insert'] = False
+
+
 	def set_wait_for_AS(self, pkt, do_insert=False):
-		if pkt == None:
+		if pkt == None:				# AS arrived
 			if self.wait_for_AS['pkt'] is None:
 				logger.info("wait_for_AS: redundant AS from %s", self)
 			else:
-				logger.debug("wait_for_AS on %s done", self)
-				self.wait_for_AS['pkt'].insert()
-			self.wait_for_AS['wait'] = 0
+				logger.debug("wait_for_AS on %s got AS", self)
+				if self.wait_for_AS['do_insert']:
+					self.wait_for_AS['pkt'].insert()
+			self.clear_wait_for_AS()
 		else:
-			self.wait_for_AS['wait'] = time.time() + SL_ACK_WAIT
+			self.wait_for_AS['waituntil'] = int(time.time()) + SL_ACK_WAIT
+			self.wait_for_AS['pkt'] = pkt
+			self.wait_for_AS['count'] = 0
+			self.wait_for_AS['do_insert'] = do_insert
 			logger.debug("wait_for_AS on %s for %s sec", self, SL_ACK_WAIT)
-		self.wait_for_AS['pkt'] = pkt
 
 
-	def check_for_AS(self):
-		n_now = time.time()
-		if self.wait_for_AS['wait'] != 0:
-			rwait = int(self.wait_for_AS['wait'] - n_now)
-			logger.debug("check_for_AS: %s wait %s sec for AS ", self.name, rwait)
+	def is_waiting_for_AS(self):
+		return self.wait_for_AS['waituntil'] != 0
+
+
+	def periodic_check_for_AS(self):
+		if self.is_waiting_for_AS():
+			n_now = int(time.time())
+			rwait = self.wait_for_AS['waituntil'] - n_now
+			logger.debug("periodic_check: %s wait %s sec for AS ", self.name, rwait)
 			if rwait <= 0:
-				pkt = self.wait_for_AS['pkt']
-				self.publish_pkt(pkt, resend=True)
-				self.set_wait_for_AS(pkt)
 				self.wait_for_AS['count'] += 1
 				if self.wait_for_AS['count'] > MAX_RESEND_COUNT:
 					logger.info("resend limit reached for %s, giving up", pkt)
-					self.wait_for_AS['wait'] = 0
-					self.wait_for_AS['pkt'] = None
+					self.clear_wait_for_AS()
+				else:
+					self.publish_pkt(self.wait_for_AS['pkt'], resend=True)
+
+
+	def periodic_check(self):
+		self.periodic_check_for_AS()
 		if self.is_overdue() and self.is_state_up():
 			self.set_state("OVERDUE")
 		if not self.is_state_up():		#XXX not offline or sleeping
 			if self.last_packet_tx_ts != 0 and self.last_packet_tx_ts + MAXSILENCE < n_now:
 				self.send_get_status()
-
-	def is_waiting_for_AS(self):
-		return self.wait_for_AS['wait'] != 0
-
 
 	def get_response(self, timeout):
 		try:
