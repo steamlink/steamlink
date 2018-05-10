@@ -249,7 +249,7 @@ def steamlink_main(cl_args, conf):
 
 	ll = logging.getLogger('AsyncServer')
 	# use different logging level socketio/engineio modules
-	ll.setLevel(logging.WARN)
+#	ll.setLevel(logging.WARN)
 	logger.debug("startup: create socketio")
 	sio = socketio.AsyncServer(
 		logger = ll,
