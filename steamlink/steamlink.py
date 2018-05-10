@@ -305,9 +305,9 @@ class Steam(Item):
 			jmsg = json.loads(msg.payload.decode('utf-8'))
 			to_send = jmsg['payload'].encode()
 		except Exception as e:
-			to_send = msg.payload
-			raise
-		ret = node.send_data_to_node(to_send+b'\0') 	# XXX should not need the b'\0' but nodes crash w/o
+			to_send = str(msg.payload.decode('utf-8'))
+#			raise
+		ret = node.send_data_to_node(to_send+'\0') 	# XXX should not need the b'\0' but nodes crash w/o
 		if ret is not "OK":
 			logger.warning("packet %s was not send to %s: %s", to_send, node.name, ret)
 
