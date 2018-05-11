@@ -429,7 +429,9 @@ class Table:
 			if 'webupd' in logging.DBGK: logger.debug("check_csearch (Table) %s force=%s", cs, force)
 			self.csearches[cs].check_csearch(op, item, force)
 		 
-	
+#
+# DbTable
+#
 class DbTable(Table):
 	""" database based Table """
 
@@ -490,8 +492,7 @@ class DbTable(Table):
 			if self.cache.has(r[self.keyfield]):
 				rn = self.cache[r[self.keyfield]]
 			else:
-				rn = self.itemclass()
-				rn.load(r)
+				rn = self.itemclass(_load=r)
 				self.cache[r[self.keyfield]] = rn
 			ret.append(rn)
 		return ret
@@ -541,7 +542,9 @@ class DbTable(Table):
 		return "Dbindex(%s)%s" % (self.itemclass.__name__, len(self.dbtable))
 
 
-
+#
+# DictTable
+#
 class DictTable(Table):
 	""" dict based Table """
 
@@ -677,7 +680,7 @@ class DictTable(Table):
 #
 class BaseItem:
 	def __init__(self, key):
-		self._key = key
+		self._key = key		# convenient shortcut for  self.__dict__[self._table.keyfield]
 
 
 	def __del__(self):
@@ -691,22 +694,28 @@ class BaseItem:
 			return "SomeBaseItem"
 
 
-
 #
 # Item
 #
 class Item(BaseItem):
 	_table = None
 
-	def __init__(self, key):
-		super().__init__(key)
+	# three ways Items are instanciated:
+	# 1. Normal:   _load = None and key != None
+	# 2. Load:	   _load != None 
+	# 3. Empty:    _load = None and key = None
+	def __init__(self, key, _load=None):
+		super().__init__(key, _load)
 		self._table = self.__class__._table
 		self._itype = self.__class__.__name__
-		if self._key is None:
-			if logging.DBG >= 1: logger.debug("Item created for load()")
-		else: 		# skip key-less items, they will come in via load()
+		if _load is not None:
+			self.load(_load)
+			if logging.DBG >= 1: logger.debug("Item loaded")
+		elif key is not None: 		# skip key-less items, they will come in via load()
 			self._table.register(self)
 			if logging.DBG >= 0: logger.debug("Item created and loaded: %s", self)
+		else:
+			if logging.DBG >= 0: logger.debug("Item created null: %s", self)
 
 
 	def load(self, data):	#N.B.

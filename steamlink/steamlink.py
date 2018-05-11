@@ -196,16 +196,6 @@ SL_AS_CODE = {0: 'Success', 1: 'Supressed duplicate pkt', 2: 'Unexpected pkt, dr
 # Steam
 #
 class Steam(Item):
-	console_fields = {
- 	 "Name": "self.name",
- 	 "Meshes": "1",
-	 "Time": "time.asctime()",
-	 "Load": '"%3.1f%%" % self.cpubusy',
-	 "Mesh records": "len(Mesh._table)",
-	 "Node records": "len(Node._table)",
-	 "Packet records": "len(Packet._table)",
-	}
-
 	def __init__(self, conf = None):
 		self.steam_id = 0
 		self.autocreate = False
@@ -229,17 +219,6 @@ class Steam(Item):
 		mq_cmd_msg = { "cmd": "selfcheck" }
 		_MQTT.publish("store", json.dumps(mq_cmd_msg), sub="data")
 
-
-	def gen_console_data(self):
-		data = {}
-		for label in Steam.console_fields:
-			source = Steam.console_fields[label]
-			try:
-				v = eval(source)
-			except Exception as e:
-				v = "*%s*" % e
-			data[label] = v
-		return data
 
 	def set_loglevel(self, loglevel):
 		from .linkage import logger as linkage_logger 
@@ -413,31 +392,27 @@ class Steam(Item):
 		for node in Node._table.find(1, 'mesh_id'):
 			node.periodic_check()
 
+
 	def save(self, withvirtual=False):
 		r = {}
 		r['steam_id'] = self.steam_id
 		r['name'] = self.name
 		r['desc'] = self.desc
 		if withvirtual:
-			r["Meshes"] = len(Mesh._table)
-			r["Time"] = time.asctime()
-			r["Load"] = "%3.1f%%" % self.cpubusy
+			r['Name'] = self.name
+			r['Description'] = self.desc
+			r['Meshes'] = len(Mesh._table)
+			r['Time'] = time.asctime()
+			r['Load'] = "%3.1f%%" % self.cpubusy
+			r['Mesh records'] = len(Mesh._table)
+			r['Node records'] = len(Node._table)
+			r['Packet records'] = len(Packet._table)
 		return r
-
 
 #
 # Mesh
 #
 class Mesh(Item):
-	console_fields = {
-	 "mesh_id": "self.mesh_id",
-	 "Name": "self.name",
-	 "Description": "self.desc",
-	 "Total Nodes": "len(Node._table)",
-	 "Active Nodes": "len(Node._table)",
-	 "Packets sent": "self.packets_sent",
-	 "Packets received": "self.packets_received",
-	 }
 	keyfield = 'mesh_id'
 
 	def __init__(self, mesh_id=None):
@@ -455,18 +430,6 @@ class Mesh(Item):
 			logger.info("Mesh created: %s", self)
 
 
-	def gen_console_data(self):
-		data = {}
-		for label in Mesh.console_fields:
-			source = Mesh.console_fields[label]
-			try:
-				v = eval(source)
-			except Exception as e:
-				v = "*%s*" % e
-			data[label] = v
-		return data
-
-
 	def save(self, withvirtual=False):
 		r = {}
 		r['mesh_id'] = self.mesh_id
@@ -474,6 +437,8 @@ class Mesh(Item):
 		r['name'] = self.name
 		r['desc'] = self.desc
 		if withvirtual:
+			r['Name'] = self.name
+			r['Description'] = self.desc
 			r["Total Nodes"] = len(Node._table)
 			r["Active Nodes"] = len(Node._table)
 			r["Packets sent"] = self.packets_sent
@@ -484,24 +449,6 @@ class Mesh(Item):
 # Node
 #
 class Node(Item):
-	console_fields = {
- 	 "Name": "self.nodecfg.name",
-	 "Description": "self.nodecfg.description",
-	 "State": "self.state",
-	 "Last Pkt received": 'time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(int(self.last_packet_rx_ts)))',
-	 "Last Pkt sent": 'time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(int(self.last_packet_tx_ts)))',
-	 "Last Node restart": 'time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(int(self.last_node_restart_ts)))',
-	 "Packets sent": "self.packets_sent",
-	 "Packets received": "self.packets_received",
-	 "Packets resent": "self.packets_resent",
-	 "Packets dropped": "self.packets_dropped",
-	 "Packets missed": "self.packets_missed",
-	 "Packets duplicate": "self.packets_duplicate",
-	 "Packets cached": "Packet._table.cache.status()",
-	 "gps_lat": "self.nodecfg.gps_lat",
-	 "gps_lon": "self.nodecfg.gps_lon",
-	 "slid": "self.slid",
-	}
 	keyfield = 'slid'
 	UPSTATES = ["ONLINE", "OK", "UP", "TRANSMITTING"]
 	OPS_need_ack = [SL_OP.DS, SL_OP.ON]
@@ -588,17 +535,21 @@ class Node(Item):
 		r['via'] = self.via
 		r['nodecfg'] = self.nodecfg.save()
 		if withvirtual:
-			r['state'] = self.state
+			r['State'] = self.state
+			r['Name'] = self.nodecfg.name
+			r['Description'] = self.nodecfg.description
 			r['Last Pkt received'] = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(int(self.last_packet_rx_ts)))
 			r['Last Pkt sent'] = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(int(self.last_packet_tx_ts)))
 			r['Last Node restart'] = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(int(self.last_node_restart_ts)))
-			r['packets_sent'] = self.packets_sent
-			r['packets_received'] = self.packets_received
-			r['packets_resent'] = self.packets_resent
-			r['packets_dropped'] = self.packets_dropped
-			r['packets_missed'] = self.packets_missed
-			r['packets_duplicate'] = self.packets_duplicate
+			r['Packets sent'] = self.packets_sent
+			r['Packets received'] = self.packets_received
+			r['Packets resent'] = self.packets_resent
+			r['Packets dropped'] = self.packets_dropped
+			r['Packets missed'] = self.packets_missed
+			r['Packets duplicate'] = self.packets_duplicate
 			r['wait_for_AS'] = "%s %s" % (self.wait_for_AS['waituntil'], self.wait_for_AS['pkt'])
+			r['gps_lat'] = self.nodecfg.gps_lat
+			r['gps_lon'] = self.nodecfg.gps_lon
 		return r
 
 
@@ -909,32 +860,11 @@ class Node(Item):
 		return data
 
 
-	def gen_console_data(self):
-		data = {}
-		for label in Node.console_fields:
-			source = Node.console_fields[label]
-			try:
-				v = eval(source)
-			except Exception as e:
-				v = "*%s*" % e
-			data[label] = v
-		return data
-
 
 #
 # Packet
 #
 class BasePacket():
-	console_fields = {
- 	 "op": "SL_OP.code(self.sl_op)",
-	 "rssi": "self.rssi",
-	 "via": "self.via",
-	 "payload": "self.payload",
-	 "ts": "self.ts",
-	 "Time": "time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(self.ts))",
-	}
-
-
 	keyfield = 'ts'
 	data_header_fmt = '<BLHB%is'		# op, slid, pkt_num, rssi, payload"
 	control_header_fmt = '<BLH%is'		# op, slid, pkt_num, payload"
@@ -1043,51 +973,12 @@ class BasePacket():
 
 		return True
 
-	def load(self, data):
-		super().load(data)
-		self.sl_op = SL_OP.val(self.sl_op)	# xlate from 2-letter-code to val
-
-
-	def save(self, withvirtual=False):
-		r = {}
-		r['sl_op'] = SL_OP.code(self.sl_op)
-		r['pkt_num'] = self.pkt_num
-		r['slid'] = self.slid
-		r[Packet.keyfield] = self.ts
-		r['rssi'] = self.rssi
-		r['via'] = self.via
-		if type(self.payload) == type(b''):
-			r['payload'] = repr(self.payload)
-		else:
-			r['payload'] = self.payload
-#		r['bpayload'] = repr(self.bpayload)	#??
-		if withvirtual:
-			r["Time"] = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(self.ts))
-			r["op"] = SL_OP.code(self.sl_op)
-		return r
-
-
-	def post_data(self):
-		self.node.post_data(self)
-
-
-	def gen_console_data(self):
-		data = {}
-		for label in Packet.console_fields:
-			source = Packet.console_fields[label]
-			try:
-				v = eval(source)
-			except Exception as e:
-				v = "*%s*" % e
-			data[label] = v
-		if logging.DBG > 1: logger.debug("pkt console data: %s", data)
-		return data
 
 #
 # Packet
 #
 class Packet(BasePacket, Item):
-	def __init__(self, slnode = None, sl_op = None, rssi = 0, payload = None, pkt = None):
+	def __init__(self, slnode = None, sl_op = None, rssi = 0, payload = None, pkt = None, _load=None):
 
 #		super(BasePacket).__init__(None, sl_op, rssi, payload, pkt)
 		BasePacket.__init__(self, None, sl_op, rssi, payload, pkt)
@@ -1099,7 +990,7 @@ class Packet(BasePacket, Item):
 			self.construct(slnode)
 			self.set_node(slnode)
 #		super(Item).__init__(None)
-		(Item).__init__(self, None)
+		(Item).__init__(self, None, _load)
 
 
 	def construct(self, slnode):
@@ -1148,6 +1039,30 @@ class Packet(BasePacket, Item):
 			via = "direct" if self.via == [] else "via %s" % self.via
 
 		logger.debug("pkt: %s %s %s: %s", ULOn+ direction, via+BOff,  self, self.payload)
+
+
+	def load(self, data):
+		super().load(data)
+		self.sl_op = SL_OP.val(self.sl_op)	# xlate from 2-letter-code to val
+
+
+	def save(self, withvirtual=False):
+		r = {}
+		r['sl_op'] = SL_OP.code(self.sl_op)
+		r['pkt_num'] = self.pkt_num
+		r['slid'] = self.slid
+		r[Packet.keyfield] = self.ts
+		r['rssi'] = self.rssi
+		r['ts'] = self.ts
+		r['via'] = self.via
+		if type(self.payload) == type(b''):
+			r['payload'] = repr(self.payload)
+		else:
+			r['payload'] = self.payload
+		if withvirtual:
+			r["Time"] = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(self.ts))
+			r["op"] = SL_OP.code(self.sl_op)
+		return r
 
 
 #

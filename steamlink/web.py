@@ -233,6 +233,7 @@ class WebApp(object):
 						backlog=self.backlog)
 
 	def stop(self):
+		logger.info("%s done running", self.name)
 		self.zeroconf.unregister_service(self.zeroconf_info)
 		self.server.close()
 #		somethong int this list may take 20 seconds to shutdown gracefully
