@@ -820,7 +820,7 @@ class LogQ(Item):
 			try:
 				lvl, line = msg.split(None, 1)
 				who, what = line.split(None,1)
-				if who in ['asyncio_server','asyncio_socket','server']:	# don't log these
+				if who in ['asyncio_server','asyncio_socket','server','web_protocol']:	# don't log these
 					continue
 			except:
 				continue		# loose badly formated log lines
