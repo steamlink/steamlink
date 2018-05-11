@@ -1262,7 +1262,7 @@ def drop_csearch(webnamespace, sid, message):
 
 
 def run_cmd(webnamespace, sid, message):
-	res = steam_root.handle_web_cmd(sid, message)
+	res = steam_root.handle_web_command(sid, message)
 	return res
 
 
