@@ -347,7 +347,7 @@ class WebApp(object):
 					signature = request.headers.get('X-Hub-Signature')
 					if signature[:5] == "sha1=":
 						signature = signature[5:]
-					logger.info("sig %s %s %s %s", type(key), key, type(signature), signature)
+					logger.debug("sig %s %s %s %s", type(key), key, type(signature), signature)
 					if type(key) != type(b''):
 						key = key.encode()
 					if type(request_data) !=  type(b''):

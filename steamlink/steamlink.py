@@ -924,7 +924,7 @@ class Node(Item):
 #
 # Packet
 #
-class Packet(Item):
+class BasePacket():
 	console_fields = {
  	 "op": "SL_OP.code(self.sl_op)",
 	 "rssi": "self.rssi",
@@ -939,21 +939,20 @@ class Packet(Item):
 	data_header_fmt = '<BLHB%is'		# op, slid, pkt_num, rssi, payload"
 	control_header_fmt = '<BLH%is'		# op, slid, pkt_num, payload"
 
-	def __init__(self, slnode = None, sl_op = None, rssi = 0, payload = None, pkt = None):
+	def __init__(self, slid, sl_op = None, rssi = 0, payload = None, pkt = None):
 
+		self.slid = slid
 		self.rssi = 0
 		self.via = []
 		self.payload = None
 		self.ts = time.time()
 		self.nodecfg = None
-		if pkt is None and slnode is None:
+		if pkt is None and sl_op is None:
 			return	# needs a load() to complete
 		self.is_outgoing = pkt is None
 
 		if self.is_outgoing:				# construct pkt
-			self.construct(slnode, sl_op, rssi, payload)
-#			super().__init__(self.ts)
-			self.set_node(slnode)
+			self.baseconstruct(slid, sl_op, rssi, payload)
 		else:								# deconstruct pkt
 			if not self.deconstruct(pkt):
 				logger.error("deconstruct pkt to short: %s", len(pkt))
@@ -971,27 +970,6 @@ class Packet(Item):
 			return "Packet NXXX(??)??"
 
 
-	def set_node(self, node):
-		if logging.console:
-			ULOn = "[4m"
-			BOn = "[7m"
-			BOff = "[0m"
-		else:
-			ULOn = ""
-			BOn = ""
-			BOff = ""
-
-		self.node = node
-		if self.is_outgoing:
-			direction = "send"
-			via = "direct" if self.node.via == [] else "via %s" % self.node.via
-		else:
-			direction = "received"
-			via = "direct" if self.via == [] else "via %s" % self.via
-
-		logger.debug("pkt: %s %s %s: %s", ULOn+ direction, via+BOff,  self, self.payload)
-
-
 	def is_data(self, sl_op = None):
 		if sl_op is None:
 			sl_op = self.sl_op
@@ -1001,8 +979,8 @@ class Packet(Item):
 		return (sl_op & 0x1) == 1
 
 
-	def construct(self, slnode, sl_op, rssi, payload):
-		self.slid = int(slnode.slid)
+	def baseconstruct(self, slid, sl_op, rssi, payload):
+		self.slid = slid
 		self.sl_op = sl_op
 		self.rssi = rssi + 256
 		self.payload = payload
@@ -1014,30 +992,6 @@ class Packet(Item):
 				self.bpayload = self.payload.encode('utf8')
 		else:
 			self.bpayload = b''
-
-		if self.sl_op == SL_OP.ON:
-			self.nodecfg = SL_NodeCfgStruct(slid=self.slid)
-			logger.debug("Node config is %s", self.nodecfg)
-			self.bpayload = self.nodecfg.pack()
-
-		self.pkt_num = slnode.set_pkt_number(self)
-		if self.is_data():	# N.B. store never sends data
-			sfmt = Packet.data_header_fmt % len(self.bpayload)
-			logger.debug("pack: %s %s %s %s %s %s", self.sl_op, self.slid, self.pkt_num, self.rssi, self.bpayload)
-			self.pkt = struct.pack(sfmt,
-					self.sl_op, self.slid, self.pkt_num, 256 - self.rssi, self.bpayload)
-		else:
-			sfmt = Packet.control_header_fmt % len(self.bpayload)
-			self.pkt = struct.pack(sfmt,
-					self.sl_op, self.slid, self.pkt_num, self.bpayload)
-			if len(slnode.via) > 0:
-				for via in slnode.via[::-1]:
-					self.bpayload = self.pkt
-					sfmt = Packet.control_header_fmt % len(self.bpayload)
-					self.pkt = struct.pack(sfmt, SL_OP.BN, via, 0, self.bpayload)
-			if logging.DBG > 1:
-				for l in phex(self.pkt, 4):
-					logger.debug("pkt c:  %s", l)
 
 
 	def deconstruct(self, pkt):
@@ -1128,6 +1082,72 @@ class Packet(Item):
 			data[label] = v
 		if logging.DBG > 1: logger.debug("pkt console data: %s", data)
 		return data
+
+#
+# Packet
+#
+class Packet(BasePacket, Item):
+	def __init__(self, slnode = None, sl_op = None, rssi = 0, payload = None, pkt = None):
+
+#		super(BasePacket).__init__(None, sl_op, rssi, payload, pkt)
+		BasePacket.__init__(self, None, sl_op, rssi, payload, pkt)
+		if pkt is None and slnode is None:
+			return	# needs a load() to complete
+		self.is_outgoing = pkt is None
+
+		if self.is_outgoing:				# construct pkt
+			self.construct(slnode)
+			self.set_node(slnode)
+#		super(Item).__init__(None)
+		(Item).__init__(self, None)
+
+
+	def construct(self, slnode):
+		self.slid = int(slnode.slid)
+		if self.sl_op == SL_OP.ON:
+			self.nodecfg = SL_NodeCfgStruct(slid=self.slid)
+			logger.debug("Node config is %s", self.nodecfg)
+			self.bpayload = self.nodecfg.pack()
+
+		self.pkt_num = slnode.set_pkt_number(self)
+		if self.is_data():	# N.B. store never sends data
+			sfmt = Packet.data_header_fmt % len(self.bpayload)
+			logger.debug("pack: %s %s %s %s %s %s", self.sl_op, self.slid, self.pkt_num, self.rssi, self.bpayload)
+			self.pkt = struct.pack(sfmt,
+					self.sl_op, self.slid, self.pkt_num, 256 - self.rssi, self.bpayload)
+		else:
+			sfmt = Packet.control_header_fmt % len(self.bpayload)
+			self.pkt = struct.pack(sfmt,
+					self.sl_op, self.slid, self.pkt_num, self.bpayload)
+			if len(slnode.via) > 0:
+				for via in slnode.via[::-1]:
+					self.bpayload = self.pkt
+					sfmt = Packet.control_header_fmt % len(self.bpayload)
+					self.pkt = struct.pack(sfmt, SL_OP.BN, via, 0, self.bpayload)
+			if logging.DBG > 1:
+				for l in phex(self.pkt, 4):
+					logger.debug("pkt c:  %s", l)
+
+
+	def set_node(self, node):
+		if logging.console:
+			ULOn = "[4m"
+			BOn = "[7m"
+			BOff = "[0m"
+		else:
+			ULOn = ""
+			BOn = ""
+			BOff = ""
+
+		self.node = node
+		if self.is_outgoing:
+			direction = "send"
+			via = "direct" if self.node.via == [] else "via %s" % self.node.via
+		else:
+			direction = "received"
+			via = "direct" if self.via == [] else "via %s" % self.via
+
+		logger.debug("pkt: %s %s %s: %s", ULOn+ direction, via+BOff,  self, self.payload)
 
 
 #
