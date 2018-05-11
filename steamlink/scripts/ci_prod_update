@@ -1,0 +1,48 @@
+#!/bin/sh
+
+# 
+# upgrade a project to the latest github version
+
+PROJ="steamlink"
+GITDIR="${HOME}/git"
+VENVDIR="${HOME}/sl"
+LOG="${HOME}/log/${PROJ}-ci.log"
+PIDFILE="${HOME}/.steamlink/steamlink.pid"
+
+
+echo "$(date) start ci " >>${LOG}
+#$(dirname $0)/ci_check 
+#if [ $? -ne 0 ]; then
+#	echo "ci_check failed"
+#	exit
+#fi
+
+TS="$(date +%Y%m%d_%H%M%S)"
+VENVNEW="${VENVDIR}_$TS"
+
+
+cd "$GITDIR/${PROJ}" 2>>${LOG} || ( echo "cd to git working dir failed" >>${LOG} ; exit 3 )
+git pull >>${LOG} 2>&1 || ( echo "git pull failed" >>${LOG} ; exit 3 )
+
+python3 -m venv ${VENVNEW}  >>${LOG} 2>&1 || ( echo "make venv failed" >>${LOG} ; exit 3 )
+.  ${VENVNEW}/bin/activate || exit 3
+python3 setup.py install  >>${LOG} 2>&1 || ( echo "SteamLink install failed" >>${LOG} ; exit 3 )
+steamlink --version >>{LOG} 2>&1  || ( echo "SteamLink runcheck failed" >>${LOG} ; exit 3 )
+
+
+OLDLINK=$(readlink $VENVDIR 2>>$LOG) || ( echo "readlink failed" >>${LOG} ; exit 3 )
+
+rm ${VENVDIR} 2>>${LOG} 2>>$LOG
+
+ln -s ${VENVNEW} ${VENVDIR} 2>>{LOG}
+if [ $? -ne 0 ]; then
+	echo "rm  ${VENVDIR} or ln -s failed" >>$LOG
+	if [ ! -L ${VENVDIR} ]; then
+		ln -s ${OLDLINK} ${VENVDIR} 2>>$LOG
+	fi
+	exit 3
+fi
+
+kill $(cat ${PIDFILE})  || ( echo "SteamLink exit failed, code $?" >>${LOG} ; exit 3 )
+
+echo "$(date) done ci " >>${LOG}

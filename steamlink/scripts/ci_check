@@ -1,0 +1,33 @@
+#!/bin/sh
+
+REPO="git@github.com:steamlink/steamlink.git"
+DIR="$HOME/ci"
+PROJ="ci_steamlink"
+RND="$$"
+
+WRKDIR="$DIR/$PROJ/$RND"
+LOG="$WRKDIR/run.log"
+PWD=`pwd`
+
+if [ -d $WRKDIR ]; then
+	echo "$WRKDIR already exists"
+	exit 1
+fi
+mkdir -p $WRKDIR || exit 1
+cd $WRKDIR || exit 2
+
+echo "`date`: run start" >$LOG
+git clone "$REPO" "$PROJ"  >>$LOG 2>&1
+python3 -m venv venv >>$LOG 2>&1
+.  venv/bin/activate || exit 3
+cd $PROJ
+python3 setup.py install  >>$LOG 2>&1 || exit 4
+steamlink --help >>LOG 2>&1
+if [ $? != 0 ]; then
+	echo "run failed" >>$LOG
+	exit 1
+fi
+cd "$PWD"
+rm -rf "$WRKDIR"
+exit 0
+
