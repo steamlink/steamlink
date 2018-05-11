@@ -550,8 +550,14 @@ class Node(Item):
 			r['wait_for_AS'] = "%s %s" % (self.wait_for_AS['waituntil'], self.wait_for_AS['pkt'])
 			r['gps_lat'] = self.nodecfg.gps_lat
 			r['gps_lon'] = self.nodecfg.gps_lon
-			r['last_data_pktr'] = self.last_data_pkt.save(True)
-			r['last_controlpktr'] = self.last_control_pkt.save(True)
+			if r['last_data_pktr'] is None:
+				r['last_data_pktr'] = {}
+			else:
+				r['last_data_pktr'] = self.last_data_pkt.save(True)
+			if r['last_controlpktr'] is None:
+				r['last_controlpktr'] = {}
+			else:
+				r['last_controlpktr'] = self.last_control_pkt.save(True)
 		return r
 
 
