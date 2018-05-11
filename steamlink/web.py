@@ -130,7 +130,7 @@ class WebNamespace(socketio.AsyncNamespace):
 
 	# dict with: cmd, node_name, data
 	# cmds are: DN SC
-	async def on_cmd(self, sid, messages):
+	async def on_cmd(self, sid, message):
 		logger.debug("WebNamespace on_cmd --> %s", message)
 		try:
 			ret = run_cmd(self, sid, message)
