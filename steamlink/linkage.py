@@ -810,6 +810,7 @@ class LogQ(Item):
 	async def start(self):
 		LogItem._table = DbTable(LogItem, keyfield="ts", tablename="LogItem")
 		logger.info("%s logq start", self)
+		ansi_escape = re.compile(r'\x1B\[[0-?]*[ -/]*[@-~]')    # removes ansi escape sequence
 		while True:
 			msg = await self.q.get()
 			if msg is None:
@@ -824,6 +825,7 @@ class LogQ(Item):
 					continue
 			except:
 				continue		# loose badly formated log lines
+			line = ansi_escape.sub('', line)
 
 			logitem = LogItem(lvl, line)
 			if lvl in ['INFO', 'WARNING', 'ERROR', 'CRITICAL', 'ALERT', 'EMERGENCY']:
