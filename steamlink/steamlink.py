@@ -38,6 +38,7 @@ SL_ACK_WAIT = 3
 
 _MQTT = None
 _DB = None
+steam_root = None
 
 def Attach(mqtt, db):
 	global _MQTT, _DB
@@ -45,6 +46,10 @@ def Attach(mqtt, db):
 	_DB = db
 	logger.debug("steamlink: Attached apps '%s, %s'", _MQTT.name, _DB.name)
 
+
+def set_steam_root(root):
+	global steam_root
+	steam_root = root
 
 TODO = """
 - track routing table from received packets
@@ -251,6 +256,33 @@ class Steam(Item):
 		web_logger.setLevel(loglevel)
 
 
+	def handle_web_command(self, sid, message):
+		# dict with: cmd, slid, data
+		# cmds are: DN SC
+		if message['cmd'] in ["DN", "SC"]:
+			node = Node._table.find_one(messages["slid"])
+			if node is None:
+				return {"Success": False, "Error": "Unknown node" }
+			to_send = message['data']
+			if message['cmd'] == "DN":
+				ret = node.send_data_to_node(to_send+'\0') 	
+
+			elif message['cmd'] == "SC":
+				try:
+					nodecfg = json.loads(to_send)
+				except Exception as e:
+					return {"Success": False, "Error": "nodecfg problem:  %s" % e }
+				node.nodecfg = SL_NodeCfgStruct(node.slid, **nodecfg)
+				ret = node.send_set_config() 
+
+		if ret is not "OK":
+			return {"Success": False,
+					"Error": "packet %s was not send to %s: %s" % (to_send, node.name, ret) }
+		else:
+			return {"Success": False, "Error": "Unknown cmd" }
+		return {"Success": True }
+
+		
 
 	def handle_store_command(self, cmd):
 		if type(cmd) != type({}):
@@ -509,6 +541,8 @@ class Node(Item):
 		self.last_packet_rx_ts = 0
 		self.last_packet_tx_ts = 0
 		self.last_packet_num = 0
+		self.last_control_pkt = None
+		self.last_data_pkt = None
 		self.via = []		# not initiatized
 		self.tr = {}		# dict of sending nodes, each holds a list of (pktno, rssi)
 		self.wait_for_AS = {# deadline for AS ack
@@ -655,6 +689,7 @@ class Node(Item):
 		bpayload = data
 		logger.debug("send_data_to_node:: len %s, pkt %s", len(bpayload), bpayload)
 		sl_pkt = Packet(slnode=self, sl_op=SL_OP.DN, payload=bpayload)
+		self.last_control_pkt = sl_pkt
 		self.publish_pkt(sl_pkt)
 		self.set_wait_for_AS(sl_pkt, do_insert=True)
 		return "OK"
@@ -663,13 +698,18 @@ class Node(Item):
 	def send_set_config(self): 
 		if not self.is_state_up():
 			self.packets_dropped += 1
-			return SL_OP.NC
+			return "NodeDown"
+
+		if self.is_waiting_for_AS():
+			self.packets_dropped += 1
+			return "AckWait"
+
 		bpayload = self.nodecfg.pack()
 		logger.debug("send_set_config: len %s, pkt %s", len(bpayload), self.nodecfg)
 		sl_pkt = Packet(slnode=self, sl_op=SL_OP.SC, payload=bpayload)
 		self.publish_pkt(sl_pkt)
 		self.set_wait_for_AS(sl_pkt)
-		return
+		return "OK"
 
 
 	def send_testpacket(self, pkt):
@@ -769,6 +809,7 @@ class Node(Item):
 			logger.info('%s signed on', self)
 		elif sl_op == SL_OP.DS:
 #			logger.debug('post_data: slid %d status %s', int(self.slid),sl_pkt.payload)
+			self.last_data_pkt = sl_pkt
 			self.store_data(sl_pkt)
 
 		elif sl_op == SL_OP.SS:
@@ -1275,6 +1316,11 @@ def drop_csearch(webnamespace, sid, message):
 		tab.drop_sid_from_csearch(sid)
 
 	return { 'Success': True }
+
+
+def run_cmd(webnamespace, sid, message):
+	res = steam_root.handle_web_cmd(sid, message)
+	return res
 
 
 # tables = {}

@@ -30,7 +30,7 @@ from .mqtt import (
 
 from .linkage import LogQ
 from .linkage import DictTable
-from .steamlink import SteamSetup, Steam, Mesh, Node, SL_NodeCfgStruct
+from .steamlink import SteamSetup, Steam, Mesh, Node, set_steam_root
 from .steamlink import Attach as steamlinkAttach
 
 from .web import WebApp
@@ -278,6 +278,8 @@ def steamlink_main(cl_args, conf):
 	
 	SteamSetup()
 	steam = Steam(conf_steam)
+	set_steam_root(steam)
+
 	logger.debug("startup: create Steam")
 
 	if cl_args.testdata:

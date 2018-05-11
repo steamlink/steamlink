@@ -23,6 +23,7 @@ from .steamlink import (
 	Steam,
 	Packet,
 	add_csearch,
+	run_cmd,
 	drop_csearch
 )
 from .linkage import (
@@ -126,6 +127,19 @@ class WebNamespace(socketio.AsyncNamespace):
 		res = drop_csearch(self, sid, message)
 		return { 'success': True }
 
+
+	# dict with: cmd, node_name, data
+	# cmds are: DN SC
+	async def on_cmd(self, sid, messages):
+		logger.debug("WebNamespace on_cmd --> %s", message)
+		try:
+			ret = run_cmd(self, sid, message)
+			res = { "Success": ret }
+		except  Exception as e:
+			res = { "Success": False, "Error": "cmd failed: %s" % e }
+
+		logger.debug("WebNamespace on_cmd <-- %s", res)
+		return res
 
 #
 # WebApp
