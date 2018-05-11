@@ -1,0 +1,54 @@
+<div class="{{ partial_item.grid_columns }} columns">
+    <style>
+        /* style goes here */
+    </style>
+    <h4 class="form-partial partial-heading">
+        {{ partial_item.title }}
+    </h4>
+    <form class="form-partial partial" id="{{ partial_item.name }}" style="overflow: scroll; height: {{ partial_item.grid_rows * 50}}px;">
+        {% if partial_item.fields %}
+            {% for field in partial_item.fields %}
+            {{ field }}: <br>
+            <input type="text" name="{{field}}">
+            {% endfor %}    
+            <br>
+        {% else %}
+            <input type="text" name="payload">
+        {% endif %}
+        <input type="submit" value="Submit">
+    </form>
+</div>
+
+<script type="text/javascript">
+    /*
+    partial items:
+        command:
+        slid:
+        fields:
+    */
+    $(function () {
+        var command = {{ partial_item.command|tojson|safe}};
+        var slid = {{ partial_item.slid|tojson|safe}};
+        {% if partial_item.fields %}
+        var fields = {{ partial_item.fields|tojson|safe}};
+        {% endif %}
+        var partialForm = $('#{{ partial_item.name }}');
+        
+        partialForm.submit(function() {
+            var objectToSend ={
+                "cmd" : command,
+                "slid": slid,
+                {% if partial_item.fields %}
+                data: getFormData(partialForm)
+                {% else %}
+                data: getFormData(partialForm)['payload']
+                {% endif %}
+            }
+            console.log("sending command:")
+            console.log(objectToSend);
+            socket.emit("cmd", objectToSend);
+            return false;
+        });
+    });
+</script>
+

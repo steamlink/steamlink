@@ -155,7 +155,6 @@ $(function() {
 
   var renderAlert= function (msg, lvl) {
     // TODO: Map lvl to color
-    console.log("socket connection dead");
     alertElement.innerHTML = lvl + ": " + msg;
     alertCloseElement.innerHTML = "[ ✕ ]"; 
     $(alertWrapper).css({"color": "black"})
@@ -190,3 +189,14 @@ $(function() {
   });
   
 });
+
+function getFormData($form){
+  var unindexed_array = $form.serializeArray();
+  var indexed_array = {};
+
+  $.map(unindexed_array, function(n, i){
+      indexed_array[n['name']] = n['value'];
+  });
+
+  return indexed_array;
+}

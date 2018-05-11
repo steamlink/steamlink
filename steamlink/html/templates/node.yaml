@@ -13,9 +13,22 @@ node:
   stream_tag: node_header
   # Layout
   row: 1
-  grid_columns: 'twelve'
+  grid_columns: 'eight'
   grid_rows: 7
   template: 'tile.html'
+
+sendtonode:
+  name: sendtonode
+  type: form
+  title: Send To Node
+  # Command information
+  command: DN
+  slid: 1
+  # Layout
+  row: 1
+  grid_columns: 'four'
+  grid_rows: 7
+  template: 'form.html'
 
 packets:
   name: packets
