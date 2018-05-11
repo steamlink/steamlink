@@ -4,11 +4,12 @@
 # sends notifications email s
 
 MAILTO="andreas@steamlink.net"
+
 LOG="${HOME}/log/steamlink-run.log"
 PIDFILE="${HOME}/.steamlink/steamlink.pid"
 
-ARGS="-l /home/steamlink/log/steamlink.log"
-PROG="/home/steamlink/sl/bin/steamlink"
+ARGS="-l ${HOME}/log/steamlink.log"
+PROG="${HOME}/sl/bin/steamlink"
 
 LASTTS=0
 touch ${LOG}
@@ -29,13 +30,21 @@ while true; do
 		FAILCOUNT=0
 	fi
 
-	if [ ${FAILCOUNT} > 3 ]; then
+	if [ ${FAILCOUNT} -gt 3 ]; then
 		echo "$(date)  steamlink exit code $rc, exiting! " >>${LOG}
-		dd if=${LOG} skip=${LSIZE} bs=1 2>/dev/null | mail -s "SteamLink FAILED" ${MAILTO}
+		if [ "${MAILTO}" != "" ]; then
+			dd if=${LOG} skip=${LSIZE} bs=1 2>/dev/null | mail -s "SteamLink FAILED" ${MAILTO}
+		else
+			echo "steamlink failed, exit code $rc, NOT restarting! "
+		fi
 		break
 	elif [ "${DT}" -gt 240 -o ${rc} -ne 0 ]; then
 		echo "$(date)  steamlink exit code $rc, restarting" >>${LOG}
-		dd if=${LOG} skip=${LSIZE} bs=1 2>/dev/null | mail -s "SteamLink restart (${rc}" ${MAILTO}
+		if [ "${MAILTO}" != "" ]; then
+			dd if=${LOG} skip=${LSIZE} bs=1 2>/dev/null | mail -s "SteamLink restart (${rc}" ${MAILTO}
+		else
+			echo "steamlink exit code $rc, restarting"
+		fi
 		LASTTS=${NOW}
 		LSIZE=$(stat -f "%z" $LOG)
 	fi
