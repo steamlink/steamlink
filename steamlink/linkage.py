@@ -3,6 +3,7 @@ import asyncio
 from asyncio import Queue
 import shelve
 import os
+import re
 import sys
 import socket
 import time
