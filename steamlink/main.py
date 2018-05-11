@@ -314,7 +314,7 @@ def steamlink_main(cl_args, conf):
 		logger.notice("coros run_until: hbmqtt.errors.NoDataException: %s", e)
 
 	# Shutdown
-#	webapp.stop()	# N.B. take 20 seconds to shutdown gracefully
+	webapp.stop()
 	aioloop.run_until_complete(db.stop())
 	if TestTask:
 		logger.debug("stopping TestTask")

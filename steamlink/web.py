@@ -7,10 +7,12 @@ import hashlib
 import hmac
 import os
 import json
+import socket
 import aiohttp_jinja2
 import jinja2
 import yaml
 
+from zeroconf import ServiceInfo, Zeroconf
 from aiohttp import web
 from aiohttp.log import access_logger, web_logger
 
@@ -26,6 +28,8 @@ from .steamlink import (
 from .linkage import (
 	Item,
 )
+
+from .const import __version__
 
 import logging
 logger = logging.getLogger(__name__)
@@ -193,6 +197,16 @@ class WebApp(object):
 
 		scheme = 'https' if self.ssl_context else 'http'
 
+
+		my_ip_address = socket.gethostbyname(socket.gethostname())
+		desc = {'version': __version__}
+		self.zeroconf_info = ServiceInfo("_http._tcp.local.",
+					"SteamLink Store._http._tcp.local.",
+					socket.inet_aton(my_ip_address), self.port, 0, 0,
+					desc, "steamlink.local.")
+		self.zeroconf = Zeroconf()
+		self.zeroconf.register_service(self.zeroconf_info)
+
 		make_handler_kwargs = dict()
 		make_handler_kwargs['access_log_format'] = self.access_log_format
 		make_handler_kwargs['access_log'] = self.access_log
@@ -204,12 +218,13 @@ class WebApp(object):
 						ssl=self.ssl_context,
 						backlog=self.backlog)
 
-
 	def stop(self):
+		self.zeroconf.unregister_service(self.zeroconf_info)
 		self.server.close()
+#		somethong int this list may take 20 seconds to shutdown gracefully
 		self.loop.run_until_complete(self.server.wait_closed())
 		self.loop.run_until_complete(self.app.shutdown())
-		self.loop.run_until_complete(self.handler.shutdown(self.shutdown_timeout))
+#		self.loop.run_until_complete(self.handler.shutdown(self.shutdown_timeout))
 #		self.loop.run_until_complete(self.runner.cleanup())
 
 
