@@ -550,6 +550,8 @@ class Node(Item):
 			r['wait_for_AS'] = "%s %s" % (self.wait_for_AS['waituntil'], self.wait_for_AS['pkt'])
 			r['gps_lat'] = self.nodecfg.gps_lat
 			r['gps_lon'] = self.nodecfg.gps_lon
+			r['last_data_pktr']: self.last_data_pkt
+			r['last_controlpktr']: self.last_control_pkt
 		return r
 
 

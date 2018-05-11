@@ -492,7 +492,8 @@ class DbTable(Table):
 			if self.cache.has(r[self.keyfield]):
 				rn = self.cache[r[self.keyfield]]
 			else:
-				rn = self.itemclass(_load=r)
+				rn = self.itemclass()
+				rn.load(r)
 				self.cache[r[self.keyfield]] = rn
 			ret.append(rn)
 		return ret
@@ -705,7 +706,7 @@ class Item(BaseItem):
 	# 2. Load:	   _load != None 
 	# 3. Empty:    _load = None and key = None
 	def __init__(self, key, _load=None):
-		super().__init__(key, _load)
+		super().__init__(key)
 		self._table = self.__class__._table
 		self._itype = self.__class__.__name__
 		if _load is not None:
