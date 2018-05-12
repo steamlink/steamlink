@@ -217,7 +217,7 @@ def steamlink_main(cl_args, conf):
 	# confugure subsystems
 	coros = []
 
-	LogQ._table = DictTable(LogQ, keyfield="name", index = {})
+	LogQ._table = DictTable(LogQ, keyfield="name", index = OrderedDict())
 	logq = LogQ(conf, aioloop)
 	coros.append(logq.start())
 

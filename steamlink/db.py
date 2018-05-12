@@ -117,6 +117,13 @@ class DBTable:
 			logger.error("delete in %s, no docid %s", self.name, el.eid)
 
 
+	def get(self, field, op, val):
+		q = "self.table.get(where('%s') %s %s)" % (field, op, repr(val))
+		res = eval(q)
+		if logging.DBG > 2: logger.debug("get %s rec %s: %s", self.name, q, res)
+		return res
+
+
 	def search(self, field, op, val):
 		q = "self.table.search(where('%s') %s %s)" % (field, op, repr(val))
 		res = eval(q)
@@ -131,22 +138,21 @@ class DBTable:
 		if logging.DBG > 1: logger.debug("get_range: %s", str(csk))
 		"""
 		if logging.DBG > 1: logger.debug("get_range csk %s", str(csk))
-		field = csk.key_field
+		key_field = csk.key_field
 		startv = csk.start_key
 		endv = csk.end_key
 		count = csk.count
 
 		csk.total_item_count = 0
 
-		tab = self.table.all()
-		if len(tab) == 0:
+		if len(self.table) == 0:
 			if logging.DBG > 1: logger.debug("get_range table empty")
 			csk.count = 0
 			return {}
 
 		udict = {}
-		for t in tab:
-			udict[t[field]] = t
+		for t in self.table:		# N.B. ad-hoc index over entrie table: expensive!
+			udict[t[key_field]] = t
 		fullsdict = sorted(udict)
 		if logging.DBG > 1: logger.debug("get_range table %s items", len(fullsdict))
 	
@@ -192,9 +198,6 @@ class DBTable:
 				if logging.DBG > 1: logger.debug("get_range no end key found")
 				return {}
 			count = eidx - sidx + 1
-		res = {}
-		for idx in range(sidx, eidx+1):
-			res[sdict[idx]]  = udict[sdict[idx]]
 
 		csk.start_key = sdict[sidx]
 		csk.end_key = sdict[eidx]
@@ -203,8 +206,11 @@ class DBTable:
 		csk.at_start = csk.start_key == sdict[0]
 		csk.at_end = csk.end_key == sdict[-1]
 
-		if logging.DBG > 1: logger.debug("get_range res=%s", res)
-		return res
+		res = []
+		for idx in range(sidx, eidx+1):
+			if logging.DBG > 1: res.append(udict[sdict[idx]])
+			yield udict[sdict[idx]]
+		if logging.DBG > 2: logger.debug("get_range res=%s", res)
 
 
 	def __len__(self):

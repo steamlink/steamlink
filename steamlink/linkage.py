@@ -467,43 +467,28 @@ class DbTable(Table):
 
 
 
+	def make_item_from_dict(self, item_dict):
+		key = item_dict[self.keyfield]
+		if self.cache.has(key):
+			item = self.cache[key]
+		else:
+			item = self.itemclass()
+			item.load(item_dict)
+			self.cache[key] = item
+		return item
+
 
 	def get_range(self, csk):
 		""" get a range of items, defined by a CSearch """
-		drange =  self.dbtable.get_range(csk)
-		if len(drange) == 0:
-			return []
-		if logging.DBG > 1: logger.debug("get_range drange len %s %s", len(drange), drange)
-		ret = []
-		for rkey in drange:
-			if logging.DBG > 2: logger.debug("find->load %s", type(r))
-			r = drange[rkey]
-			if self.cache.has(r[self.keyfield]):
-				rn = self.cache[r[self.keyfield]]
-			else:
-				rn = self.itemclass()
-				rn.load(r)
-				self.cache[r[self.keyfield]] = rn
-			ret.append(rn)
-		return ret
+		for item_dict in self.dbtable.get_range(csk):
+			yield self.make_item_from_dict(item_dict)
 
 
 	def find(self, key, keyfield = None):
 		if keyfield is None:
 			keyfield = self.keyfield
-		res = self.dbtable.search(keyfield, '==', key)
-		if logging.DBG > 2: logger.debug("find %s %s=%s: found %s", self.tablename, keyfield, key,  len(res))
-		ret = []
-		for r in res:
-			if logging.DBG > 2: logger.debug("find->load %s", type(r))
-			if self.cache.has(r[self.keyfield]):
-				rn = self.cache[r[self.keyfield]]
-			else:
-				rn = self.itemclass()
-				rn.load(r)
-				self.cache[r[self.keyfield]] = rn
-			ret.append(rn)
-		return ret
+		for item_dict in self.dbtable.search(keyfield, '==', key):
+			yield self.make_item_from_dict(item_dict)
 
 
 	def find_one(self, key, keyfield = None):
@@ -513,14 +498,11 @@ class DbTable(Table):
 		if keyfield == self.keyfield:	# i.e. native key
 			if self.cache.has(key):
 				return self.cache[key]
-		res = self.find(key, keyfield)
+		item_dict = self.dbtable.get(keyfield, '==',  key)
 		if logging.DBG > 1: logger.debug("find_one %s %s: %s", self.tablename, key,  res)
-		if len(res) == 1:
-			return res[0]
-		elif len(res) == 0:
-			return None
-		logger.error("multiple items with '%s' = %s in table %s", keyfield, key, self.tablename)
-		return None
+		return self.make_item_from_dict(item_dict)
+
+#?		logger.error("multiple items with '%s' = %s in table %s", keyfield, key, self.tablename)
 
 
 	def db_update(self, item, force=False):
@@ -644,11 +626,8 @@ class DictTable(Table):
 		csk.at_start = csk.start_key == sdict[0]
 		csk.at_end = csk.end_key == sdict[-1]
 
-		drange = []
 		for r in res:
-			drange.append(res[r])
-		if logging.DBG > 1: logger.debug("dict get_range drange len %s %s", len(drange), drange)
-		return drange
+			yield res[r]
 
 
 	def find(self, key, keyfield = None):
@@ -840,9 +819,7 @@ class LogQ(Item):
 				start_key=None, 
 				start_item_number=0, 
 				count=count)
-		res = LogItem._table.get_range(csk)
-		logger.debug("prune_logitem_table count=%s len(res)=%s", count, len(res))
-		for logitem in res:
+		for logitem in LogItem._table.get_range(csk):
 			asyncio.ensure_future(logitem.delete(), loop=self.loop)
 
 
