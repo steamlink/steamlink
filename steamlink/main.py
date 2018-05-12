@@ -79,7 +79,8 @@ DEFAULT_CONF = OrderedDict({
  	'general': OrderedDict({
 		'mqtt_broker': 'mqtt_broker',
 		'ping_timeout': 30,
-		'working_dir': home + '/.steamlink'
+		'working_dir': home + '/.steamlink',
+		'max_log_records': 1000
 	}),
 	'Steam': OrderedDict({
 		'id': 0,
@@ -118,7 +119,6 @@ DEFAULT_CONF = OrderedDict({
 		'port': 5050,
 		'shutdown_timeout': 10,        # seconds to wait for web server shutdown
 		'namespace': '/sl',
-		'prefix': 'SteamLinkWeb',
 		'minupdinterval': 1.0,
 		'index': "",           # root page
         'ssl_certificate': None,
@@ -279,8 +279,6 @@ def steamlink_main(cl_args, conf):
 	SteamSetup()
 	steam = Steam(conf_steam)
 	set_steam_root(steam)
-
-	logger.debug("startup: create Steam")
 
 	if cl_args.testdata:
 		testconfigs = conf['tests']

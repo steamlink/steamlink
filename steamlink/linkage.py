@@ -54,7 +54,8 @@ import yaml
 from yaml import Loader, Dumper
 
 class CSearchKey:
-	def __init__(self, table_name, key_field, start_key, start_item_number, count, stream_tag, end_key = None, restrict_by = []):
+	def __init__(self, table_name, key_field, start_key, start_item_number,
+					    count, stream_tag="NoTag", end_key = None, restrict_by = []):
 
 		self.table_name = table_name
 		self.key_field = key_field
@@ -539,8 +540,9 @@ class DbTable(Table):
 
 
 	def delete(self, item):
+		logger.debug("DbTable delete %s", item)
 		del self.cache[item.__dict__[self.keyfield]]
-		self.dbtable.delete(item.save(), self.keyfield)		# ?? order
+		self.dbtable.delete(self.keyfield, item.__dict__[self.keyfield])
 		super().delete(item)
 
 
@@ -674,6 +676,7 @@ class DictTable(Table):
 
 
 	def delete(self, item):
+		del item
 		pass
 
 
@@ -798,6 +801,7 @@ class LogQ(Item):
 		if conf is not None:
 			self.name = "logq"
 			self.conf = conf
+			self.max_log_records = conf.get('max_log_records', 1000)
 			self.q = Queue(loop=loop)
 			self.loop = loop
 		super().__init__(self.name)
@@ -826,6 +830,23 @@ class LogQ(Item):
 	def flush(self):
 		pass
 
+
+	async def asyncfeed(self, ilist):
+		for i in ilist:
+			yield i
+
+	async def prune_logitem_table(self, count):
+		csk = CSearchKey(
+				table_name=LogItem._table.tablename,
+				key_field="ts",
+				start_key=None, 
+				start_item_number=0, 
+				count=count)
+		res = LogItem._table.get_range(csk)
+		async for logitem in self.asyncfeed(res):
+			logitem.delete()
+
+
 	async def start(self):
 		LogItem._table = DbTable(LogItem, keyfield="ts", tablename="LogItem")
 		logger.info("%s logq start", self)
@@ -849,5 +870,8 @@ class LogQ(Item):
 			logitem = LogItem(lvl, line)
 			if lvl in ['INFO', 'WARNING', 'ERROR', 'CRITICAL', 'ALERT', 'EMERGENCY']:
 				_WEBAPP.send_console_alert(lvl, line)
+			count = len(LogItem._table) - self.max_log_records
+			if count > 0:
+				asyncio.ensure_future(self.prune_logitem_table(count), loop=self.loop)
 		logger.info("%s logq stop", self)
 
