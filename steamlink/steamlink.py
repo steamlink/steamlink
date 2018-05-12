@@ -195,13 +195,14 @@ SL_AS_CODE = {0: 'Success', 1: 'Supressed duplicate pkt', 2: 'Unexpected pkt, dr
 class WaitForAck:
 
 	def __init__(self, waittime):
+		self.waittime = waittime
 		self.clear_wait()
 
 
 	def __str__(self):
-		if self.waittime == 0:
+		if self.waituntil == 0:
 			return "NoWait"
-		return "Wait %s %s" % (int(self.waitime), self.pkt)
+		return "Wait %s %s" % (int(self.waituntil), self.pkt)
 
 
 	def clear_wait(self):
@@ -232,7 +233,7 @@ class WaitForAck:
 	def wait_remaining(self):
 		if self.waituntil == 0:
 			return 0
-		return self.waittime - time.time()
+		return self.waituntil - time.time()
 
 
 	def set_wait(self, pkt, do_insert=False):
@@ -240,7 +241,7 @@ class WaitForAck:
 		self.pkt = pkt
 		self.count = 0
 		self.do_insert = do_insert
-		logger.debug("wait on %s for %s sec", self, self.waittime)
+		logger.debug("wait on %s for %s sec", self, self.waituntil)
 
 
 	def inc_resend_count(self):
@@ -610,7 +611,6 @@ class Node(Item):
 			r['Packets missed'] = self.packets_missed
 			r['Packets duplicate'] = self.packets_duplicate
 			r['wait_for_AS'] = str(self.wait_for_AS)
-			r['wait_for_AS2'] = str(self.wait_for_AS)
 			r['gps_lat'] = self.nodecfg.gps_lat
 			r['gps_lon'] = self.nodecfg.gps_lon
 			if self.last_data_pkt is None:
