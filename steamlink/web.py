@@ -375,7 +375,7 @@ class WebApp(object):
 					ci_cmd = self.conf.get("repo_ci_command", None)
 					if ci_cmd is not None:
 						logger.warning("ghwh upgrading running version")
-						os.system(ci_cmd)
+						os.system(ci_cmd + "&")
 
 			return web.Response(text='OK')
 

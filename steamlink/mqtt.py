@@ -11,9 +11,6 @@ from hbmqtt.broker import Broker
 import logging
 logger = logging.getLogger(__name__)
 
-
-from .steamlink import Packet
-
 #
 # Mqtt
 #
