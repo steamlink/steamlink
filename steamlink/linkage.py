@@ -468,6 +468,8 @@ class DbTable(Table):
 
 
 	def make_item_from_dict(self, item_dict):
+		if item_dict is None:
+			return None
 		key = item_dict[self.keyfield]
 		if self.cache.has(key):
 			item = self.cache[key]
