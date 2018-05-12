@@ -33,7 +33,7 @@ class Mqtt:
 		self.clientid = conf['clientid']
 		self.username = conf['username']
 		self.password = conf['password']
-		self.ssl_certificate = conf['ssl_certificate']
+		self.ssl_certificate = conf.get('ssl_certificate', None)
 
 		self.control_topic_x = "%s/%%s/%s" % (self.topic_prefix, self.topic_control)
 		self.data_topic_x = "%s/%%s/%s" % (self.topic_prefix, self.topic_data)
