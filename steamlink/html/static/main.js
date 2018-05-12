@@ -82,49 +82,55 @@ function Stream(sock, config, on_new_message) {
   };
 
   this.newStreamData = function(data) {
+    if (Array.isArray(data)) {
+      data.forEach((item)=> {
+        self.insertItemInCache(item);
+      });
+      on_new_message(data[data.length-1]);
+    } else {
+      self.insertItemInCache(data);
+      on_new_message(data);
+    }
+  }
+
+  this.insertItemInCache = function(item) {
     // back-end can ask for either an add, modify, or delete
     // first see if we have record in cache
     var foundIndex = self.cache.findIndex(function(e){
-      return e[self.config.key_field] === data[self.config.key_field];
+      return e[self.config.key_field] === item[self.config.key_field];
     });
-    if ('_del_key' in data) { // if delete:
+    if ('_del_key' in item) { // if delete:
       if (foundIndex >= 0) { // if key exists in cache
         self.cache.splice(foundIndex, 1); 
       } else { // key doesn't exist in cache:
-        console.log("debug: ignoring _del_key: " + data._del_key);
+        console.log("debug: ignoring _del_key: " + item._del_key);
       }
     } else { // if add/modify:
       if (foundIndex >= 0) { // if key exists in cache
         // update the cached record
-        self.cache[foundIndex] = data; 
+        self.cache[foundIndex] = item; 
       } else { // if key not in cache
         // find insertion point
         insertionIndex = self.cache.findIndex(function(e) {
           // assume cache is ordered by key_field
-          return (e[self.config.key_field] > data[self.config.key_field])
+          return (e[self.config.key_field] > item[self.config.key_field])
           });
         if (insertionIndex >= 0) { // if insertion index is found
-          self.cache.splice(insertionIndex, 0, data);
-          if (data[self.config.key_field] < self.config.start_key) {
-            self.config.start_key = data[self.config.key_field];
+          self.cache.splice(insertionIndex, 0, item);
+          if (item[self.config.key_field] < self.config.start_key) {
+            self.config.start_key = item[self.config.key_field];
           }
         } else { // must insert at end
-          self.cache.push(data);
-          self.config.end_key = data[self.config.key_field];
+          self.cache.push(item);
+          self.config.end_key = item[self.config.key_field];
         }
         // TODO: cache pruning?
       }  
     }
-    on_new_message(data);
   };
 
   window.socketStreams.streams.push(this);
   sock.on(self.config.stream_tag, self.newStreamData);
-}
-
-function sendCommand(sock, command) {
-  console.log(sendingCommand);
-  sock.emit("cmd", command);
 }
 
 // On Document Ready
