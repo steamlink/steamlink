@@ -466,7 +466,14 @@ class DbTable(Table):
 		return item._wascreated
 
 
-	def db_to_class(self, drange):
+
+
+	def get_range(self, csk):
+		""" get a range of items, defined by a CSearch """
+		drange =  self.dbtable.get_range(csk)
+		if len(drange) == 0:
+			return []
+		if logging.DBG > 1: logger.debug("get_range drange len %s %s", len(drange), drange)
 		ret = []
 		for rkey in drange:
 			if logging.DBG > 2: logger.debug("find->load %s", type(r))
@@ -479,15 +486,6 @@ class DbTable(Table):
 				self.cache[r[self.keyfield]] = rn
 			ret.append(rn)
 		return ret
-
-
-	def get_range(self, csk):
-		""" get a range of items, defined by a CSearch """
-		drange =  self.dbtable.get_range(csk)
-		if len(drange) == 0:
-			return []
-		if logging.DBG > 1: logger.debug("get_range drange len %s %s", len(drange), drange)
-		return self.db_to_class(drange)
 
 
 	def find(self, key, keyfield = None):
@@ -843,8 +841,9 @@ class LogQ(Item):
 				start_item_number=0, 
 				count=count)
 		res = LogItem._table.get_range(csk)
-		async for logitem in self.asyncfeed(res):
-			logitem.delete()
+		logger.debug("prune_logitem_table count=%s len(res)=%s", count, len(res))
+		for logitem in res:
+			asyncio.ensure_future(logitem.delete(), loop=self.loop)
 
 
 	async def start(self):
@@ -872,6 +871,7 @@ class LogQ(Item):
 				_WEBAPP.send_console_alert(lvl, line)
 			count = len(LogItem._table) - self.max_log_records
 			if count > 0:
-				asyncio.ensure_future(self.prune_logitem_table(count), loop=self.loop)
+				self.prune_logitem_table(count)
+			self.update()
 		logger.info("%s logq stop", self)
 
