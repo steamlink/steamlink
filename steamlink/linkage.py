@@ -244,19 +244,19 @@ class CSearchItem:
 		self.push_update(False)
 
 
-	def push_update(self, force, sroom = None):
+	def push_update(self, force):
 		if self.upd_in_progress or _WEBAPP is None:
-			logger.warning("push_update EARLY!")
+			if 'csearch' in logging.DBGK: logger.debug("push_update upd_in_progress %s", self)
 			return
 		next_update = (self.last_update + _WEBAPP.minupdinterval) - _WEBAPP.loop.time()
-		if 'csearch' in logging.DBGK: logger.debug("push_update %s %s %s next: %s", self, force, sroom, next_update)
+		if 'csearch' in logging.DBGK: logger.debug("push_update %s %s next: %s", self, force, next_update)
 		if not force and next_update > 0:
 			if not self.future_update:
 				asyncio.ensure_future(self.schedule_future_update(next_update))
 				self.future_update = True
 			return
 
-		if 'csearch' in logging.DBGK: logger.debug("push_update %s %s %s next: %s", self, force, sroom, next_update)
+		if 'csearch' in logging.DBGK: logger.debug("push_update %s %s next: %s", self, force, next_update)
 		self.upd_in_progress = True
 		_WEBAPP.queue_item_update(self, force)
 
@@ -722,9 +722,9 @@ class Item(BaseItem):
 			if logging.DBG >= 1: logger.debug("Item loaded")
 		elif key is not None: 		# skip key-less items, they will come in via load()
 			self._table.register(self)
-			if logging.DBG >= 0: logger.debug("Item created and loaded: %s", self)
+			if logging.DBG >= 1: logger.debug("Item created and loaded: %s", self)
 		else:
-			if logging.DBG >= 0: logger.debug("Item created null: %s", self)
+			if logging.DBG >= 1: logger.debug("Item created null: %s", self)
 
 
 	def load(self, data):	#N.B.
