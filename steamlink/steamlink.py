@@ -192,6 +192,66 @@ class SL_OP:
 
 SL_AS_CODE = {0: 'Success', 1: 'Supressed duplicate pkt', 2: 'Unexpected pkt, dropping'}
 
+class WaitForAck:
+
+	def __init__(self, waittime):
+		self.clear_wait()
+
+
+	def __str__(self):
+		if self.waittime == 0:
+			return "NoWait"
+		return "Wait %s %s" % (int(self.waitime), self.pkt)
+
+
+	def clear_wait(self):
+		self.waituntil = 0
+		self.pkt = None
+		self.count = 0
+		self.do_insert = False
+
+
+	def stop_wait(self):
+		""" N.B. returns original pkt if do_insert was set, for db insert """
+		pkt = None
+		if self.pkt is None:
+			logger.info("wait: redundant Ack")
+		else:
+			logger.debug("wait on %s got Ack", self)
+			if self.do_insert:
+				pkt = self.pkt
+		self.clear_wait()
+		return pkt
+
+
+	def restart_wait(self):
+		self.waituntil = time.time() + self.waittime
+		return self.pkt		# for resend
+
+
+	def wait_remaining(self):
+		if self.waituntil == 0:
+			return 0
+		return self.waittime - time.time()
+
+
+	def set_wait(self, pkt, do_insert=False):
+		self.waituntil = time.time() + self.waittime
+		self.pkt = pkt
+		self.count = 0
+		self.do_insert = do_insert
+		logger.debug("wait on %s for %s sec", self, self.waittime)
+
+
+	def inc_resend_count(self):
+		self.count += 1
+		return self.count
+
+
+	def is_waiting(self):
+		return self.waituntil
+
+
 #
 # Steam
 #
@@ -499,12 +559,7 @@ class Node(Item):
 		self.last_data_pkt = None
 		self.via = []		# not initiatized
 		self.tr = {}		# dict of sending nodes, each holds a list of (pktno, rssi)
-		self.wait_for_AS = {# deadline for AS ack
-			'waituntil': 0,
-			'pkt': None,
-			'count': 0,
-			'do_insert': False
-		}	
+		self.wait_for_AS = WaitForAck(SL_ACK_WAIT)
 #		self.packet_log = TimeLog(MAX_NODE_LOG_LEN)
 
 		super().__init__(slid)
@@ -554,7 +609,8 @@ class Node(Item):
 			r['Packets dropped'] = self.packets_dropped
 			r['Packets missed'] = self.packets_missed
 			r['Packets duplicate'] = self.packets_duplicate
-			r['wait_for_AS'] = "%s %s" % (self.wait_for_AS['waituntil'], self.wait_for_AS['pkt'])
+			r['wait_for_AS'] = str(self.wait_for_AS)
+			r['wait_for_AS2'] = str(self.wait_for_AS)
 			r['gps_lat'] = self.nodecfg.gps_lat
 			r['gps_lon'] = self.nodecfg.gps_lon
 			if self.last_data_pkt is None:
@@ -608,7 +664,7 @@ class Node(Item):
 			logger.debug("resending pkt: %s", sl_pkt)
 			self.packets_resent += 1
 		else:
-			if self.is_waiting_for_AS() and sl_pkt.sl_op != SL_OP.AN:
+			if self.wait_for_AS.is_waiting() and sl_pkt.sl_op != SL_OP.AN:
 				logger.error("attempt to send pkt while waiting for AS, ignored: %s", sl_pkt)
 				self.packets_dropped += 1
 				return
@@ -648,7 +704,7 @@ class Node(Item):
 			self.packets_dropped += 1
 			return "NodeDown"
 
-		if self.is_waiting_for_AS():
+		if self.wait_for_AS.is_waiting():
 			self.packets_dropped += 1
 			return "AckWait"
 
@@ -657,7 +713,7 @@ class Node(Item):
 		sl_pkt = Packet(slnode=self, sl_op=SL_OP.DN, payload=bpayload)
 		self.last_control_pkt = sl_pkt
 		self.publish_pkt(sl_pkt)
-		self.set_wait_for_AS(sl_pkt, do_insert=True)
+		self.wait_for_AS.set(sl_pkt, do_insert=True)
 		return "OK"
 
 
@@ -666,7 +722,7 @@ class Node(Item):
 			self.packets_dropped += 1
 			return "NodeDown"
 
-		if self.is_waiting_for_AS():
+		if self.wait_for_AS.is_waiting():
 			self.packets_dropped += 1
 			return "AckWait"
 
@@ -674,7 +730,7 @@ class Node(Item):
 		logger.debug("send_set_config: len %s, pkt %s", len(bpayload), self.nodecfg)
 		sl_pkt = Packet(slnode=self, sl_op=SL_OP.SC, payload=bpayload)
 		self.publish_pkt(sl_pkt)
-		self.set_wait_for_AS(sl_pkt)
+		self.wait_for_AS.set(sl_pkt)
 		return "OK"
 
 
@@ -766,7 +822,7 @@ class Node(Item):
 		sl_op = sl_pkt.sl_op
 
 		if sl_op == SL_OP.ON: # autocreate did set nodecfg
-			self.clear_wait_for_AS()		# give up 
+			self.wait_for_AS.clear_wait()		# give up 
 			logger.debug('post_data: slid %d ONLINE', int(self.slid))
 			self.nodecfg = SL_NodeCfgStruct(pkt=sl_pkt.bpayload)
 			self.send_set_config()
@@ -785,11 +841,10 @@ class Node(Item):
 		elif sl_op == SL_OP.AS:
 			logger.debug('post_data: slid %d ACK:  %s', int(self.slid), 
 						SL_AS_CODE[int(sl_pkt.bpayload[0])])
-			self.set_wait_for_AS(None)		# done waiting
-#			try:
-#				self._response_q.put(sl_op)
-#			except Full:
-#				logger.warning('post_data: node %s queue, dropping: %s', int(self.slid), sl_pkt)
+			pkt = self.wait_for_AS.stop_wait()		# done waiting, discard stashed packet
+			if pkt is not None:
+				pkt.insert()					# store pkt
+
 		elif sl_op == SL_OP.TR:
 			logger.debug('post_data: node %s test msg', sl_pkt.payload)
 
@@ -817,46 +872,17 @@ class Node(Item):
 		self.mesh.update(True)
 
 
-	def clear_wait_for_AS(self):
-		self.wait_for_AS['waituntil'] = 0
-		self.wait_for_AS['pkt'] = None
-		self.wait_for_AS['count'] = 0
-		self.wait_for_AS['do_insert'] = False
-
-
-	def set_wait_for_AS(self, pkt, do_insert=False):
-		if pkt == None:				# AS arrived
-			if self.wait_for_AS['pkt'] is None:
-				logger.info("wait_for_AS: redundant AS from %s", self)
-			else:
-				logger.debug("wait_for_AS on %s got AS", self)
-				if self.wait_for_AS['do_insert']:
-					self.wait_for_AS['pkt'].insert()
-			self.clear_wait_for_AS()
-		else:
-			self.wait_for_AS['waituntil'] = int(time.time()) + SL_ACK_WAIT
-			self.wait_for_AS['pkt'] = pkt
-			self.wait_for_AS['count'] = 0
-			self.wait_for_AS['do_insert'] = do_insert
-			logger.debug("wait_for_AS on %s for %s sec", self, SL_ACK_WAIT)
-
-
-	def is_waiting_for_AS(self):
-		return self.wait_for_AS['waituntil'] != 0
-
-
 	def periodic_check_for_AS(self):
-		if self.is_waiting_for_AS():
-			rwait = self.wait_for_AS['waituntil'] - int(time.time())
+		if self.wait_for_AS.is_waiting():
+			rwait = self.wait_for_AS.wait_remaining()
 			logger.debug("periodic_check: %s wait %s sec for AS ", self.name, rwait)
 			if rwait <= 0:
-				self.wait_for_AS['count'] += 1
-				if self.wait_for_AS['count'] > MAX_RESEND_COUNT:
-					logger.info("resend limit reached for %s, giving up", self.wait_for_AS['pkt'])
-					self.clear_wait_for_AS()
+				if self.wait_for_AS.inc_resend_count() > MAX_RESEND_COUNT:
+					logger.info("resend limit reached for %s, giving up", self.wait_for_AS)
+					self.wait_for_AS.clear_wait()
 				else:
-					self.wait_for_AS['waituntil'] = int(time.time()) + SL_ACK_WAIT
-					self.publish_pkt(self.wait_for_AS['pkt'], resend=True)
+					pkt = self.wait_for_AS.restart_wait()
+					self.publish_pkt(pkt, resend=True)
 
 
 	def periodic_check(self):
@@ -879,7 +905,7 @@ class Node(Item):
 #
 # Packet
 #
-class BasePacket():
+class BasePacket:
 	keyfield = 'ts'
 	data_header_fmt = '<BLHB%is'		# op, slid, pkt_num, rssi, payload"
 	control_header_fmt = '<BLH%is'		# op, slid, pkt_num, payload"
@@ -902,7 +928,6 @@ class BasePacket():
 			if not self.deconstruct(pkt):
 				logger.error("deconstruct pkt to short: %s", len(pkt))
 				raise SteamLinkError("deconstruct pkt to short");
-		super().__init__(None)
 
 
 	def __str__(self):
@@ -928,7 +953,10 @@ class BasePacket():
 		self.slid = slid
 		self.sl_op = sl_op
 		self.rssi = rssi + 256
-		self.payload = payload
+		if self.sl_op == SL_OP.ON:
+			self.payload = payload.pack()
+		else:
+			self.payload = payload
 		if logging.DBG > 2: logger.debug("SteamLinkPacket payload = %s", payload);
 		if self.payload is not None:
 			if type(self.payload) == type(b''):
