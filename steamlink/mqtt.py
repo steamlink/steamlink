@@ -26,8 +26,8 @@ class Mqtt:
 		self.topic_prefix = conf['prefix']
 		self.topic_control = conf['control']
 		self.topic_data = conf['data']
-		self.public_topic_control = conf['public_control']
-		self.public_topic_data = conf['public_data']
+		self.public_topic_control = conf.get('public_control', None)
+		self.public_topic_data = conf.get('public_data', None)
 		self.server =   conf['server']
 		self.port =     conf['port']
 		self.clientid = conf['clientid']
