@@ -38,13 +38,17 @@ class Mqtt:
 		self.control_topic_x = "%s/%%s/%s" % (self.topic_prefix, self.topic_control)
 		self.data_topic_x = "%s/%%s/%s" % (self.topic_prefix, self.topic_data)
 		self.data_topic = "%s/+/%s" % (self.topic_prefix, self.topic_data)
-		self.public_control_topic = self.public_topic_control % "+"
 
 		self.connected = asyncio.Event(loop=loop)
 		self.subscribed = asyncio.Event(loop=loop)
 		self.disconnected = asyncio.Event(loop=loop)
 		self.mq = self.set_mq()
-		self.subscription_list = [self.data_topic, self.public_control_topic]
+		self.subscription_list = [self.data_topic]
+		if not self.public_topic_control in ['', None]:
+			self.public_control_topic = self.public_topic_control % "+"
+			self.subscription_list.append(self.public_control_topic)
+		else:
+			self.public_control_topic=None
 		self.running = True
 
 	def set_mq(self):
