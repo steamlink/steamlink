@@ -208,11 +208,14 @@ class Steam(Item):
 		self.cpubusy = 0
 		self.my_ip_address = socket.gethostbyname(socket.gethostname())
 		self.identity = "%s %s (%s)" % (PROJECT_PACKAGE_NAME, __version__, self.my_ip_address)
+		self._public_topic_control_re = None
 
 		_MQTT.set_msg_callback(self.on_data_msg)
-		_MQTT.set_public_control_callback(self.on_public_control_msg)
+
 		self._public_topic_control = _MQTT.get_public_control_topic()
-		self._public_topic_control_re = self._public_topic_control % "(.*)"
+		if self._public_topic_control is not None:
+			_MQTT.set_public_control_callback(self.on_public_control_msg)
+			self._public_topic_control_re = self._public_topic_control % "(.*)"
 
 		self._mqtt_test_succeeded  = False
 
@@ -300,6 +303,9 @@ class Steam(Item):
 				
 
 	def on_public_control_msg(self, client, userdata, msg):
+		if self._public_topic_control is None:
+			return
+
 		if logging.DBG > 2: logger.debug("on_public_control_msg %s %s", msg.topic, msg.payload)
 		match = re.match(self._public_topic_control_re, msg.topic) 
 		if match is None:

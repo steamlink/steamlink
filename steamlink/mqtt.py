@@ -159,6 +159,8 @@ class Mqtt:
 
 
 	def public_publish(self, nodename, data, qos=0, retain=False):
+		if self.public_topic_data is None:
+			return
 		topic = self.public_topic_data % nodename
 		# logger.debug("%s public publish %s %s", self.name, topic, data)
 		self.mq.publish(topic, payload=data, qos=qos, retain=retain)
