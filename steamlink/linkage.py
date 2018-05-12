@@ -7,6 +7,7 @@ import re
 import sys
 import socket
 import time
+from collections import  Mapping, OrderedDict
 
 import logging
 logger = logging.getLogger()
@@ -90,12 +91,12 @@ class CSearchKey:
 #
 class CSearch:
 	def __init__(self,  webnamespace, table, csearchkey):
-		
+
 		self.webnamespace = webnamespace
 		self.csearchkey = csearchkey
 		self.search_id = csearchkey.search_id
 		self.clients = {}		# users who registed, sid, stream_tag
-		self.cs_items = {}		# current list if items in sarch, key if key_field
+		self.cs_items = OrderedDict()		# current list of items in sarch, key is key_field
 
 		self.table = table
 		if csearchkey.key_field is None:
@@ -193,8 +194,14 @@ class CSearch:
 		if not sid in self.clients:
 			return
 		if 'csearch' in logging.DBGK: logger.debug("force_update ")
+
+
+		cs_list = []
 		for cs in self.cs_items:
-			self.cs_items[cs].push_update(True)
+			cs_list.append(self.cs_items[cs])
+		if len(cs_list) > 0:
+			_WEBAPP.queue_itemlist_update(cs_list, True)
+
 
 #
 # CSearchItem
@@ -208,7 +215,7 @@ class CSearchItem:
 		self.deleted = False
 
 		self.last_update = 0		# csearchitem's last update time stamp
-		self.future_update = False	
+		self.future_update = False
 		self.upd_in_progress = False
 
 
@@ -239,6 +246,7 @@ class CSearchItem:
 
 	def push_update(self, force, sroom = None):
 		if self.upd_in_progress or _WEBAPP is None:
+			logger.warning("push_update EARLY!")
 			return
 		next_update = (self.last_update + _WEBAPP.minupdinterval) - _WEBAPP.loop.time()
 		if 'csearch' in logging.DBGK: logger.debug("push_update %s %s %s next: %s", self, force, sroom, next_update)
@@ -440,7 +448,7 @@ class DbTable(Table):
 		self.cache = OCache(tablename, 1000)
 		self.dbtable = _DB.table(self.tablename)
 		super().__init__(itemclass, keyfield)
-	
+
 
 	def register(self, item):
 		""" backload item from db if it exists, otherwise insert in db """
@@ -455,7 +463,7 @@ class DbTable(Table):
 			self.cache[item.__dict__[self.keyfield]] = item
 		super().register(item)
 		return item._wascreated
-			
+
 
 	def db_to_class(self, drange):
 		ret = []
@@ -521,7 +529,7 @@ class DbTable(Table):
 		self.dbtable.db_update(item.save(), self.keyfield, item.__dict__[self.keyfield])
 		self.cache[item.__dict__[self.keyfield]] = item
 		super().db_update(item, force)
-		
+
 
 	def insert(self, item):
 		if logging.DBG > 2: logger.debug("Table insert %s  %s", item.save(), self.keyfield)
@@ -578,11 +586,11 @@ class DictTable(Table):
 		udict = {}
 		for t in tab:
 			logger.debug("DictTable get_range %s %s", field, t)
-			
+
 			udict[tab[t].__dict__[field]] = tab[t]
 		fullsdict = sorted(udict)
 		if logging.DBG > 1: logger.debug("get_range table %s items", len(fullsdict))
-	
+
 		if len(csk.restrict_by) == 0:
 			sdict = fullsdict
 		else:
@@ -755,7 +763,7 @@ class Item(BaseItem):
 # LogItem
 class LogItem(Item):
 #	console_fields = {
-#		"Time": "time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(self.ts))",	
+#		"Time": "time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(self.ts))",
 #		"lvl": "self.lvl",
 #		"ts": "self.ts",
 #		"line": "self.line",
@@ -809,7 +817,7 @@ class LogQ(Item):
 
 	def write(self, msg):
 		asyncio.ensure_future(self.awrite(msg), loop=self.loop)
-	
+
 	async def awrite(self, msg):
 		msg = msg.rstrip('\n')
 		if len(msg) > 0:
@@ -840,6 +848,6 @@ class LogQ(Item):
 
 			logitem = LogItem(lvl, line)
 			if lvl in ['INFO', 'WARNING', 'ERROR', 'CRITICAL', 'ALERT', 'EMERGENCY']:
-				_WEBAPP.send_console_alert(lvl, line)				
+				_WEBAPP.send_console_alert(lvl, line)
 		logger.info("%s logq stop", self)
 

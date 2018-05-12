@@ -257,6 +257,12 @@ class WebApp(object):
 			await ws.close(code=WSCloseCode.GOING_AWAY, message='Server shutdown')
 
 
+	def queue_itemlist_update(self, csitems, force):
+		if 'webupd' in logging.DBGK: logger.debug("queue_itemlist_update for %s item %s", csitem.csearch.search_id, csitem.item)
+		asyncio.ensure_future(self.con_upd_q.put([csitems, force]), loop=self.loop)
+
+
+
 	def queue_item_update(self, csitem, force):
 		if 'webupd' in logging.DBGK: logger.debug("queue_item_update for %s item %s", csitem.csearch.search_id, csitem.item)
 		asyncio.ensure_future(self.con_upd_q.put([csitem, force]), loop=self.loop)
@@ -269,12 +275,20 @@ class WebApp(object):
 			if 'webupd' in logging.DBGK: logger.debug("console_update_loop %s force %s", upd_csitem, upd_force)
 			if upd_csitem is None:
 				break
-			data = upd_csitem.console_update(upd_force)
+			if type(upd_csitem) == type([]):
+				data = []
+				for cs_item in upd_csitem:
+					data.append(cs_item.console_update(upd_force))
+				upd_csitem = upd_csitem[0]
+			else:
+				data = upd_csitem.console_update(upd_force)
+			tag = upd_csitem.csearch.csearchkey.stream_tag
+			room = upd_csitem.csearch.search_id
 			if 'webupd' in logging.DBGK: logger.debug("emit_loop event: %s room:%s data: %s", upd_csitem.csearch.csearchkey.stream_tag,  upd_csitem.csearch.search_id, data)
-			await self.sio.emit(upd_csitem.csearch.csearchkey.stream_tag,
+			await self.sio.emit(tag,
 					data = data,
 					namespace = self.namespace,
-					room = upd_csitem.csearch.search_id)
+					room = room)
 			upd_csitem.update_sent()
 			self.con_upd_q.task_done()
 

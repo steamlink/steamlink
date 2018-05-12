@@ -239,7 +239,7 @@ class Steam(Item):
 		# dict with: cmd, slid, data
 		# cmds are: DN SC
 		if message['cmd'] in ["DN", "SC"]:
-			node = Node._table.find_one(messages["slid"])
+			node = Node._table.find_one(message["slid"])
 			if node is None:
 				return {"Success": False, "Error": "Unknown node" }
 			to_send = message['data']
@@ -257,8 +257,6 @@ class Steam(Item):
 		if ret is not "OK":
 			return {"Success": False,
 					"Error": "packet %s was not send to %s: %s" % (to_send, node.name, ret) }
-		else:
-			return {"Success": False, "Error": "Unknown cmd" }
 		return {"Success": True }
 
 		
@@ -1224,11 +1222,9 @@ def add_csearch(webnamespace, sid, message):
 		logger.info('add_search fail: %s', msg)
 		return { 'error': msg }
 
-
 	#  force update
 	for cs in table.csearches:
 		table.csearches[cs].force_update(sid)
-
 
 	if logging.DBG > 1: logger.debug("add_csearch sid %s csearchkey %s", sid, csearchkey)
 	res = {
