@@ -349,6 +349,9 @@ class Steam(Item):
 		except ValueError as e:
 			logger.warning("mqtt: pkt dropped: '%s', value error %s", msg.payload, e)
 			return
+		if sl_pkt.slid is None:
+			logger.warning("mqtt: pkt dropped: '%s', no slid %s", msg.payload, sl_pkt)
+			return
 
 		node = Node._table.find_one(sl_pkt.slid)
 		if node is None:		# Auto-create node
