@@ -298,7 +298,10 @@ class OCache(dict):
 
 	def __delitem__(self, key):
 		if 'ocache' in logging.DBGK: logger.debug("OCache %s __delitem %s", self.tablename, key)
-		return super().__delitem__(key)
+		try:
+			return super().__delitem__(key)
+		except:
+			return
 
 
 	def has(self, key):
@@ -814,7 +817,10 @@ class LogQ(Item):
 		for i in ilist:
 			yield i
 
-	async def prune_logitem_table(self, count):
+	async def delitem(self, item):
+		item.delete()
+
+	def prune_logitem_table(self, count):
 		csk = CSearchKey(
 				table_name=LogItem._table.tablename,
 				key_field="ts",
@@ -822,13 +828,15 @@ class LogQ(Item):
 				start_item_number=0, 
 				count=count)
 		for logitem in LogItem._table.get_range(csk):
-			asyncio.ensure_future(logitem.delete(), loop=self.loop)
+#			logitem.delete()
+			asyncio.ensure_future(self.delitem(logitem), loop=self.loop)
 
 
 	async def start(self):
 		LogItem._table = DbTable(LogItem, keyfield="ts", tablename="LogItem")
 		logger.info("%s logq start", self)
 		ansi_escape = re.compile(r'\x1B\[[0-?]*[ -/]*[@-~]')    # removes ansi escape sequence
+		prune_in_progress = True
 		while True:
 			msg = await self.q.get()
 			if msg is None:
@@ -848,9 +856,12 @@ class LogQ(Item):
 			logitem = LogItem(lvl, line)
 			if lvl in ['INFO', 'WARNING', 'ERROR', 'CRITICAL', 'ALERT', 'EMERGENCY']:
 				_WEBAPP.send_console_alert(lvl, line)
-			count = len(LogItem._table) - self.max_log_records
-			if count > 0:
-				asyncio.ensure_future(self.prune_logitem_table(count), loop=self.loop)
+			if not prune_in_progress:
+				prune_in_progress = True
+				count = len(LogItem._table) - self.max_log_records
+				if count > 0:
+					self.prune_logitem_table(count)
+				prune_in_progress = False
 			self.update()
 		logger.info("%s logq stop", self)
 

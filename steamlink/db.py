@@ -108,7 +108,7 @@ class DBTable:
 	def delete(self, field, val):
 		el = self.table.get(where(field) == val)
 		if el is None:
-			logger.error("delete in %s, no document with %s=%s", self.name, field, key)
+			logger.error("delete in %s, no document with %s=%s", self.name, field, val)
 			return
 		
 		try:
