@@ -13,22 +13,42 @@ node:
   stream_tag: node_header
   # Layout
   row: 1
-  grid_columns: 'eight'
-  grid_rows: 7
+  grid_columns: 'six'
+  grid_rows: 10
   template: 'tile.html'
 
-sendtonode:
-  name: sendtonode
-  type: form
-  title: Send To Node
-  # Command information
-  command: DN
-  slid: 1
+rssi:
+  name: rssi
+  type: timeline
+  title: RSSI
   # Layout
   row: 1
-  grid_columns: 'four'
-  grid_rows: 7
-  template: 'form.html'
+  grid_columns: 'six'
+  grid_rows: 10
+  # Query information
+  table_name: Packet
+  key_field: ts
+  restrict_by:
+    - field_name: slid
+      op: "=="
+      value: 305
+  start_key: null
+  start_item_number: -25
+  count: 25
+  end_key: null
+  stream_tag: rssi_area
+  # Template fields
+  template: 'timeline.html'
+  labels:
+    - "rssi"
+  timeKey: "Time"
+  backgroundColors:
+    - 'rgba(255, 99, 132, 0.2)'
+    - 'rgba(54, 162, 235, 0.2)'
+    - 'rgba(255, 206, 86, 0.2)'
+    - 'rgba(75, 192, 192, 0.2)'
+    - 'rgba(153, 102, 255, 0.2)'
+    - 'rgba(255, 159, 64, 0.2)'
 
 packets:
   name: packets
@@ -60,39 +80,17 @@ packets:
     - "Time"
   record_link: "/packet?packet.start_key={key}"
 
-rssi:
-  name: rssi
-  type: timeline
-  title: RSSI
+sendtonode:
+  name: sendtonode
+  type: form
+  title: Send To Node
+  # Command information
+  command: DN
+  slid: 1
   # Layout
-  row: 3
-  grid_columns: 'six'
-  grid_rows: 10
-  # Query information
-  table_name: Packet
-  key_field: ts
-  restrict_by:
-    - field_name: slid
-      op: "=="
-      value: 305
-  start_key: null
-  start_item_number: -25
-  count: 25
-  end_key: null
-  stream_tag: rssi_area
-  # Template fields
-  template: 'timeline.html'
-  labels:
-    - "rssi"
-  timeKey: "Time"
-  backgroundColors:
-    - 'rgba(255, 99, 132, 0.2)'
-    - 'rgba(54, 162, 235, 0.2)'
-    - 'rgba(255, 206, 86, 0.2)'
-    - 'rgba(75, 192, 192, 0.2)'
-    - 'rgba(153, 102, 255, 0.2)'
-    - 'rgba(255, 159, 64, 0.2)'
-
-
+  row: 2
+  grid_columns: 'four'
+  grid_rows: 7
+  template: 'form.html'
   
   
