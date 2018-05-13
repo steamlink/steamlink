@@ -850,7 +850,7 @@ class LogQ(Item):
 				_WEBAPP.send_console_alert(lvl, line)
 			count = len(LogItem._table) - self.max_log_records
 			if count > 0:
-				self.prune_logitem_table(count)
+				asyncio.ensure_future(self.prune_logitem_table(count), loop=self.loop)
 			self.update()
 		logger.info("%s logq stop", self)
 
