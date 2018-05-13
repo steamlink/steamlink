@@ -1,5 +1,4 @@
 include README.md LICENSE
-include steamlink/steamlink.yaml.sample
 include steamlink/html/static
 include steamlink/html/static/*
 include steamlink/html/templates

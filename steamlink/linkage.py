@@ -457,17 +457,16 @@ class DbTable(Table):
 	def register(self, item):
 		""" backload item from db if it exists, otherwise insert in db """
 		if logging.DBG > 2: logger.debug("register %s %s", self.tablename, item)
-		r = self.dbtable.search(self.keyfield, '==', item.__dict__[self.keyfield])
-		if r is None or len(r) == 0:
+		item_dict = self.dbtable.get(self.keyfield, '==',  item.__dict__[self.keyfield])
+		if item_dict is None:
 			item._wascreated = True
 			self.insert(item)
 		else:
 			item._wascreated = False
-			item.load(r[0])
+			item.load(item_dict)
 			self.cache[item.__dict__[self.keyfield]] = item
 		super().register(item)
 		return item._wascreated
-
 
 
 	def make_item_from_dict(self, item_dict):
@@ -787,6 +786,7 @@ class LogQ(Item):
 			self.q = Queue(loop=loop)
 			self.loop = loop
 		super().__init__(self.name)
+		self.prune_in_progress = False
 		logger.info("%s logq init", self)
 
 	def save(self, withvirtual=False):
@@ -820,23 +820,24 @@ class LogQ(Item):
 	async def delitem(self, item):
 		item.delete()
 
-	def prune_logitem_table(self, count):
+	async def prune_logitem_table(self, count):
+		logger.debug("starting prune of %s item", count)
 		csk = CSearchKey(
 				table_name=LogItem._table.tablename,
 				key_field="ts",
 				start_key=None, 
 				start_item_number=0, 
 				count=count)
-		for logitem in LogItem._table.get_range(csk):
-#			logitem.delete()
-			asyncio.ensure_future(self.delitem(logitem), loop=self.loop)
+		for item in LogItem._table.get_range(csk):
+			item.delete()
+		logger.debug("prune done, table size %s", len(LogItem._table))
+		self.prune_in_progress = False
 
 
 	async def start(self):
 		LogItem._table = DbTable(LogItem, keyfield="ts", tablename="LogItem")
 		logger.info("%s logq start", self)
 		ansi_escape = re.compile(r'\x1B\[[0-?]*[ -/]*[@-~]')    # removes ansi escape sequence
-		prune_in_progress = True
 		while True:
 			msg = await self.q.get()
 			if msg is None:
@@ -856,12 +857,10 @@ class LogQ(Item):
 			logitem = LogItem(lvl, line)
 			if lvl in ['INFO', 'WARNING', 'ERROR', 'CRITICAL', 'ALERT', 'EMERGENCY']:
 				_WEBAPP.send_console_alert(lvl, line)
-			if not prune_in_progress:
-				prune_in_progress = True
-				count = len(LogItem._table) - self.max_log_records
-				if count > 0:
-					self.prune_logitem_table(count)
-				prune_in_progress = False
+			count = len(LogItem._table) - self.max_log_records
+			if count > 0 and not self.prune_in_progress:
+				self.prune_in_progress = True
+				asyncio.ensure_future(self.prune_logitem_table(count+10), loop=self.loop)
 			self.update()
 		logger.info("%s logq stop", self)
 

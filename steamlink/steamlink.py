@@ -341,6 +341,10 @@ class Steam(Item):
 			response = "selfcheck '%s'" % self.identity
 			_MQTT.publish("store", response, sub="control")
 			self._mqtt_test_succeeded = True
+		elif cmd['cmd'] == 'gelog':
+			count = cmd.get('count', 1)
+			for i in range(count):
+				logger.info("useless log entry, just to take up space, num %s", i)
 		elif cmd['cmd'] == 'ping':
 			response = "pong '%s'" % self.identity
 			_MQTT.publish("store", response, sub="control")
