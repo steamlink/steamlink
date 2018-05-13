@@ -124,7 +124,10 @@ function Stream(sock, config, on_new_message) {
           self.cache.push(item);
           self.config.end_key = item[self.config.key_field];
         }
-        // TODO: cache pruning?
+        // prune cache to count size.
+        if (self.cache.length > self.config.count) {
+          self.cache.shift();
+        }
       }  
     }
   };

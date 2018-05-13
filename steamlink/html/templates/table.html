@@ -1,12 +1,6 @@
 <div class="{{ partial_item.grid_columns }} columns">
     <style>
-        .table-partial > table > thead > tr, tbody {
-            /* display:block; */
-        }
-        .table-partial > table > tbody > tr:hover { 
-            background: #F7F7F5;
-            cursor: pointer;
-        }
+        /* */
     </style>
     <h4 class="table-partial partial-heading">
         {{ partial_item.title }}
@@ -50,8 +44,6 @@
 
         var headers = {{ partial_item.headers|tojson|safe }};
 
-        var sortMultiplier = 1;
-
         var startStreamConfig = {
             table_name: {{ partial_item.table_name|tojson|safe }},
             key_field: {{ partial_item.key_field|tojson|safe }},
@@ -68,13 +60,9 @@
         var totalPages = 0;
         var currentPage = 0;
 
-
-
         var renderTable = function() {
             var htmlString = "";
-            var cache = tableStream.cache.sort(function(a,b) {
-                return sortMultiplier*(a[tableStream.config.key_field] - b[tableStream.config.key_field]);
-            })            
+            var cache = tableStream.cache;
             cache.forEach((item) => {
                 htmlString += "<tr>";
                 headers.forEach( (header) => {
@@ -146,12 +134,6 @@
             renderTable();
         };
 
-        /*
-        sortButton.onclick = function() {
-            sortMultiplier=sortMultiplier*(-1);
-            renderTable();
-        };
-        */
         var tableStream = new Stream(socket, startStreamConfig, onNewMessage);
         tableStream.startStream();
 

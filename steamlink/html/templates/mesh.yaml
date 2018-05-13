@@ -45,7 +45,7 @@ nodes_map:
   grid_columns: 'six'
   grid_rows: 8
   template: 'map.html'
-  record_link: "/node?node.start_key={key}&sendtonode.slid={key}&reconfigurenode.slid={key}&packets.restrict_by={key}"
+  record_link: "/node?node.start_key={key}&sendtonode.slid={key}&rssi.restrict_by={key}&packets.restrict_by={key}"
 
 nodes:
   name: nodes
@@ -76,4 +76,4 @@ nodes:
   grid_columns: 'twelve'
   grid_rows: 10
   template: 'table.html'
-  record_link: "/node?node.start_key={key}&sendtonode.slid={key}&reconfigurenode.slid={key}&packets.restrict_by={key}"
+  record_link: "/node?node.start_key={key}&sendtonode.slid={key}&rssi.restrict_by={key}&packets.restrict_by={key}"

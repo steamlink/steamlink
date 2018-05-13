@@ -48,3 +48,11 @@ a {
     color: white;
     border: none;
 }
+
+.table-partial > table > thead > tr, tbody {
+    /* display:block; */
+}
+.table-partial > table > tbody > tr:hover { 
+    background: #F7F7F5;
+    cursor: pointer;
+}

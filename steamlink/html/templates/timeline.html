@@ -12,11 +12,31 @@
 
 <script type="text/javascript">
     $(function () {
+
+        var backgroundColors = {{ partial_item.backgroundColors|tojson|safe }};
+        var labels = {{ partial_item.labels|tojson|safe }};
+        var timeKey = {{ partial_item.timeKey|tojson|safe }};
+
+        console.log(backgroundColors);
+
+        var startStreamConfig = {
+            table_name: {{ partial_item.table_name|tojson|safe }},
+            key_field: {{ partial_item.key_field|tojson|safe }},
+            restrict_by: {{ partial_item.restrict_by|tojson|safe }},
+            start_key: {{ partial_item.start_key|tojson|safe }},
+            start_item_number: {{ partial_item.start_item_number|tojson|safe }},
+            count: {{ partial_item.count|tojson|safe }},
+            end_key: {{ partial_item.end_key|tojson|safe }},
+            stream_tag: {{ partial_item.stream_tag|tojson|safe }}
+        };
+
         var ctx = $("#{{ partial_item.name }}_canvas");
+        
         var data = {
             datasets: [],
-            labels: []
+            labels: [] // x axis labels
         };
+
         var chart = new Chart(ctx,{
             type: 'line',
             data: data,            
@@ -27,40 +47,46 @@
                             unit: 'second'
                         }
                     }]
+                },
+                animation: {
+                    duration: 0
                 }
             }
         });
         
-        var backgroundColors = {{ partial_item.backgroundColors|tojson|safe }};
-        
-        console.log(backgroundColors);
-        socket.on("{{ partial_item.name }}", function (msg) {
-            console.log("Received data!");
-            console.log(msg);
-            if (msg.display_vals) {
-                var found = false;
+        // Setup chart
+        var resetChart = function() {
+            chart.data.datasets = [];
+            chart.data.labels = [];
+            labels.forEach((l) => {
+                chart.data.datasets.push({
+                    label: l,
+                    data: [],
+                    backgroundColor: backgroundColors[chart.data.datasets.length]
+                });
+            });
+        }
+
+        var onNewMessage = function(d) {
+            renderTimeline();
+        }
+
+        var renderTimeline = function() {
+            resetChart();
+            var cache = timelineStream.cache;
+            cache.forEach((item) => {
                 chart.data.datasets.forEach((dataset) => {
-                    if (msg.display_vals.label == dataset.label) {
-                        // we found the right data set.
-                        found = true;
-                        dataset.data.push({ x: msg.display_vals.time, y: msg.display_vals.value});
-                        chart.data.labels.push(msg.display_vals.time)
+                    if (dataset.label in item) {
+                        dataset.data.push({ x: item[timeKey], y: item[dataset.label]});
+                        chart.data.labels.push(item[timeKey])
                     }
-                })
-                if (found == false) {
-                    // if we havn't found the right dataset
-                    chart.data.datasets.push(
-                        {
-                            label: msg.display_vals.label,
-                            data: [{ x: msg.display_vals.time, y: msg.display_vals.value}],
-                            backgroundColor: backgroundColors[chart.data.datasets.length]
-                        }
-                    );
-                    chart.data.labels.push(msg.display_vals.time);
-                }
-                console.log(chart.data.datasets);
-                chart.update();
-            }
-        });
+                });
+            });
+            chart.update();
+        }
+
+        var timelineStream = new Stream(socket, startStreamConfig, onNewMessage);
+        timelineStream.startStream();
+
     });
 </script>

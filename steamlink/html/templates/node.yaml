@@ -36,7 +36,7 @@ packets:
   title: Packets in the Node
   # Layout
   row: 2
-  grid_columns: 'twelve'
+  grid_columns: 'eight'
   # Query information
   table_name: Packet
   key_field: ts
@@ -59,6 +59,40 @@ packets:
     - "payload"
     - "Time"
   record_link: "/packet?packet.start_key={key}"
-  
 
+rssi:
+  name: rssi
+  type: timeline
+  title: RSSI
+  # Layout
+  row: 3
+  grid_columns: 'six'
+  grid_rows: 10
+  # Query information
+  table_name: Packet
+  key_field: ts
+  restrict_by:
+    - field_name: slid
+      op: "=="
+      value: 305
+  start_key: null
+  start_item_number: -25
+  count: 25
+  end_key: null
+  stream_tag: rssi_area
+  # Template fields
+  template: 'timeline.html'
+  labels:
+    - "rssi"
+  timeKey: "Time"
+  backgroundColors:
+    - 'rgba(255, 99, 132, 0.2)'
+    - 'rgba(54, 162, 235, 0.2)'
+    - 'rgba(255, 206, 86, 0.2)'
+    - 'rgba(75, 192, 192, 0.2)'
+    - 'rgba(153, 102, 255, 0.2)'
+    - 'rgba(255, 159, 64, 0.2)'
+
+
+  
   
