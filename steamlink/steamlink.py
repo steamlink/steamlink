@@ -280,7 +280,7 @@ class Steam(Item):
 
 		self._mqtt_test_succeeded  = False
 
-		mq_cmd_msg = { "cmd": "selfcheck" }
+		mq_cmd_msg = { "cmd": "selfcheck", "identity": self.identity }
 		_MQTT.publish("store", json.dumps(mq_cmd_msg), sub="data")
 
 
@@ -323,24 +323,18 @@ class Steam(Item):
 					"Error": "packet %s was not send to %s: %s" % (to_send, node.name, ret) }
 		return {"Success": True }
 
-		
 
 	def handle_store_command(self, cmd):
 		if type(cmd) != type({}):
 			logger.warning("unreadable cmd %s", cmd)
 			return
 		if cmd['cmd'] == 'selfcheck':
-			if self._mqtt_test_succeeded:
-				logger.warning("there is a second system")
-				# send ping to find out where he is
-				mq_cmd_msg = { "cmd": "ping" }
-				_MQTT.publish("store", json.dumps(mq_cmd_msg), sub="data")
-				return
+			id = cmd.get('identity')
+			if id != self.identity:
+				logger.warning("there is another system: %s", id)
 			else:
 				logger.debug("mqtt test successfull")
-			response = "selfcheck '%s'" % self.identity
-			_MQTT.publish("store", response, sub="control")
-			self._mqtt_test_succeeded = True
+				self._mqtt_test_succeeded = True
 		elif cmd['cmd'] == 'gelog':
 			count = cmd.get('count', 1)
 			for i in range(count):

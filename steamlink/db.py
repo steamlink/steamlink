@@ -69,11 +69,34 @@ class YAMLStorage(Storage):
 		pass
  
 
+class DBIndex(dict):
+	def __init__(self, table, keyfield):
+		self.keyfield = keyfield
+		self.table = table
+		super().__init__()
+
+
+	def init_idx(self):
+		for item in self.table:
+			key = item[self.keyfield]
+			super().__setitem__(key, item)
+
+
+	def has(self, key):
+		return key in self
+
+
+	def insert(self, item):
+		key = item[self.keyfield]
+		super().__setitem__(key, item)
+
+
 class DBTable:
 	def __init__(self, table, name):
 		if logging.DBG > 2: logger.debug("DBTable %s", name)
 		self.table = table
 		self.name = name
+		self.idxs = {}
 		self.query = Query()
 
 
