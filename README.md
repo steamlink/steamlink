@@ -23,6 +23,18 @@ After editing the config you can start steamlink with
 
 ```$ steamlink```
 
+You will see a couple of start-up messages and afer a momemt, you should be able to got to [http://steamlink.local:5050/]().
+
+Pip installs a sample Steamlink "Node" in your bin/ directory.  It also runs in a Python virtual environment, so open a second terminal session, activate the environment with 
+
+```$ . sl/bin/activate``` and then run 
+
+```$ python bin/pynode-example.py```. 
+
+On the SteamLink Dashboard webpage, you will now see that a Mesh was created. Click on it, and you will find PyNode401 in the list of Nodes. Click on the PyNode401 line and you see the packets the node has sent to the central store. You can send packets to the PyNode401 via the "Send To Node" input field.  Your pynode-example program will exit if you send it "go offline".
+
+
+ 
 TODO: running as a service
 
 ### Configuration
