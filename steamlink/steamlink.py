@@ -178,16 +178,16 @@ class SL_OP:
 	BN = 0x32		# slid precedes payload, bridge forward to node
 	GS = 0x34		# get status, reply with SS message
 	TD = 0x36		# transmit a test message via radio
-	SC = 0x38		# set radio paramter to x, acknowlegde with AK or NK
+	SC = 0x38		# set radio paramter to x, acknowlegde with AK
 	BC = 0x3A		# restart node, no reply
 	BR = 0x3C		# reset the radio, TBD
 	AN = 0x3E		# Ack from store -> node
 
 	DS = 0x31		# data to store
 	BS = 0x33		# bridge to store
-	ON = 0x35		# send status on to store, send on startup
+	ON = 0x35		# go online
 	AS = 0x37		# acknowlegde the last control message
-	NK = 0x39		# negative acknowlegde the last control message
+	OF = 0x39		# go offline
 	TR = 0x3B		# Received Test Data
 	SS = 0x3D		# status info and counters
 	NC = 0x3F		# No Connection or timeout
@@ -662,11 +662,17 @@ class Node(Item):
 		self.update()
 
 
+	def is_offline(self):
+		return self.state == "OFFLINE"
+
+
 	def is_state_up(self):
 		return self.state in Node.UPSTATES
 
 
 	def is_overdue(self):
+		if self.state == "OFFLINE":
+			return False
 		return (self.last_packet_rx_ts + self.nodecfg.max_silence) <= time.time()
 
 
@@ -843,6 +849,9 @@ class Node(Item):
 			self.set_state("ONLINE")
 			self.last_node_restart_ts = time.time()
 			logger.info('%s signed on', self)
+		elif sl_op == SL_OP.OF:
+			self.set_state("OFFLINE")
+
 		elif sl_op == SL_OP.DS:
 #			logger.debug('post_data: slid %d status %s', int(self.slid),sl_pkt.payload)
 			self.last_data_pkt = sl_pkt
@@ -879,7 +888,7 @@ class Node(Item):
 		self.last_packet_rx_ts = sl_pkt.ts
 
 		# any pkt from node indicates it's up
-		if not self.is_state_up():
+		if not self.is_offline and not self.is_state_up():
 			self.set_state('TRANSMITTING')
 
 		self.update()
@@ -903,7 +912,7 @@ class Node(Item):
 		self.periodic_check_for_AS()
 		if self.is_overdue() and self.is_state_up():
 			self.set_state("OVERDUE")
-		if not self.is_state_up():		#XXX not offline or sleeping
+		if not self.is_offline() and not self.is_state_up():	#XXX not offline or sleeping
 			if self.last_packet_tx_ts != 0 and self.last_packet_tx_ts + MAXSILENCE < time.time():
 				self.send_get_status()
 
