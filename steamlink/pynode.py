@@ -97,7 +97,7 @@ class PyNode:
 
 
 	def process_ack_timeout(self):
-		logger.info("process_ack_timeout")
+		logger.debug("process_ack_timeout")
 		self.wait_handle = None
 		if self.wait_for_AN.inc_resend_count() > MAX_RESEND_COUNT:
 			logger.info("resend limit reached for %s, giving up", self.wait_for_AN)
