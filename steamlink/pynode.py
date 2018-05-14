@@ -45,7 +45,7 @@ class PyNode:
 
 		self.last_packet_tx_ts = 0
 
-		self.pstate = "initial"
+		self.status = "OK"
 
 
 	async def start(self):
@@ -104,6 +104,11 @@ class PyNode:
 			self.publish_pkt(pkt, resend=True)
 	
 
+	def handle_gs(self, payload):
+		if logging.DBG > 1: logger.debug("handle gs: %s", payload)
+		self.send_status_to_store()
+
+
 	def handle_sc(self, payload):
 		if logging.DBG > 1: logger.debug("handle sc: %s", payload)
 		# XXX: actually config  stuff
@@ -132,6 +137,11 @@ class PyNode:
 			return False	
 
 
+	def send_status_to_store(self):
+		sl_pkt = BasePacket(self, sl_op=SL_OP.SS, payload=self.status)
+		self.publish_pkt(sl_pkt)
+
+
 	def set_pkt_number(self, pkt):
 		self.pkt_num += 1
 		if self.pkt_num == 0:
@@ -158,25 +168,30 @@ class PyNode:
 		return True
 
 
+	# User routins
+
 	def send(self, packet, slid=1):
 		logger.info("sending: '%s' to '%s'", packet, slid)
 		self.send_data_to_store(packet)
-
 
 
 	def register_receive_queue(self, receive_q):
 		self.receive_q = receive_q
 
 
-def setup_logging(loglvl):
-	FORMAT='%(name)s - %(levelname)s - %(message)s'
-	logging.basicConfig(level=loglvl, format=FORMAT)
-
-	logging.DBG = 0
-	logging.DBGK = []
+	def set_status(self, new_status):
+		self.status = new_status[:20]
+		self.send_status_to_store()
 
 
 if __name__ == '__main__':
+
+	def setup_logging(loglvl):
+		FORMAT='%(name)s - %(levelname)s - %(message)s'
+		logging.basicConfig(level=loglvl, format=FORMAT)
+	
+		logging.DBG = 0
+		logging.DBGK = []
 
 	mqtt_conf = {
 		'clientid': 'pynode_%s' % time.time(),
@@ -189,16 +204,15 @@ if __name__ == '__main__':
 		'control': 'control',
 	}
 
-
-	async def process_incoming(receive_q):
+	async def process_incoming(sl_node, receive_q):
 		while True:
 			pkt = await receive_q.get()
 			print("Got one", pkt)
-		receive_q.task_done()
+			sl_node.set_status("HAPPY")
+			receive_q.task_done()
 		
 
 	async def produce_outgoing(sl_node):
-		await sl_node.start()
 		while True:
 			await asyncio.sleep(10)
 			sl_node.send("Hello PyWorld")
@@ -211,11 +225,13 @@ if __name__ == '__main__':
 		
 		# create a Queue to receive incoming messages and start the re
 		receive_q = asyncio.Queue()
-		consumer = asyncio.ensure_future(process_incoming(receive_q))
 
 		# create our Node and register the receive queue with it
 		sl_node = PyNode(nodecfg, mqtt_conf, loop)
 		sl_node.register_receive_queue(receive_q)
+		consumer = asyncio.ensure_future(process_incoming(sl_node, receive_q))
+
+		await sl_node.start()	 # go online
 
 		# start outgoing 
 		await produce_outgoing(sl_node)
