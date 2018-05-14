@@ -10,66 +10,14 @@ from tinydb.database import  Document
 from tinydb.storages import JSONStorage, touch
 from tinydb.storages import MemoryStorage
 from tinydb.middlewares import CachingMiddleware
-from tinydb_smartcache import SmartCacheTable
 
 import logging
 logger = logging.getLogger()
 
 from .linkage import check_restrictions
 
-import yaml
-def represent_doc(dumper, data):
-	# Represent `Document` objects as their dict's string representation
-	# which PyYAML understands
-	return dumper.represent_data(dict(data))
 
-
-notyet = """
-class SLDoc(dict):
-	def __init__(self, value, doc_id, **kwargs):
-		super().__init__(value, doc_id, **kwargs)
-		pass
-
-		self.update(value)
-		self.doc_id = doc_id
-
-
-"""
-yaml.add_representer(Document, represent_doc)
-
-class YAMLStorage(Storage):
-	def __init__(self, path, create_dirs=False, **kwargs):
-		super().__init__()
-		touch(path, create_dirs=create_dirs)
-		self.kwargs = kwargs
-		self._handle = open(path, 'r+')
-
-
-	def read(self):
-		self._handle.seek(0, os.SEEK_END)
-		size = self._handle.tell()
-		if not size:
-			# File is empty
-			return None
-		else:
-			self._handle.seek(0)
-			return yaml.safe_load(self._handle.read()) 
-
-
-	def write(self, data):
-		self._handle.seek(0)
-		serialized = yaml.dump(data)
-		self._handle.write(serialized)
-		self._handle.flush()
-		self._handle.truncate()
-
-
-	def close(self): # (4) pass
-		self._handle.close()
-		pass
- 
-
-class DBIndex(dict):
+class DBIndex(OrderedDict):
 	def __init__(self, table, keyfield):
 		self.keyfield = keyfield
 		self.table = table
@@ -91,6 +39,11 @@ class DBIndex(dict):
 		super().__setitem__(key, item)
 
 
+	def __del__(self, item):
+		key = item[self.keyfield]
+		super().__setitem__(key, item)
+
+
 class DBTable:
 	def __init__(self, table, name):
 		if logging.DBG > 2: logger.debug("DBTable %s", name)
@@ -102,7 +55,7 @@ class DBTable:
 
 	def insert(self, rec):
 		did = self.table.insert(rec)
-		if logging.DBG >= 2: logger.debug("REC insert %s rec %s, %s: %s", self.name, did, type(rec), rec)
+		if 'dbops' in logging.DBGK: logger.debug("REC insert %s rec %s, %s: %s", self.name, did, type(rec), rec)
 
 
 	def upsert(self, rec, keyfield):
@@ -112,20 +65,20 @@ class DBTable:
 			logger.error("insert with no '%s' field: %s", keyfield, rec)
 			return
 		el = self.table.search(where(keyfield) == r)
-		if logging.DBG > 2: logger.debug("upsert search %s return %s", (where(keyfield) == r), el)
+		if 'dbops' in logging.DBGK: logger.debug("upsert search %s return %s", (where(keyfield) == r), el)
 		if el is not None and len(el) > 0:
 			if el[0] == rec:
-				if logging.DBG > 2: logger.debug("upsert --nochange--")
+				if 'dbops' in logging.DBGK: logger.debug("upsert --nochange--")
 				return
 			did = self.table.update(rec, where(keyfield) == r)
-			if logging.DBG >= 2: logger.debug("REC upsert update %s rec %s, %s: %s", self.name, did, type(rec), rec)
+			if 'dbops' in logging.DBGK: logger.debug("REC upsert update %s rec %s, %s: %s", self.name, did, type(rec), rec)
 		else:
 			did = self.table.insert(rec)
-			if logging.DBG >= 2: logger.debug("upsert insert %s rec %s, %s: %s", self.name, did, type(rec), rec)
+			if 'dbops' in logging.DBGK: logger.debug("upsert insert %s rec %s, %s: %s", self.name, did, type(rec), rec)
 
 
 	def db_update(self, rec, keyfield, key):
-		if logging.DBG >= 2: logger.debug("REC update %s rec %s", self.name, rec)
+		if 'dbops' in logging.DBGK: logger.debug("REC update %s rec %s", self.name, rec)
 		did = self.table.update(rec, where(keyfield) == key)
 
 	def delete(self, field, val):
@@ -143,14 +96,14 @@ class DBTable:
 	def get(self, field, op, val):
 		q = "self.table.get(where('%s') %s %s)" % (field, op, repr(val))
 		res = eval(q)
-		if logging.DBG > 2: logger.debug("get %s rec %s: %s", self.name, q, res)
+		if 'dbops' in logging.DBGK: logger.debug("get %s rec %s: %s", self.name, q, res)
 		return res
 
 
 	def search(self, field, op, val):
 		q = "self.table.search(where('%s') %s %s)" % (field, op, repr(val))
 		res = eval(q)
-		if logging.DBG > 2: logger.debug("search %s rec %s: %s", self.name, q, res)
+		if 'dbops' in logging.DBGK: logger.debug("search %s rec %s: %s", self.name, q, res)
 		return res
 
 
@@ -158,9 +111,9 @@ class DBTable:
 		""" get a range of records, obeying restrictions
 		- if start_key is null, use start_item_number.
 		- if start_item_number is negative start from the end
-		if logging.DBG > 1: logger.debug("get_range: %s", str(csk))
+		if 'get_range' in logging.DBGK: logger.debug("get_range: %s", str(csk))
 		"""
-		if logging.DBG > 1: logger.debug("get_range csk %s", str(csk))
+		if 'get_range' in logging.DBGK: logger.debug("get_range csk %s", str(csk))
 		key_field = csk.key_field
 		startv = csk.start_key
 		endv = csk.end_key
@@ -169,7 +122,7 @@ class DBTable:
 		csk.total_item_count = 0
 
 		if len(self.table) == 0:
-			if logging.DBG > 1: logger.debug("get_range table empty")
+			if 'get_range' in logging.DBGK: logger.debug("get_range table empty")
 			csk.count = 0
 			return {}
 
@@ -177,7 +130,7 @@ class DBTable:
 		for t in self.table:		# N.B. ad-hoc index over entrie table: expensive!
 			udict[t[key_field]] = t
 		fullsdict = sorted(udict)
-		if logging.DBG > 1: logger.debug("get_range table %s items", len(fullsdict))
+		if 'get_range' in logging.DBGK: logger.debug("get_range table %s items", len(fullsdict))
 	
 		if len(csk.restrict_by) == 0:
 			sdict = fullsdict
@@ -186,9 +139,10 @@ class DBTable:
 			for r in fullsdict:
 				if check_restrictions(csk.restrict_by, udict[r]):
 					sdict.append(r)
+			if 'get_range' in logging.DBGK: logger.debug("get_range restricted %s items", len(sdict))
 
 		if len(sdict) == 0:
-			if logging.DBG > 1: logger.debug("get_range table empty after destrict")
+			if 'get_range' in logging.DBGK: logger.debug("get_range table empty after destrict")
 			return {}
 
 		if startv in [None]:
@@ -205,7 +159,7 @@ class DBTable:
 					startv = sdict[sidx]
 					break
 			if sidx is None:
-				if logging.DBG > 1: logger.debug("get_range no start key found")
+				if 'get_range' in logging.DBGK: logger.debug("get_range no start key found")
 				return {}
 		if endv in [None]:
 			eidx = min(sidx + count-1, len(sdict)-1)
@@ -218,7 +172,7 @@ class DBTable:
 					eidx = idx
 					break
 			if eidx is None:
-				if logging.DBG > 1: logger.debug("get_range no end key found")
+				if 'get_range' in logging.DBGK: logger.debug("get_range no end key found")
 				return {}
 			count = eidx - sidx + 1
 
@@ -229,11 +183,9 @@ class DBTable:
 		csk.at_start = csk.start_key == sdict[0]
 		csk.at_end = csk.end_key == sdict[-1]
 
-		res = []
+		if 'get_range' in logging.DBGK: logger.debug("get_range size %s", (eidx-sidx+1))
 		for idx in range(sidx, eidx+1):
-			if logging.DBG > 1: res.append(udict[sdict[idx]])
 			yield udict[sdict[idx]]
-		if logging.DBG > 2: logger.debug("get_range res=%s", res)
 
 
 	def __len__(self):
@@ -258,14 +210,11 @@ class DB:
 
 
 	async def start(self):
-#		TinyDB.table_class = SmartCacheTable
 
 		logger.info("%s opening DB %s", self.name, self.conf['db_filename'])
 		self.db = TinyDB(self.conf['db_filename'], \
 				sort_keys=True, indent=4, separators=(',', ': '), \
-#				storage=CachingMiddleware(YAMLStorage))
 				storage=CachingMiddleware(JSONStorage))
-#		self.db = TinyDB(self.conf['db_filename'])
 
 
 	def table(self, name):
