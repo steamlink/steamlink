@@ -343,7 +343,7 @@ class OCache(dict):
 
 		if len(self) >= self.max_entries:
 				self.warned = True
-				logger.warning("cache overcommited: "+self.status())
+				logger.debug("cache overcommited: "+self.status())
 
 		if 'ocache' in logging.DBGK: logger.debug("OCache cleaned: %s", self.status())
 		return 
