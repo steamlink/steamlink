@@ -29,15 +29,15 @@ nodes_map:
       op: "=="
       value: 1
   start_key: null
-  start_item_number: 0
-  count: 10
+  start_item_number: -20
+  count: 20
   end_key: null
   stream_tag: nodes_map
   # Fields
   center:
     - -79.3894
     - 43.6575
-  zoom: 13
+  zoom: 12
   popup:
     - Name
     - State
@@ -59,12 +59,12 @@ nodes:
       op: "=="
       value: 1
   start_key: null
-  start_item_number: 0
-  count: 10
+  start_item_number: -20
+  count: 20
   end_key: null
   stream_tag: nodes_area
   # Fields
-  table_rows: 10 # should be the same as count
+  table_rows: 20 # should be the same as count
   headers:
     - "Name"
     - "Description"
