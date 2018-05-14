@@ -174,12 +174,6 @@ def setup_logging(loglvl):
 
 	logging.DBG = 0
 	logging.DBGK = []
-#	ch = logging.StreamHandler()
-##	formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-#	formatter = logging.Formatter(FORMAT)
-#	ch.setFormatter(formatter)
-#	ch.setLevel(loglvl)
-#	logger.addHandler(ch)
 
 
 if __name__ == '__main__':
@@ -212,7 +206,8 @@ if __name__ == '__main__':
 
 	async def run(loop):
 		logger.info("PyNode Test")
-		nodecfg = SL_NodeCfgStruct(slid=401, name="PyNode401", description="Test Py")
+		nodecfg = SL_NodeCfgStruct(slid=401, name="PyNode401", description="Test Py", 
+				gps_lat=44.495499, gps_lon=-80.320706)
 		
 		# create a Queue to receive incoming messages and start the re
 		receive_q = asyncio.Queue()

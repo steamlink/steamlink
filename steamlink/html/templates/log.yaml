@@ -14,7 +14,7 @@ log:
   # Layout
   row: 1
   grid_columns: 'twelve'
-  grid_rows: 7
+  grid_rows: 5
   template: 'tile.html'
 
 logitems:

@@ -147,7 +147,23 @@ class SL_NodeCfgStruct:
 		}
 		return d
 
-
+	def update(self, other):
+		if self.slid != other.slid:
+			logger.info("Node %s changed slid from %s to %s", self.name, self.slid, other.slid)
+			self.slid = other.slid
+		if self.name != other.name:
+			logger.info("Node %s changed name from %s to %s", self.name, self.name, other.name)
+			self.name = other.name
+		if self.description != other.description:
+			logger.info("Node %s changed description from %s to %s", self.name, self.description, other.description)
+			self.description = other.description
+		if self.gps_lat != other.gps_lat:
+			logger.info("Node %s changed gps_lat from %s to %s", self.name, self.gps_lat, other.gps_lat)
+			self.gps_lat = other.gps_lat
+		if self.gps_lon != other.gps_lon:
+			logger.info("Node %s changed gps_lon from %s to %s", self.name, self.gps_lon, other.gps_lon)
+			self.gps_lon = other.gps_lon
+		# incomplete
 
 #
 # SL_OP op codes
@@ -414,10 +430,7 @@ class Steam(Item):
 
 		node = Node._table.find_one(sl_pkt.slid)
 		if node is None:		# Auto-create node
-			if not self.autocreate:
-				logger.warning("on_data_msg: no node for pkt %s", sl_pkt)
-				return
-			if sl_pkt.sl_op == SL_OP.ON:
+			if self.autocreate and sl_pkt.sl_op == SL_OP.ON:
 				node = Node(sl_pkt.slid, sl_pkt.nodecfg)
 			else:
 				logger.warning("on_data_msg: no node for pkt %s", sl_pkt)
@@ -711,7 +724,7 @@ class Node(Item):
 		sl_pkt = Packet(slnode=self, sl_op=SL_OP.DN, payload=bpayload)
 		self.last_control_pkt = sl_pkt
 		self.publish_pkt(sl_pkt)
-		self.wait_for_AS.set(sl_pkt, do_insert=True)
+		self.wait_for_AS.set_wait(sl_pkt, do_insert=True)
 		return "OK"
 
 
@@ -728,7 +741,7 @@ class Node(Item):
 		logger.debug("send_set_config: len %s, pkt %s", len(bpayload), self.nodecfg)
 		sl_pkt = Packet(slnode=self, sl_op=SL_OP.SC, payload=bpayload)
 		self.publish_pkt(sl_pkt)
-		self.wait_for_AS.set(sl_pkt)
+		self.wait_for_AS.set_wait(sl_pkt)
 		return "OK"
 
 
@@ -822,7 +835,9 @@ class Node(Item):
 		if sl_op == SL_OP.ON: # autocreate did set nodecfg
 			self.wait_for_AS.clear_wait()		# give up 
 			logger.debug('post_data: slid %d ONLINE', int(self.slid))
-			self.nodecfg = SL_NodeCfgStruct(pkt=sl_pkt.bpayload)
+
+			new_nodecfg = SL_NodeCfgStruct(pkt=sl_pkt.bpayload)
+			self.nodecfg.update(new_nodecfg)			
 			self.send_set_config()
 			self.set_state("ONLINE")
 			self.last_node_restart_ts = time.time()
@@ -954,7 +969,7 @@ class BasePacket:
 		self.sl_op = sl_op
 		self.rssi = rssi + 256
 		if self.sl_op == SL_OP.ON:
-			self.payload = payload.pack()
+			self.payload = payload.pack()	# payload is a nodecfg 
 		else:
 			self.payload = payload
 		if logging.DBG > 2: logger.debug("SteamLinkPacket payload = %s", payload);
@@ -965,11 +980,6 @@ class BasePacket:
 				self.bpayload = self.payload.encode('utf8')
 		else:
 			self.bpayload = b''
-
-#		if self.sl_op == SL_OP.ON:
-#			self.nodecfg = SL_NodeCfgStruct(slid=self.slid)
-#			logger.debug("Node config is %s", slnode.nodecfg)
-#			self.bpayload = slnode.nodecfg.pack()
 
 		self.pkt_num = slnode.set_pkt_number(self)
 		if self.is_data():	# N.B. store never sends data
