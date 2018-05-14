@@ -216,9 +216,9 @@ class WaitForAck:
 		""" N.B. returns original pkt if do_insert was set, for db insert """
 		pkt = None
 		if self.pkt is None:
-			logger.info("wait: redundant Ack")
+			if 'waitack' in logging.DBGK: logger.info("wait: redundant Ack")
 		else:
-			logger.debug("wait on %s got Ack", self)
+			if 'waitack' in logging.DBGK: logger.debug("wait on %s got Ack", self)
 			if self.do_insert:
 				pkt = self.pkt
 		self.clear_wait()
@@ -241,7 +241,7 @@ class WaitForAck:
 		self.pkt = pkt
 		self.count = 0
 		self.do_insert = do_insert
-		logger.debug("wait on %s for %s sec", self, self.waituntil)
+		if 'waitack' in logging.DBGK: logger.debug("wait on %s for %s sec", self.pkt, self.waittime)
 
 
 	def inc_resend_count(self):
@@ -908,11 +908,12 @@ class BasePacket:
 	data_header_fmt = '<BLHB%is'		# op, slid, pkt_num, rssi, payload"
 	control_header_fmt = '<BLH%is'		# op, slid, pkt_num, payload"
 
-	def __init__(self, slid, sl_op = None, rssi = 0, payload = None, pkt = None):
+	def __init__(self, slnode, sl_op = None, rssi = 0, payload = None, pkt = None):
 
-		self.slid = slid
+		self.slid = None
 		self.rssi = 0
 		self.via = []
+		self.pkt_num = None
 		self.payload = None
 		self.ts = time.time()
 		self.nodecfg = None
@@ -921,7 +922,8 @@ class BasePacket:
 		self.is_outgoing = pkt is None
 
 		if self.is_outgoing:				# construct pkt
-			self.baseconstruct(slid, sl_op, rssi, payload)
+			self.slid = slnode.slid
+			self.construct(slnode, sl_op, rssi, payload)
 		else:								# deconstruct pkt
 			if not self.deconstruct(pkt):
 				logger.error("deconstruct pkt to short: %s", len(pkt))
@@ -934,8 +936,8 @@ class BasePacket:
 		BOff = "[0m"
 		try:
 			return "Packet N%s(%s)%s" % ( self.slid, self.pkt_num, BOn+SL_OP.code(self.sl_op)+BOff)
-		except:
-			return "Packet NXXX(??)??"
+		except Exception as e:
+			return "Packet NXXX(%s)??" % e
 
 
 	def is_data(self, sl_op = None):
@@ -947,8 +949,8 @@ class BasePacket:
 		return (sl_op & 0x1) == 1
 
 
-	def baseconstruct(self, slid, sl_op, rssi, payload):
-		self.slid = slid
+	def construct(self, slnode, sl_op, rssi, payload):
+		self.slid = slnode.slid
 		self.sl_op = sl_op
 		self.rssi = rssi + 256
 		if self.sl_op == SL_OP.ON:
@@ -963,6 +965,32 @@ class BasePacket:
 				self.bpayload = self.payload.encode('utf8')
 		else:
 			self.bpayload = b''
+
+#		if self.sl_op == SL_OP.ON:
+#			self.nodecfg = SL_NodeCfgStruct(slid=self.slid)
+#			logger.debug("Node config is %s", slnode.nodecfg)
+#			self.bpayload = slnode.nodecfg.pack()
+
+		self.pkt_num = slnode.set_pkt_number(self)
+		if self.is_data():	# N.B. store never sends data
+			sfmt = Packet.data_header_fmt % len(self.bpayload)
+			if logging.DBG > 0: logger.debug("pack: %s %s %s %s %s", SL_OP.code(self.sl_op), \
+					self.slid, self.pkt_num, self.rssi, self.bpayload)
+			self.pkt = struct.pack(sfmt,
+					self.sl_op, self.slid, self.pkt_num, 256 - self.rssi, self.bpayload)
+		else:
+			sfmt = Packet.control_header_fmt % len(self.bpayload)
+			self.pkt = struct.pack(sfmt,
+					self.sl_op, self.slid, self.pkt_num, self.bpayload)
+			if len(slnode.via) > 0:
+				for via in slnode.via[::-1]:
+					self.bpayload = self.pkt
+					sfmt = Packet.control_header_fmt % len(self.bpayload)
+					self.pkt = struct.pack(sfmt, SL_OP.BN, via, 0, self.bpayload)
+			if logging.DBG > 1:
+				for l in phex(self.pkt, 4):
+					logger.debug("pkt c:  %s", l)
+
 
 
 	def deconstruct(self, pkt):
@@ -1021,44 +1049,14 @@ class BasePacket:
 class Packet(BasePacket, Item):
 	def __init__(self, slnode = None, sl_op = None, rssi = 0, payload = None, pkt = None, _load=None):
 
-#		super(BasePacket).__init__(None, sl_op, rssi, payload, pkt)
-		BasePacket.__init__(self, None, sl_op, rssi, payload, pkt)
+		BasePacket.__init__(self, slnode, sl_op, rssi, payload, pkt)
 		if pkt is None and slnode is None:
 			return	# needs a load() to complete
 		self.is_outgoing = pkt is None
 
 		if self.is_outgoing:				# construct pkt
-			self.construct(slnode)
 			self.set_node(slnode)
-#		super(Item).__init__(None)
 		(Item).__init__(self, None, _load)
-
-
-	def construct(self, slnode):
-		self.slid = int(slnode.slid)
-		if self.sl_op == SL_OP.ON:
-			self.nodecfg = SL_NodeCfgStruct(slid=self.slid)
-			logger.debug("Node config is %s", self.nodecfg)
-			self.bpayload = self.nodecfg.pack()
-
-		self.pkt_num = slnode.set_pkt_number(self)
-		if self.is_data():	# N.B. store never sends data
-			sfmt = Packet.data_header_fmt % len(self.bpayload)
-			logger.debug("pack: %s %s %s %s %s %s", self.sl_op, self.slid, self.pkt_num, self.rssi, self.bpayload)
-			self.pkt = struct.pack(sfmt,
-					self.sl_op, self.slid, self.pkt_num, 256 - self.rssi, self.bpayload)
-		else:
-			sfmt = Packet.control_header_fmt % len(self.bpayload)
-			self.pkt = struct.pack(sfmt,
-					self.sl_op, self.slid, self.pkt_num, self.bpayload)
-			if len(slnode.via) > 0:
-				for via in slnode.via[::-1]:
-					self.bpayload = self.pkt
-					sfmt = Packet.control_header_fmt % len(self.bpayload)
-					self.pkt = struct.pack(sfmt, SL_OP.BN, via, 0, self.bpayload)
-			if logging.DBG > 1:
-				for l in phex(self.pkt, 4):
-					logger.debug("pkt c:  %s", l)
 
 
 	def set_node(self, node):
