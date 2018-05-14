@@ -87,7 +87,7 @@ DEFAULT_CONF = OrderedDict({
 		'name': 'sample1',
 		'description': 'SteamLink Sample',
 		'namespace': '/sl',
-		'autocreate': False,
+		'autocreate': True,
 	}),
 	'tests': OrderedDict({
 		'test1': OrderedDict({

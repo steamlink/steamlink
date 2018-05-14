@@ -45,7 +45,8 @@ setup(
 	entry_points={
 		'console_scripts': [
 			'steamlink = steamlink.main:steamlink_command'
-		]
+		],
+		scripts=['bin/pynode-example.py'],
 	},
 	classifiers=PROJECT_CLASSIFIERS,
 )

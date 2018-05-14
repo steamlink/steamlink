@@ -14,9 +14,9 @@ from steamlink.pynode  import PyNode, SL_NodeCfgStruct
 
 mqtt_conf = {
 	'clientid': 'pynode_%s' % time.time(),
-	'username': 'demonode0',
-	'password': 'ui712lkm921d',
-	'server': 'mqtt.steamlink.net',
+	'username': '',
+	'password': '',
+	'server': '127.0.0.1',
 	'port': 1883,
 	'prefix': 'SteamLink',
 	'data': 'data',
@@ -27,7 +27,7 @@ async def process_incoming(sl_node, receive_q):
 	global running
 	while running:
 		pkt = await receive_q.get()
-		print("Got one", pkt)
+		print("got a message: ", pkt)
 		if pkt == "go offline":
 			sl_node.set_status("OFFLINE")
 			running = False
