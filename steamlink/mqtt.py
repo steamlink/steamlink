@@ -15,13 +15,14 @@ logger = logging.getLogger(__name__)
 # Mqtt
 #
 class Mqtt:
-	def __init__(self, conf, loop = None):
+	def __init__(self, conf, loop = None, as_node=False):
 		self.conf = conf
 		self.name = "mqtt"
 		if loop is None:
 			self.loop = asyncio.get_event_loop()
 		else:
 			self.loop = loop
+		self.as_node = as_node
 
 		self.topic_prefix = conf['prefix']
 		self.topic_control = conf['control']
@@ -36,6 +37,7 @@ class Mqtt:
 		self.ssl_certificate = conf.get('ssl_certificate', None)
 
 		self.control_topic_x = "%s/%%s/%s" % (self.topic_prefix, self.topic_control)
+		self.control_topic = "%s/+/%s" % (self.topic_prefix, self.topic_control)
 		self.data_topic_x = "%s/%%s/%s" % (self.topic_prefix, self.topic_data)
 		self.data_topic = "%s/+/%s" % (self.topic_prefix, self.topic_data)
 
@@ -43,7 +45,10 @@ class Mqtt:
 		self.subscribed = asyncio.Event(loop=loop)
 		self.disconnected = asyncio.Event(loop=loop)
 		self.mq = self.set_mq()
-		self.subscription_list = [self.data_topic]
+		if self.as_node:
+			self.subscription_list = [self.control_topic]
+		else:
+			self.subscription_list = [self.data_topic]
 		if not self.public_topic_control in ['', None]:
 			self.public_control_topic = self.public_topic_control % "+"
 			self.subscription_list.append(self.public_control_topic)
@@ -77,8 +82,12 @@ class Mqtt:
 		return self.public_topic_control
 
 	def set_msg_callback(self, callback):
-		logger.debug("set_msg_callback on %s", self.data_topic)
-		self.mq.message_callback_add(self.data_topic, callback)
+		if self.as_node:
+			logger.debug("set_msg_callback on %s", self.control_topic)
+			self.mq.message_callback_add(self.control_topic, callback)
+		else:
+			logger.debug("set_msg_callback on %s", self.data_topic)
+			self.mq.message_callback_add(self.data_topic, callback)
 
 	def set_public_control_callback(self, callback):
 		logger.debug("set_public_control_callback on %s", self.public_control_topic)
@@ -154,7 +163,7 @@ class Mqtt:
 	def publish(self, firsthop, payload, qos=0, retain=False, sub="control"):
 		s = self.control_topic_x if sub == "control" else self.data_topic_x
 		topic = s % firsthop
-		# logger.info("%s publish %s %s", self.name, topic, payload)
+		if 'mqtt' in logging.DBGK:  logger.info("%s publish %s %s", self.name, topic, payload)
 		self.mq.publish(topic, payload=payload, qos=qos, retain=retain)
 
 
