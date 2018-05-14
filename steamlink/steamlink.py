@@ -725,6 +725,7 @@ class Node(Item):
 		self.last_control_pkt = sl_pkt
 		self.publish_pkt(sl_pkt)
 		self.wait_for_AS.set_wait(sl_pkt, do_insert=True)
+		sl_pkt.insert()
 		return "OK"
 
 

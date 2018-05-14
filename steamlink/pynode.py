@@ -82,11 +82,14 @@ class PyNode:
 				self.wait_handle = None
 			if self.wait_for_AN is not None:
 				pkt = self.wait_for_AN.stop_wait()
+
 		elif pkt.sl_op == SL_OP.SC:	
 			rc = self.handle_sc(pkt.payload)
 			
 		elif pkt.sl_op == SL_OP.DN:	
 			asyncio.ensure_future(self.receive_q.put(pkt.payload), loop=self.loop)
+			self.send_ack_to_store(0)
+
 		elif pkt.sl_op == SL_OP.SS:	
 			self.handle_sc(pkt.payload)
 		else:
