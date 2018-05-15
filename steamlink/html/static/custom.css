@@ -59,6 +59,6 @@ tr > td,th {
 }
 
 .table-partial > table > tbody > tr:hover { 
-    background: #F7F7F5;
+    background: yellow;
     cursor: pointer;
 }
