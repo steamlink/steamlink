@@ -11,8 +11,24 @@ packet:
   count: 1
   end_key: null
   stream_tag: pkt_header
+  # Fields
+  headers:
+    - title: "OP Code"
+      mapping: "sl_op"
+    - title: "Payload"
+      mapping: "payload"
+    - title: "Packet Number"
+      mapping: "pkt_num"
+    - title: "Steamlink ID"
+      mapping: "slid"
+    - title: "Time Received"
+      mapping: "Time"
+    - title: "RSSI"
+      mapping: "rssi"
+    - title: "Route"
+      mapping: "via"
   # Layout
   row: 1
-  grid_columns: 'twelve'
-  grid_rows: 4
+  grid_columns: 'six'
+  grid_rows: 7
   template: 'tile.html'

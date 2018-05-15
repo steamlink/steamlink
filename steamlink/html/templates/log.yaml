@@ -11,10 +11,34 @@ log:
   count: 1
   end_key: logq
   stream_tag: log_header
+  # Fields
+  headers:
+    - title: "Number of Store instances (steam) in DB"
+      mapping: "Steam table"
+    - title: "Steam Cache Usage"
+      mapping: "Steam cache"
+    - title: "Number of Meshes in DB"
+      mapping: "Mesh table"
+    - title: "Mesh Cache Usage"
+      mapping: "Mesh cache"
+    - title: "Number of Nodes in DB"
+      mapping: "Node table"
+    - title: "Node Cache Usage"
+      mapping: "Node cache"
+    - title: "Number of Packets in DB"
+      mapping: "Packet table"
+    - title: "Packet Cache Usage"
+      mapping: "Packet cache"
+    - title: "Number of Log Items in DB"
+      mapping: "LogItem table"
+    - title: "Log Cache Usage"
+      mapping: "LogItem cache"
+    - title: "Number of Log Header Tables"
+      mapping: "LogQ table"
   # Layout
   row: 1
   grid_columns: 'twelve'
-  grid_rows: 5
+  grid_rows: 9
   template: 'tile.html'
 
 logitems:

@@ -47,6 +47,7 @@
             console.log("sending command:")
             console.log(objectToSend);
             socket.emit("cmd", objectToSend);
+            partialForm.find(':input').not(':button, :submit, :reset, :hidden, :checkbox, :radio').val('');
             return false;
         });
     });

@@ -1,7 +1,7 @@
 home:
   name: home
   type: tile
-  title: Steamlink Summary
+  title: Store Summary
   # Query information
   table_name: Steam
   key_field: steam_id
@@ -11,10 +11,26 @@ home:
   count: 1
   end_key: null
   stream_tag: steam_header
+  # Fields
+  headers:
+    - title: "Store Name"
+      mapping: "name"
+    - title: "Store Description"
+      mapping: "desc"
+    - title: "Number of Meshes"
+      mapping: "Mesh records"
+    - title: "Number of Nodes"
+      mapping: "Node records"
+    - title: "Total packets stored"
+      mapping: "Packet records"
+    - title: "Store CPU Load"
+      mapping: "Load"
+    - title: "Store CPU Time"
+      mapping: "Time"
   # Layout
   row: 1
-  grid_columns: 'twelve'
-  grid_rows: 4
+  grid_columns: 'four'
+  grid_rows: 6
   template: 'tile.html'
 
 meshes:
@@ -22,8 +38,8 @@ meshes:
   type: table
   title: Meshes in Steamlink
   # Layout
-  row: 2
-  grid_columns: 'twelve'
+  row: 1
+  grid_columns: 'eight'
   # Query information
   table_name: Mesh
   key_field: mesh_id

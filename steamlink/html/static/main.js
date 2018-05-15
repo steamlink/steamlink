@@ -179,7 +179,7 @@ $(function() {
       console.log("socket connection dead");
       msg = "Websocket disconnected...";
       lvl = "WARNING";
-      renderAlert(msg, lvl);
+      setTimeout(renderAlert(msg, lvl), 500);
       window.socketStreams.connected = true;
   });
 

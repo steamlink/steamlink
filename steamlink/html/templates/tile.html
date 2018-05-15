@@ -1,5 +1,9 @@
 <div class="{{ partial_item.grid_columns }} columns">
     <style>
+        .tile-partial > table > tbody > tr > td {
+            line-height: 1em;
+        }
+        /*
         .tile-partial > ul {
             list-style: none;
         }
@@ -7,7 +11,7 @@
             background: #F7F7F5;
             cursor: pointer;   
         }
-        /*
+        
         .tile-partial > ul > li {
             margin-bottom: 0rem;
         }*/
@@ -24,6 +28,8 @@
 
         var tileDiv = $('#{{ partial_item.name }}')[0];
         
+        var headers = {{ partial_item.headers|tojson|safe }};
+
         var startStreamConfig = {
             table_name: {{ partial_item.table_name|tojson|safe }},
             key_field: {{ partial_item.key_field|tojson|safe }},
@@ -36,11 +42,30 @@
         };
 
         var tileStream = new Stream(socket, startStreamConfig, (data) => {
-            var innerHTML = "<ul>";
+            var innerHTML = "<table><tbody>";
+
+            
+            headers.forEach(function(header){
+                try {
+                    var title = header.title; 
+                    console.log(header.mapping);
+                    if (header.mapping.includes(' ')) {
+                        var entry = eval("data['" + header.mapping + "']"); 
+                    } else {
+                        var entry = eval("data." + header.mapping);
+                    }
+                } finally {
+                    if (entry) {
+                        innerHTML += "<tr><td><strong>" + title + ": </strong></td><td><em>" + entry + "</em></td></tr>";
+                    }
+                }
+            });
+            /*
             for (var key in data) {
                 innerHTML += "<li> <strong>" + key + ": </strong><em>" + data[key]+ "</em></li>";
             }
-            innerHTML += "</ul>";
+            */
+            innerHTML += "</tbody></table>";
             tileDiv.innerHTML = innerHTML;
         }); 
         tileStream.startStream();

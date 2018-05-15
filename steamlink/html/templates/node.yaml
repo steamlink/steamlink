@@ -11,10 +11,34 @@ node:
   count: 1
   end_key: null
   stream_tag: node_header
+  # Fields
+  headers:
+    - title: "Name" 
+      mapping: "nodecfg.name"
+    - title: "Description"
+      mapping: "nodecfg.description"
+    - title: "Steamlink ID"
+      mapping: "nodecfg.slid"
+    - title: "Battery Powered?"
+      mapping: "nodecfg.battery_powered"
+    - title: "Max Silent Time (seconds)"
+      mapping: "nodecfg.max_silence"
+    - title: "Last Packet Received"
+      mapping : "last_data_pkt.payload"
+    - title: "Latest Packet Sent To Node" 
+      mapping : "last_control_pkt.payload"
+    - title: "Last Receive Activity" 
+      mapping : "Last Pkt received"
+    - title: "Last Send Activity" 
+      mapping:  "Last Pkt sent"
+    - title: "Node Restarted At" 
+      mapping: "Last Node restart"
+    - title: "Route"
+      mapping: "via"
   # Layout
   row: 1
   grid_columns: 'six'
-  grid_rows: 10
+  grid_rows: 7
   template: 'tile.html'
 
 rssi:
@@ -24,7 +48,7 @@ rssi:
   # Layout
   row: 1
   grid_columns: 'six'
-  grid_rows: 10
+  grid_rows: 7
   # Query information
   table_name: Packet
   key_field: ts
@@ -53,7 +77,7 @@ rssi:
 packets:
   name: packets
   type: table
-  title: Packets in the Node
+  title: Packets Sent and Received
   # Layout
   row: 2
   grid_columns: 'eight'
@@ -83,7 +107,7 @@ packets:
 sendtonode:
   name: sendtonode
   type: form
-  title: Send To Node
+  title: Send to Node
   # Command information
   command: DN
   slid: 1

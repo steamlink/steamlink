@@ -3,8 +3,8 @@
 }
 
 .partial {
-    border-radius: 6px;
-    border: 1px solid #eee;
+    border-radius: 0px;
+    border: 2px solid #eee;
     padding: 8px;
 }
 
@@ -49,9 +49,15 @@ a {
     border: none;
 }
 
-.table-partial > table > thead > tr, tbody {
-    /* display:block; */
+tbody > tr:nth-child(even) {background: white}
+tbody > tr:nth-child(odd) {background: #eee}
+
+tr > td,th {
+    line-height: 1em;
+    padding-top: 6px;
+    padding-bottom: 6px;
 }
+
 .table-partial > table > tbody > tr:hover { 
     background: #F7F7F5;
     cursor: pointer;

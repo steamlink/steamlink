@@ -11,10 +11,24 @@ mesh:
   count: 1
   end_key: null
   stream_tag: mesh_header
+  # Fields
+  headers:
+    - title: "Mesh Name"
+      mapping: "name"
+    - title: "Mesh Description"
+      mapping: desc
+    - title: "Total Nodes in this Mesh"
+      mapping: "Total Nodes"
+    - title: "Active Nodes"
+      mapping: "Active Nodes"
+    - title: "Total Packets Sent By Nodes"
+      mapping: "Packets sent"
+    - title: "Total Packets Received By Store"
+      mapping: "Packets received"
   # Layout
   row: 1
   grid_columns: 'six'
-  grid_rows: 8
+  grid_rows: 5
   template: 'tile.html'
 
 nodes_map:
@@ -72,8 +86,8 @@ nodes:
     - "Last Pkt received"
     - "Packets sent"
     - "Packets received"
+  # Layout
   row: 2
   grid_columns: 'twelve'
-  grid_rows: 10
   template: 'table.html'
   record_link: "/node?node.start_key={key}&sendtonode.slid={key}&rssi.restrict_by={key}&packets.restrict_by={key}"
