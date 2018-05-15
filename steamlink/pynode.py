@@ -15,6 +15,7 @@ from .steamlink import (
 	SL_NodeCfgStruct,
 	BasePacket,
 	WaitForAck, 
+	SteamLinkError, 
 	SL_MAX_MESSAGE_LEN, 
 	SL_ACK_WAIT,
 	MAX_RESEND_COUNT,
@@ -90,8 +91,8 @@ class PyNode:
 			asyncio.ensure_future(self.receive_q.put(pkt.payload), loop=self.loop)
 			self.send_ack_to_store(0)
 
-		elif pkt.sl_op == SL_OP.SS:	
-			self.handle_sc(pkt.payload)
+		elif pkt.sl_op == SL_OP.GS:	
+			self.handle_gs(pkt.payload)
 		else:
 			logger.error("mqtt: for now, not handling %s", pkt)
 

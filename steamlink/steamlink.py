@@ -609,7 +609,7 @@ class Node(Item):
 		r['via'] = self.via
 		r['nodecfg'] = self.nodecfg.save()
 		if withvirtual:
-			r['state'] = self.state
+			r['State'] = self.state
 			r['Name'] = self.nodecfg.name
 			r['Description'] = self.nodecfg.description
 			r['Last Pkt received'] = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(int(self.last_packet_rx_ts)))
@@ -951,7 +951,7 @@ class BasePacket:
 			self.construct(slnode, sl_op, rssi, payload)
 		else:								# deconstruct pkt
 			if not self.deconstruct(pkt):
-				logger.error("deconstruct pkt to short: %s", len(pkt))
+				logger.error("deconstruct pkt to short: %s, %s", len(pkt), pkt)
 				raise SteamLinkError("deconstruct pkt to short");
 
 
@@ -1031,15 +1031,18 @@ class BasePacket:
 				if logging.DBG > 1: logger.debug("pkt un-ecap BS from P%s(%s)BS, len %s rssi %s", slid, self.pkt_num,  len(pkt), 256-self.rssi)
 			self.rssi = self.rssi - 256
 
-		if len(pkt) < struct.calcsize(Packet.data_header_fmt % 0):
-			logger.error("deconstruct pkt to short: %s", len(pkt))
-			return False;
 		if self.is_data(pkt[0]):
+			if len(pkt) < struct.calcsize(Packet.data_header_fmt % 0):
+				logger.error("deconstruct data pkt to short: %s", len(pkt))
+				return False;
 			payload_len = len(pkt) - struct.calcsize(Packet.data_header_fmt % 0)
 			sfmt = Packet.data_header_fmt % payload_len
 			self.sl_op, self.slid, self.pkt_num, rssi, self.bpayload \
 						= struct.unpack(sfmt, pkt)
 		else:
+			if len(pkt) < struct.calcsize(Packet.control_header_fmt % 0):
+				logger.error("deconstruct control pkt to short: %s", len(pkt))
+				return False;
 			payload_len = len(pkt) - struct.calcsize(Packet.control_header_fmt % 0)
 			sfmt = Packet.control_header_fmt % payload_len
 			self.sl_op, self.slid, self.pkt_num, self.bpayload \
