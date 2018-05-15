@@ -157,6 +157,9 @@ class SL_NodeCfgStruct:
 		if self.description != other.description:
 			logger.info("Node %s changed description from %s to %s", self.name, self.description, other.description)
 			self.description = other.description
+		if self.max_silence != other.max_silence:
+			logger.info("Node %s changed max_silence from %s to %s", self.name, self.gps_lon, other.gps_lon)
+			self.max_silence = other.max_silence
 		if self.gps_lat != other.gps_lat:
 			logger.info("Node %s changed gps_lat from %s to %s", self.name, self.gps_lat, other.gps_lat)
 			self.gps_lat = other.gps_lat
