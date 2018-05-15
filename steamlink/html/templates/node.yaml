@@ -56,6 +56,9 @@ rssi:
     - field_name: slid
       op: "=="
       value: 305
+    - field_name: sl_op
+      op: "=="
+      value: "DS"
   start_key: null
   start_item_number: -10
   count: 10
