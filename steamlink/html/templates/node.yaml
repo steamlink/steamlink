@@ -20,7 +20,7 @@ node:
     - title: "Steamlink ID"
       mapping: "nodecfg.slid"
     - title: "Status"
-      mapping: "state"
+      mapping: "State"
     - title: "Battery Powered?"
       mapping: "nodecfg.battery_powered"
     - title: "Max Silent Time (seconds)"
