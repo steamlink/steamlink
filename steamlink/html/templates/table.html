@@ -66,10 +66,21 @@
             cache.forEach((item) => {
                 htmlString += "<tr>";
                 headers.forEach( (header) => {
-                    if(header in item) {
-                        htmlString += "<td>" + "<a href =" + window.format(record_link, {"key" : item[tableStream.config.key_field] }) + ">" + item[header] + "</a></td>";
+                    if (header.includes('.')) {
+                        var entry = undefined;
+                        try {
+                                entry = eval("item." + header);
+                        } finally {
+                            if (entry) {
+                                htmlString += "<td>" + entry + "</td>";
+                            }
+                        }
                     } else {
-                        htmlString += "<td></td>";   
+                        if(header in item) {
+                            htmlString += "<td>" + "<a href =" + window.format(record_link, {"key" : item[tableStream.config.key_field] }) + ">" + item[header] + "</a></td>";
+                        } else {
+                            htmlString += "<td></td>";   
+                        }
                     }
                 });
                 htmlString += "</tr>";

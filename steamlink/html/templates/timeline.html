@@ -81,9 +81,21 @@
             var cache = timelineStream.cache;
             cache.forEach((item) => {
                 chart.data.datasets.forEach((dataset) => {
-                    if (dataset.label in item) {
-                        dataset.data.push({ x: item[timeKey], y: item[dataset.label]});
-                        chart.data.labels.push(item[timeKey])
+                    if (dataset.label.includes('.')) {
+                        var entry = undefined;
+                        try {
+                                entry = eval("item." + dataset.label);
+                        } finally {
+                            if (entry) {
+                                dataset.data.push({ x: item[timeKey], y: entry});
+                                chart.data.labels.push(item[timeKey])
+                            }
+                        }
+                    } else {
+                        if (dataset.label in item) {
+                            dataset.data.push({ x: item[timeKey], y: item[dataset.label]});
+                            chart.data.labels.push(item[timeKey])
+                        }
                     }
                 });
             });
