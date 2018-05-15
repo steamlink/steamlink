@@ -791,8 +791,11 @@ class Node(Item):
 
 		sl_pkt.insert()
 		self.send_ack_to_node(0)
-
-		_MQTT.public_publish(self.name, sl_pkt.payload)
+		try:
+			payload = json.dumps(sl_pkt.payload)
+		except:
+			payload = sl_pkt.payload
+		_MQTT.public_publish(self.name, payload)
 		
 
 	def post_data(self, sl_pkt):
@@ -1061,6 +1064,13 @@ class BasePacket:
 			try:
 				self.payload = self.bpayload.decode('utf8').strip('\0')
 			except Exception as e:
+				pass
+
+		if self.sl_op in [ SL_OP.DN, SL_OP.DS]:
+			try:
+				jpayload = json.loads(self.payload)
+				self.payload = jpayload
+			except:
 				pass
 
 		return True
