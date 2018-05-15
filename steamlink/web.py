@@ -39,11 +39,17 @@ from yarl import URL
 
 class DisplayConfiguration:
 
-	def __init__(self, file_name):
+	def __init__(self, dir_list, file_name):
 		self.data = {}
-		f = open(file_name)
-		self.data = yaml.load(f)
-		f.close()
+		for sdir in dir_list:
+			file_path = sdir + file_name
+			if os.path.exists(file_path):
+				f = open(file_path)
+				self.data = yaml.load(f)
+				f.close()
+				break
+		if self.data == {}:
+			raise FileNotFoundError
 
 	def row_wise(self):
 		rows = {}
@@ -60,12 +66,15 @@ class DisplayConfiguration:
 
 class NavBar:
 
-	def __init__(self, dir):
-		self.navbar_yaml = dir + '/navbar.yaml'
+	def __init__(self, dir_list):
 		self.yamls = []
-		f = open(self.navbar_yaml)
-		self.yamls = yaml.load(f)
-		f.close()
+		for sdir in dir_list:
+			file_path = sdir + '/navbar.yaml'
+			if os.path.exists(file_path):
+				f = open(file_path)
+				yamls = yaml.load(f)
+				f.close()
+				self.yamls += yamls
 
 #
 # WebNameSpace
@@ -161,8 +170,10 @@ class WebApp(object):
 		self.app.router.add_get('/config.json', self.config_json)
 
 		self.libdir = os.path.dirname(os.path.abspath(__file__))
+		self.working_dir = conf['working_dir']
 		self.static_dir = self.libdir+'/html/static'
 		self.templates_dir = self.libdir+'/html/templates'
+		self.user_templates_dir = self.working_dir+'/html/templates'
 		self.app.router.add_route('GET', '/', self.route_handler)
 		self.app.router.add_route('GET', '/favicon.ico', self.favicon_handler)
 		self.app.router.add_route('GET', '/ghwh', self.ghwh_handler)
@@ -382,7 +393,8 @@ class WebApp(object):
 
 
 	async def route_handler(self, request):
-		nav = NavBar(self.templates_dir)
+		content_dirs = [self.templates_dir, self.user_templates_dir] 
+		nav = NavBar(content_dirs)
 
 		if request.rel_url.path == '/':
 			file_name = 'index'
@@ -391,7 +403,7 @@ class WebApp(object):
 			# file_name = str(request.rel_url.path).rstrip('/')
 		logger.debug("web route_handler: filename: %s, request.rel_url %s", file_name, request.rel_url)
 		try:
-			dc = DisplayConfiguration(self.templates_dir + '/' + file_name + '.yaml')
+			dc = DisplayConfiguration(content_dirs,  '/' + file_name + '.yaml')
 		except FileNotFoundError as e:
 			return web.Response(text="No such file: %s" % file_name, status=404)
 		for qk in request.query:
