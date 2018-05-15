@@ -657,8 +657,8 @@ class Node(Item):
 			# publish node state on some mqtt
 			pass
 
-#		if new_state == "TRANSMITTING":		#XXX check if node is sleeping or offline
-#			self.send_get_status()
+		if new_state == "TRANSMITTING":		#XXX check if node is sleeping or offline
+			self.send_get_status()
 		self.update()
 
 
@@ -888,7 +888,7 @@ class Node(Item):
 		self.last_packet_rx_ts = sl_pkt.ts
 
 		# any pkt from node indicates it's up
-		if not self.is_offline and not self.is_state_up():
+		if not self.is_offline() and not self.is_state_up():
 			self.set_state('TRANSMITTING')
 
 		self.update()
