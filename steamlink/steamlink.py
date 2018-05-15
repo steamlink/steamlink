@@ -609,7 +609,7 @@ class Node(Item):
 		r['via'] = self.via
 		r['nodecfg'] = self.nodecfg.save()
 		if withvirtual:
-			r['State'] = self.state
+			r['state'] = self.state
 			r['Name'] = self.nodecfg.name
 			r['Description'] = self.nodecfg.description
 			r['Last Pkt received'] = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(int(self.last_packet_rx_ts)))
