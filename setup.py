@@ -5,6 +5,7 @@ from setuptools import setup, find_packages
 from steamlink.const import (__version__, PROJECT_PACKAGE_NAME,
 								PROJECT_LICENSE, PROJECT_URL,
 								PROJECT_EMAIL, PROJECT_DESCRIPTION,
+								PROJECT_LONG_DESCRIPTION, 
 								PROJECT_CLASSIFIERS, GITHUB_URL,
 								PROJECT_AUTHOR)
 
@@ -36,6 +37,7 @@ setup(
 	author=PROJECT_AUTHOR,
 	author_email=PROJECT_EMAIL,
 	description=PROJECT_DESCRIPTION,
+	long_description=PROJECT_LONG_DESCRIPTION,
 	packages=PACKAGES,
 	include_package_data=True,
 	zip_safe=False,
