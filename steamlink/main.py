@@ -265,6 +265,7 @@ def steamlink_main(cl_args, conf):
 
 	logger.debug("startup: create WebApp")
 	webapp = None
+	conf_console['working_dir'] = conf_working_dir
 	webapp = WebApp(namespace, sio, conf_console, loop=aioloop)
 
 	linkageAttach(webapp, db)
