@@ -1,14 +1,30 @@
 
 ToDos/Dones:
 
+- Encryption
+- OP Code RC 0x35
+  - Update node configuration struct to include `at_boot`
+  - report config - for configuration updates from node to store, ACK'ed with SC
+- JSON node configuration
+- SS
+  - bat_lvl
+- MN 0x40
+  - Message to node for time, routing information, etc.
+  - Can be broadcast or targetted per node
+- ACK's
+  - specific packet number
+ 
 Node
 X pkt sequence numbers
 X change ON opcode to transmit a SL_NodeCfgStruct packet
 X ACK handling
 X sign-on procedure
 X replace RadioHead driver with native driver (sandeepmistry/arduino-LoRa)
+- LoRa CAD
 - make radio parameters configurable again
 - provide method for store to force a node to ON again (node before store problem)
+- ACK particular pkg_num
+- Tests
 
 Bridge:
 - collect packet count info and provide via SS
@@ -20,18 +36,31 @@ X save Mesh/Node info in TinyDB yaml DB
 - provide rc script
 - provide git ci script
 - provide an MDNS identity
+- csearch access to payload fields
 
 SteamLink:
 - remove use of Node class from Packet class
 - use Packet for standalone mqtt monitor
 
-
 WebConsole:
+- Timeline: Labels on x-axis need to be merged
+- Table: headers
+- Support older browsers
+- static error page
+- generic static page: 
+- static assets
+- YAML editor
+- Higher contrast: accessibility colors
+- Alert: clickable to the log
+- Table: sorting and filtering
+- Navbar hierarchy
+- Timeline partial scrolls
 
 Bugs:
 fix: Adafruit MQTT library always sets 'retain' flag
 fix: mqtt client sometimes hangs on a 2nd or later connection attempt
 fix: asyncio_server Invalid session warnings from asyncio_server
+fix: double ack needed from LoRa nodes
 
 Future:
 Query Language
