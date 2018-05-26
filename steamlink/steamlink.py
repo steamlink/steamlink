@@ -25,8 +25,8 @@ from .const import (
 from .linkage import (
 	Item,
 	Table,
-	DictTable,
-	DbTable,
+	Dict_backed_Table,
+	DB_backed_Table,
 	CSearchKey,
 )
 
@@ -177,23 +177,26 @@ class SL_OP:
 	data message types: ODD, 1 bottom bit
 	'''
 
-	DN = 0x30		# data to node, ACK 
+	DN = 0x30		# data to node, AS
 	BN = 0x32		# slid precedes payload, bridge forward to node
 	GS = 0x34		# get status, reply with SS message
 	TD = 0x36		# transmit a test message via radio
-	SC = 0x38		# set radio paramter to x, acknowlegde with AK
+	SC = 0x38		# set config,  acknowlegde with AS
 	BC = 0x3A		# restart node, no reply
 	BR = 0x3C		# reset the radio, TBD
-	AN = 0x3E		# Ack from store -> node
+	AN = 0x3E		# Ack from store -> node	(1 byte cack code)
+#    MN = 0x40 		# message to node (json)   TODO
 
 	DS = 0x31		# data to store
 	BS = 0x33		# bridge to store
-	ON = 0x35		# go online
-	AS = 0x37		# acknowlegde the last control message
-	OF = 0x39		# go offline
+# TODO  ON will become RC, with a field "boot": boolean
+	ON = 0x35		# go online TODO
+	RC = 0x35		# report config, acknowledge with AN   TODO
+	AS = 0x37		# acknowlegde the last control message	(1 byte cack code)
+	MS = 0x39		# message to store (json)	TODO
 	TR = 0x3B		# Received Test Data
 	SS = 0x3D		# status info and counters
-	NC = 0x3F		# No Connection or timeout
+	OF = 0x3F		# go offline
 
 	def code(code):
 		try:
@@ -209,7 +212,13 @@ class SL_OP:
 			pass
 		return 0x99	
 
-SL_AS_CODE = {0: 'Success', 1: 'Supressed duplicate pkt', 2: 'Unexpected pkt, dropping'}
+SL_AS_CODE = {
+	0: 'Success',
+	1: 'Supressed duplicate pkt',
+	2: 'Unexpected pkt, dropping',
+    3: 'Version Error',
+	4: 'Size Error' 
+}
 
 class WaitForAck:
 
@@ -734,7 +743,6 @@ class Node(Item):
 		self.last_control_pkt = sl_pkt
 		self.publish_pkt(sl_pkt)
 		self.wait_for_AS.set_wait(sl_pkt, do_insert=True)
-		sl_pkt.insert()
 		return "OK"
 
 
@@ -1333,8 +1341,8 @@ def run_cmd(webnamespace, sid, message):
 
 # tables = {}
 def SteamSetup():
-	Steam._table = DbTable(Steam, keyfield="steam_id", tablename="Steam")
-	Mesh._table = DbTable(Mesh, keyfield="mesh_id", tablename="Mesh")
-	Node._table = DbTable(Node, keyfield="slid", tablename="Node")
-	Packet._table = DbTable(Packet, keyfield="ts", tablename="Packet")
+	Steam._table = DB_backed_Table(Steam, keyfield="steam_id", tablename="Steam")
+	Mesh._table = DB_backed_Table(Mesh, keyfield="mesh_id", tablename="Mesh")
+	Node._table = DB_backed_Table(Node, keyfield="slid", tablename="Node")
+	Packet._table = DB_backed_Table(Packet, keyfield="ts", tablename="Packet")
 

@@ -37,19 +37,6 @@ def Attach(webapp, db):
 
 
 
-def check_restrictions( restrict_by, item):
-	if len(restrict_by) == 0:
-		return True
-	res = True
-	for restrict in restrict_by:
-		field =  restrict['field_name'] 
-		op =  restrict['op'] 
-		value =  restrict['value'] 
-		ex = "item['%s'] %s %s" % (field, op, repr(value))
-		res = res and eval(ex)
-	return res
-
-
 import yaml
 from yaml import Loader, Dumper
 
@@ -74,6 +61,19 @@ class CSearchKey:
 
 		self.restrict_by = restrict_by
 		self.search_id =  self.__repr__()	#used to index CSearches 
+
+
+	def check_restrictions(self, item):
+		if len(self.restrict_by) == 0:
+			return True
+		res = True
+		for restrict in self.restrict_by:
+			field =  restrict['field_name']
+			op =  restrict['op']
+			value =  restrict['value']
+			ex = "item['%s'] %s %s" % (field, op, repr(value))
+			res = res and eval(ex)
+		return res
 
 
 	def __repr__(self):
@@ -154,7 +154,7 @@ class CSearch:
 				 self, force, op, item)
 		item_search_key = item.__dict__[self.csearchkey.key_field]
 		push = False
-		go = check_restrictions(self.csearchkey.restrict_by, item.__dict__)
+		go = self.csearchkey.check_restrictions(item.__dict__)
 		if not go:
 			return
 
@@ -430,7 +430,7 @@ class Table:
 	def insert(self, item):
 		self.check_csearch('ins', item, force=False)
 
-	def db_update(self, item, force):
+	def update(self, item, force):
 		self.check_csearch('upd', item, force)
 
 	def delete(self, item):
@@ -442,15 +442,15 @@ class Table:
 			self.csearches[cs].check_csearch(op, item, force)
 		 
 #
-# DbTable
+# DB_backed_Table
 #
-class DbTable(Table):
+class DB_backed_Table(Table):
 	""" database based Table """
 
 	def __init__(self, itemclass, keyfield, tablename):
 		self.tablename = tablename
 		self.cache = OCache(tablename, 1000)
-		self.dbtable = _DB.table(self.tablename)
+		self.dbtable = _DB.table(self.tablename, keyfield)
 		super().__init__(itemclass, keyfield)
 
 
@@ -509,24 +509,25 @@ class DbTable(Table):
 #?		logger.error("multiple items with '%s' = %s in table %s", keyfield, key, self.tablename)
 
 
-	def db_update(self, item, force=False):
-		if 'webupd' in logging.DBGK: logger.debug("db_update (DBTable) %s force=%s", self, force)
-		self.dbtable.db_update(item.save(), self.keyfield, item.__dict__[self.keyfield])
+	def update(self, item, force=False):
+		if 'webupd' in logging.DBGK: logger.debug("update (DBTable) %s force=%s", self, force)
+		self.dbtable.db_update(item.save())
 		self.cache[item.__dict__[self.keyfield]] = item
-		super().db_update(item, force)
+		super().update(item, force)
 
 
 	def insert(self, item):
-		if logging.DBG > 2: logger.debug("Table insert %s  %s", item.save(), self.keyfield)
-		self.dbtable.upsert(item.save(), self.keyfield)
+		if 'webupd' in logging.DBGK: logger.debug("insert (DBTable) %s  %s", item.save())
+		self.dbtable.db_insert(item.save())
 		self.cache[item.__dict__[self.keyfield]] = item
 		super().insert(item)
 
 
 	def delete(self, item):
-		logger.debug("DbTable delete %s", item)
+		logger.debug("db backed deleting item %s", item)
+#		if logging.DBG >= 1: logger.debug("DB_backed_Table delete %s", item)
 		del self.cache[item.__dict__[self.keyfield]]
-		self.dbtable.delete(self.keyfield, item.__dict__[self.keyfield])
+		self.dbtable.db_delete(item.save())
 		super().delete(item)
 
 
@@ -538,9 +539,9 @@ class DbTable(Table):
 
 
 #
-# DictTable
+# Dict_backed_Table
 #
-class DictTable(Table):
+class Dict_backed_Table(Table):
 	""" dict based Table """
 
 	def __init__(self, itemclass,  keyfield, index):
@@ -550,7 +551,7 @@ class DictTable(Table):
 
 
 	def register(self, item):
-		logger.debug("DictTable register %s %s", item.__dict__[self.keyfield], item)
+		logger.debug("Dict_backed_Table register %s %s", item.__dict__[self.keyfield], item)
 		self.index[item.__dict__[self.keyfield]] = item
 
 
@@ -571,7 +572,7 @@ class DictTable(Table):
 
 		udict = {}
 		for t in tab:
-			logger.debug("DictTable get_range %s %s", field, t)
+			logger.debug("Dict_backed_Table get_range %s %s", field, t)
 
 			udict[tab[t].__dict__[field]] = tab[t]
 		fullsdict = sorted(udict)
@@ -582,7 +583,7 @@ class DictTable(Table):
 		else:
 			sdict = []
 			for r in fullsdict:
-				if check_restrictions(csk.restrict_by, udict[r]):
+				if csk.check_restrictions(udict[r]):
 					sdict.append(r)
 
 		if len(sdict) == 0:
@@ -646,13 +647,13 @@ class DictTable(Table):
 				res.append(self.index[k])
 		return res
 
-	def db_update(self, item, force=False):
-		if 'webupd' in logging.DBGK: logger.debug("db_update (DictTable)  %s force=%s", self, force)
-		super().db_update(item, force)
+	def update(self, item, force=False):
+		if 'webupd' in logging.DBGK: logger.debug("update (Dict_backed_Table)  %s force=%s", self, force)
+		super().update(item, force)
 
 
 	def insert(self, item):
-		if logging.DBG > 2: logger.debug("DictTable  insert %s", item.save())
+		if logging.DBG > 2: logger.debug("Dict_backed_Table  insert %s", item.save())
 		pass
 
 
@@ -666,7 +667,7 @@ class DictTable(Table):
 
 
 	def __str__(self):
-		return "DictTable(%s)%s" %(self.itemclass.__name__, len(self.index))
+		return "Dict_backed_Table(%s)%s" %(self.itemclass.__name__, len(self.index))
 
 #
 # BaseItem
@@ -717,7 +718,7 @@ class Item(BaseItem):
 		for k in data:
 			self.__dict__[k] = data[k]
 		self._key = self.__dict__[self._table.keyfield]
-		logger.debug("Item loaded: %s", self)
+		if logging.DBG >= 1: logger.debug("Item loaded: %s", self)
 
 
 	def save(self, withvirtual=False):
@@ -735,9 +736,10 @@ class Item(BaseItem):
 
 	def update(self, force=False):
 		if 'webupd' in logging.DBGK: logger.debug("Item update %s force=%s", self, force)
-		self._table.db_update(self, force)
+		self._table.update(self, force)
 
 	def delete(self):
+		logger.debug("deleting item %s", self)
 		self._table.delete(self)
 
 	def gen_console_data(self):
@@ -746,12 +748,6 @@ class Item(BaseItem):
 #
 # LogItem
 class LogItem(Item):
-#	console_fields = {
-#		"Time": "time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(self.ts))",
-#		"lvl": "self.lvl",
-#		"ts": "self.ts",
-#		"line": "self.line",
-#	}
 
 	keyfield = "ts"
 	def __init__(self, lvl = None, line = None):
@@ -788,6 +784,7 @@ class LogQ(Item):
 		super().__init__(self.name)
 		self.prune_in_progress = False
 		logger.info("%s logq init", self)
+
 
 	def save(self, withvirtual=False):
 		r = {}
@@ -829,13 +826,14 @@ class LogQ(Item):
 				start_item_number=0, 
 				count=count)
 		for item in LogItem._table.get_range(csk):
+			logger.debug("pruning item %s", item)
 			item.delete()
 		logger.debug("prune done, table size %s", len(LogItem._table))
 		self.prune_in_progress = False
 
 
 	async def start(self):
-		LogItem._table = DbTable(LogItem, keyfield="ts", tablename="LogItem")
+		LogItem._table = DB_backed_Table(LogItem, keyfield="ts", tablename="LogItem")
 		logger.info("%s logq start", self)
 		ansi_escape = re.compile(r'\x1B\[[0-?]*[ -/]*[@-~]')    # removes ansi escape sequence
 		while True:

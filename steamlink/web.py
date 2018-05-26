@@ -213,10 +213,10 @@ class WebApp(object):
 	async def start(self):
 		logger.info("%s starting, server %s port %s", self.name, self.host,  self.port)
 		self.sio.register_namespace(WebNamespace(self))
-		self.runner = web.AppRunner(self.app)
-		await self.runner.setup()
-		self.site = web.TCPSite(self.runner, 'localhost', self.port)
-		await self.site.start()
+#		self.runner = web.AppRunner(self.app)
+#		await self.runner.setup()
+#		self.site = web.TCPSite(self.runner, 'localhost', self.port)
+#		await self.site.start()
 
 		logger.debug("%s: app started", self.name)
 

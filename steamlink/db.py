@@ -1,5 +1,5 @@
 
-# python library Steamlink 
+# python library Steamlink
 
 import asyncio
 import os
@@ -11,82 +11,135 @@ from tinydb.storages import JSONStorage, touch
 from tinydb.storages import MemoryStorage
 from tinydb.middlewares import CachingMiddleware
 
+import bisect
 import logging
 logger = logging.getLogger()
 
-from .linkage import check_restrictions
 
-
+#
+# DBIndex
+#
 class DBIndex(OrderedDict):
-	def __init__(self, table, keyfield):
-		self.keyfield = keyfield
+	def __init__(self, table, csk):
 		self.table = table
+		self.csk = csk
+		self.key_field = csk.key_field
 		super().__init__()
 
-
-	def init_idx(self):
+		if 'dbops' in logging.DBGK: logger.debug("DBIndex __init__ %s", csk)
 		for item in self.table:
-			key = item[self.keyfield]
-			super().__setitem__(key, item)
+			if self.csk.check_restrictions(item):
+				self[item[self.key_field]] = item
+		if 'dbops' in logging.DBGK: logger.debug("DBIndex __init__ count %s", len(self))
 
 
 	def has(self, key):
 		return key in self
 
 
+	def update(self, item):		# N.B. handle change of key value
+		key = item[self.key_field]
+		if self.csk.check_restrictions(item):
+			super().__setitem__(key, item)
+
 	def insert(self, item):
-		key = item[self.keyfield]
-		super().__setitem__(key, item)
+		key = item[self.key_field]
+		if self.csk.check_restrictions(item):
+			super().__setitem__(key, item)
 
 
-	def __del__(self, item):
-		key = item[self.keyfield]
-		super().__setitem__(key, item)
+	def delete(self, item):
+		if 'dbops' in logging.DBGK: logger.debug("DBIndex  deleting item %s", item)
+		key = item[self.key_field]
+		if key in self:
+			del self[key]
 
 
+#
+# DBIndexFarm
+#
+class DBIndexFarm(dict):
+	def __init__(self, table):
+		self.table = table
+		super().__init__()
+
+
+	def mk_restrict_idx_name(self, csk):
+		name = ""
+		for restrict in csk.restrict_by:
+			name += "%s%s%s" % (restrict['field_name'], restrict['op'], restrict['value'])
+		return name
+
+
+	def get(self, csk):
+
+		key_field = csk.key_field
+		restrict_name = key_field + self.mk_restrict_idx_name(csk)
+		if 'dbops' in logging.DBGK: logger.debug("DBIndexFarm get name '%s'", restrict_name)
+		if not restrict_name in self:
+			self[restrict_name] = DBIndex(self.table, csk)
+		return self[restrict_name]
+
+
+	def update(self, item):
+		for idx in self:
+			self[idx].update(item)
+
+	def insert(self, item):
+		for idx in self:
+			self[idx].insert(item)
+
+
+	def delete(self, item):
+		if 'dbops' in logging.DBGK: logger.debug("DBIndexFarm  deleting item %s", item)
+		for idx in self:
+			self[idx].delete(item)
+
+
+#
+# DBTable
+#
 class DBTable:
-	def __init__(self, table, name):
+	def __init__(self, table, name, key_field):
 		if logging.DBG > 2: logger.debug("DBTable %s", name)
 		self.table = table
 		self.name = name
-		self.idxs = {}
+		self.key_field = key_field		# field that is unique for this table
+		self.restrict_idxs = DBIndexFarm(self.table)
 		self.query = Query()
 
 
-	def insert(self, rec):
-		did = self.table.insert(rec)
-		if 'dbops' in logging.DBGK: logger.debug("REC insert %s rec %s, %s: %s", self.name, did, type(rec), rec)
-
-
-	def upsert(self, rec, keyfield):
-		try:
-			r = rec[keyfield]
-		except:
-			logger.error("insert with no '%s' field: %s", keyfield, rec)
-			return
-		el = self.table.search(where(keyfield) == r)
-		if 'dbops' in logging.DBGK: logger.debug("upsert search %s return %s", (where(keyfield) == r), el)
+	def db_insert(self, rec):
+		assert self.key_field in rec, "record has not key_field"
+		r = rec[self.key_field]
+		el = self.table.search(where(self.key_field) == r)
+		if 'dbops' in logging.DBGK: logger.debug("upsert search %s return %s", (where(self.key_field) == r), el)
 		if el is not None and len(el) > 0:
-			if el[0] == rec:
-				if 'dbops' in logging.DBGK: logger.debug("upsert --nochange--")
-				return
-			did = self.table.update(rec, where(keyfield) == r)
-			if 'dbops' in logging.DBGK: logger.debug("REC upsert update %s rec %s, %s: %s", self.name, did, type(rec), rec)
-		else:
-			did = self.table.insert(rec)
-			if 'dbops' in logging.DBGK: logger.debug("upsert insert %s rec %s, %s: %s", self.name, did, type(rec), rec)
+			logger.error("duplicate record %s, %s rec %s, %s", self.name, el, r, rec)
+			return
+		did = self.table.insert(rec)
+		if 'dbops' in logging.DBGK: logger.debug("upsert insert %s rec %s, %s: %s", self.name, did, type(rec), rec)
+		self.restrict_idxs.insert(rec)
 
 
-	def db_update(self, rec, keyfield, key):
+	def db_update(self, rec):
 		if 'dbops' in logging.DBGK: logger.debug("REC update %s rec %s", self.name, rec)
-		did = self.table.update(rec, where(keyfield) == key)
+		self.restrict_idxs.update(rec)
+		key = rec[self.key_field]
+		did = self.table.update(rec, where(self.key_field) == key)
 
-	def delete(self, field, val):
+
+	def db_delete(self, rec):
+		field = self.key_field
+		val = rec[field]
+		if 'dbops' in logging.DBGK: logger.debug("DBtable  deleting field=%s val=%s", field, val)
+		self.restrict_idxs.delete(rec)
 		el = self.table.get(where(field) == val)
 		if el is None:
 			logger.error("delete in %s, no document with %s=%s", self.name, field, val)
+			raise ValueError
 			return
-		
+
 		try:
 			self.table.remove(eids=[el.eid])
 		except KeyError as e:
@@ -121,71 +174,54 @@ class DBTable:
 
 		csk.total_item_count = 0
 
-		if len(self.table) == 0:
+		if 'get_range' in logging.DBGK: logger.debug("get_range csk2 %s", str(csk))
+		if False:
+#		if len(self.table) == 0:
 			if 'get_range' in logging.DBGK: logger.debug("get_range table empty")
 			csk.count = 0
 			return {}
 
-		udict = {}
-		for t in self.table:		# N.B. ad-hoc index over entrie table: expensive!
-			udict[t[key_field]] = t
-		fullsdict = sorted(udict)
-		if 'get_range' in logging.DBGK: logger.debug("get_range table %s items", len(fullsdict))
-	
-		if len(csk.restrict_by) == 0:
-			sdict = fullsdict
-		else:
-			sdict = []
-			for r in fullsdict:
-				if check_restrictions(csk.restrict_by, udict[r]):
-					sdict.append(r)
-			if 'get_range' in logging.DBGK: logger.debug("get_range restricted %s items", len(sdict))
+		if 'get_range' in logging.DBGK: logger.debug("get_range num idexes %s", len(self.restrict_idxs))
 
-		if len(sdict) == 0:
+		idx = self.restrict_idxs.get(csk)
+
+		if len(idx) == 0:
 			if 'get_range' in logging.DBGK: logger.debug("get_range table empty after destrict")
 			return {}
 
 		if startv in [None]:
 			if csk.start_item_number < 0:
-				sidx = max(0, len(sdict) + csk.start_item_number)
+				sidx = max(0, len(idx) + csk.start_item_number)
 			else:
-				sidx = min(csk.start_item_number, len(sdict)-1)
-			startv = sdict[sidx]
+				sidx = min(csk.start_item_number, len(idx)-1)
+			startv = list(idx)[sidx]
 		else:
-			sidx = None
-			for idx in range(len(sdict)):
-				if sdict[idx] >=  startv:
-					sidx = idx
-					startv = sdict[sidx]
-					break
-			if sidx is None:
+			sidx = bisect.bisect_left(list(idx), startv)
+			if sidx == len(idx):
 				if 'get_range' in logging.DBGK: logger.debug("get_range no start key found")
 				return {}
+
 		if endv in [None]:
-			eidx = min(sidx + count-1, len(sdict)-1)
-			endv = sdict[eidx]
+			eidx = min(sidx + count-1, len(idx)-1)
+			endv = list(idx)[eidx]
 		else:
-			eidx = None
-			for idx in range(sidx, len(sdict)):
-				if sdict[idx] <= endv:
-					endv = sdict[idx]
-					eidx = idx
-					break
-			if eidx is None:
+			eidx = bisect.bisect_right(list(idx), endv, sidx, len(idx)) - 1
+			if eidx < 0:
 				if 'get_range' in logging.DBGK: logger.debug("get_range no end key found")
 				return {}
 			count = eidx - sidx + 1
 
-		csk.start_key = sdict[sidx]
-		csk.end_key = sdict[eidx]
+		csk.start_key = list(idx)[sidx]
+		csk.end_key = list(idx)[eidx]
 		csk.start_item_number = sidx
-		csk.total_item_count = len(sdict)
-		csk.at_start = csk.start_key == sdict[0]
-		csk.at_end = csk.end_key == sdict[-1]
+		csk.count = count
+		csk.total_item_count = len(idx)
+		csk.at_start = csk.start_key == list(idx)[0]
+		csk.at_end = csk.end_key == list(idx)[-1]
 
 		if 'get_range' in logging.DBGK: logger.debug("get_range size %s", (eidx-sidx+1))
-		for idx in range(sidx, eidx+1):
-			yield udict[sdict[idx]]
+		for i in range(sidx, eidx+1):
+			yield idx[list(idx)[i]]
 
 
 	def __len__(self):
@@ -198,7 +234,7 @@ class DB:
 			- inserts get slow with the standard Json modules, check out ujson
 			    ( at 3000 items, the per item insert time is 12ms!! )
 			- consider creating a new table/db/fle very day or every x records
-			 
+
 	"""
 	def __init__(self, conf, loop):
 		if logging.DBG > 2: logger.debug("DB %s", conf)
@@ -217,12 +253,12 @@ class DB:
 				storage=CachingMiddleware(JSONStorage))
 
 
-	def table(self, name):
+	def table(self, name, key_field):
 		if name in self.db_tables:
 			return self.db_tables[name]
-	
+
 		db_table = self.db.table(name)
-		table = DBTable(db_table, name)
+		table = DBTable(db_table, name, key_field)
 		self.db_tables[name] = table
 		return table
 

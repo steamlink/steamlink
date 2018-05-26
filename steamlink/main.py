@@ -29,7 +29,7 @@ from .mqtt import (
 )
 
 from .linkage import LogQ
-from .linkage import DictTable
+from .linkage import Dict_backed_Table
 from .steamlink import SteamSetup, Steam, Mesh, Node, set_steam_root
 from .steamlink import Attach as steamlinkAttach
 
@@ -217,7 +217,7 @@ def steamlink_main(cl_args, conf):
 	# confugure subsystems
 	coros = []
 
-	LogQ._table = DictTable(LogQ, keyfield="name", index = OrderedDict())
+	LogQ._table = Dict_backed_Table(LogQ, keyfield="name", index = OrderedDict())
 	logq = LogQ(conf, aioloop)
 	coros.append(logq.start())
 
