@@ -59,7 +59,7 @@ TODO = """
 
 
 #
-# Exception 
+# Exception
 #
 class SteamLinkError(Exception):
 	def __init__(self, message):
@@ -210,14 +210,14 @@ class SL_OP:
 			return SL_OP.__dict__[val]
 		except:
 			pass
-		return 0x99	
+		return 0x99
 
 SL_AS_CODE = {
 	0: 'Success',
 	1: 'Supressed duplicate pkt',
 	2: 'Unexpected pkt, dropping',
     3: 'Version Error',
-	4: 'Size Error' 
+	4: 'Size Error'
 }
 
 class WaitForAck:
@@ -313,10 +313,10 @@ class Steam(Item):
 
 
 	def set_loglevel(self, loglevel):
-		from .linkage import logger as linkage_logger 
-		from .mqtt import logger as mqtt_logger 
-		from .db import logger as db_logger 
-		from .testdata import logger as testdata_logger 
+		from .linkage import logger as linkage_logger
+		from .mqtt import logger as mqtt_logger
+		from .db import logger as db_logger
+		from .testdata import logger as testdata_logger
 		from .web import logger as web_logger
 
 		logger.setLevel(loglevel)
@@ -336,7 +336,7 @@ class Steam(Item):
 				return {"Success": False, "Error": "Unknown node" }
 			to_send = message['data']
 			if message['cmd'] == "DN":
-				ret = node.send_data_to_node(to_send+'\0') 	
+				ret = node.send_data_to_node(to_send+'\0')
 
 			elif message['cmd'] == "SC":
 				try:
@@ -344,7 +344,7 @@ class Steam(Item):
 				except Exception as e:
 					return {"Success": False, "Error": "nodecfg problem:  %s" % e }
 				node.nodecfg = SL_NodeCfgStruct(node.slid, **nodecfg)
-				ret = node.send_set_config() 
+				ret = node.send_set_config()
 
 		if ret is not "OK":
 			return {"Success": False,
@@ -387,14 +387,14 @@ class Steam(Item):
 				raise GracefulExit
 		else:
 			logger.warning("unknown store command %s", cmd)
-				
+
 
 	def on_public_control_msg(self, client, userdata, msg):
 		if self._public_topic_control is None:
 			return
 
 		if logging.DBG > 2: logger.debug("on_public_control_msg %s %s", msg.topic, msg.payload)
-		match = re.match(self._public_topic_control_re, msg.topic) 
+		match = re.match(self._public_topic_control_re, msg.topic)
 		if match is None:
 			logger.warning("topic did not match public control topic: %s %s", topic, self._public_topic_control)
 			return
@@ -509,7 +509,7 @@ class Mesh(Item):
 	def __init__(self, mesh_id=None):
 		self.mesh_id = mesh_id
 		if mesh_id is None:
-			self.name = "Mesh??" 
+			self.name = "Mesh??"
 		else:
 			self.name = "Mesh%s" % self.mesh_id
 		self.desc = "Description for %s" % self.name
@@ -711,7 +711,7 @@ class Node(Item):
 
 
 	def send_ack_to_node(self, code):
-		sl_pkt = Packet(slnode=self, sl_op=SL_OP.AN, payload=chr(code))	
+		sl_pkt = Packet(slnode=self, sl_op=SL_OP.AN, payload=chr(code))
 		self.publish_pkt(sl_pkt)
 		return
 
@@ -728,7 +728,7 @@ class Node(Item):
 		return
 
 
-	def send_data_to_node(self, data): 
+	def send_data_to_node(self, data):
 		if not self.is_state_up():
 			self.packets_dropped += 1
 			return "NodeDown"
@@ -746,7 +746,7 @@ class Node(Item):
 		return "OK"
 
 
-	def send_set_config(self): 
+	def send_set_config(self):
 		if not self.is_state_up():
 			self.packets_dropped += 1
 			return "NodeDown"
@@ -807,7 +807,7 @@ class Node(Item):
 		except:
 			payload = sl_pkt.payload
 		_MQTT.public_publish(self.name, payload)
-		
+
 
 	def post_data(self, sl_pkt):
 		""" handle incoming messages on the ../data topic """
@@ -854,11 +854,11 @@ class Node(Item):
 		sl_op = sl_pkt.sl_op
 
 		if sl_op == SL_OP.ON: # autocreate did set nodecfg
-			self.wait_for_AS.clear_wait()		# give up 
+			self.wait_for_AS.clear_wait()		# give up
 			logger.debug('post_data: slid %d ONLINE', int(self.slid))
 
 			new_nodecfg = SL_NodeCfgStruct(pkt=sl_pkt.bpayload)
-			self.nodecfg.update(new_nodecfg)			
+			self.nodecfg.update(new_nodecfg)
 			self.send_set_config()
 			self.set_state("ONLINE")
 			self.last_node_restart_ts = time.time()
@@ -876,7 +876,7 @@ class Node(Item):
 			self.set_state(sl_pkt.payload)
 
 		elif sl_op == SL_OP.AS:
-			logger.debug('post_data: slid %d ACK:  %s', int(self.slid), 
+			logger.debug('post_data: slid %d ACK:  %s', int(self.slid),
 						SL_AS_CODE[int(sl_pkt.bpayload[0])])
 			pkt = self.wait_for_AS.stop_wait()		# done waiting, discard stashed packet
 			if pkt is not None:
@@ -993,7 +993,7 @@ class BasePacket:
 		self.sl_op = sl_op
 		self.rssi = rssi + 256
 		if self.sl_op == SL_OP.ON:
-			self.payload = payload.pack()	# payload is a nodecfg 
+			self.payload = payload.pack()	# payload is a nodecfg
 		else:
 			self.payload = payload
 		if logging.DBG > 2: logger.debug("SteamLinkPacket payload = %s", payload);
@@ -1272,7 +1272,7 @@ class LogData:
  message = {
      'table_name':
 	 'key_field':
-	 'restrict_by': 
+	 'restrict_by':
 	 'start_key':
 	 'start_item_number':
 	 'end_key':
