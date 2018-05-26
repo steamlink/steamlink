@@ -6,7 +6,7 @@ import sys
 import aiomqtt
 from hbmqtt.broker import Broker
 
-from .main import (DBG, DBGK)
+from . import (DBG, DBGK)
 
 
 logger = logging.getLogger(__name__)

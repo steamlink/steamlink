@@ -1,28 +1,23 @@
 import asyncio
-import socketio
 import hashlib
 import hmac
-import os
 import json
+import logging
+import os
 import socket
+
 import aiohttp_jinja2
 import jinja2
+import socketio
 import yaml
-
-from zeroconf import ServiceInfo, Zeroconf
 from aiohttp import web
 from aiohttp.log import access_logger
-from .main import (DBG, DBGK)
-
-from .steamlink import (
-	add_csearch,
-	run_cmd,
-	drop_csearch
-)
+from zeroconf import ServiceInfo, Zeroconf
 
 from .const import __version__
+from . import (DBGK)
+from .steamlink import add_csearch, run_cmd, drop_csearch
 
-import logging
 logger = logging.getLogger(__name__)
 
 
@@ -39,6 +34,7 @@ class DisplayConfiguration:
 				break
 		if self.data == {}:
 			raise FileNotFoundError
+
 
 	def row_wise(self):
 		rows = {}
@@ -66,6 +62,7 @@ class NavBar:
 				f.close()
 				self.yamls += yamls
 
+
 # WebNameSpace
 
 
@@ -87,17 +84,17 @@ class WebNamespace(socketio.AsyncNamespace):
 		res = drop_csearch(self, sid, {})
 
 
-#	async def on_need_log(self, sid, data):
-#		logger.debug("WebNamespace need_log %s", data)
-#	#	await self.emit('my_response', {'data': data['data']} ) #, room=sid, namespace=self.namespace)
-#		node = data.get('id',None)
-#		if  not node in Node.name_idx:
-#			return "NAK"
-#		try:
-#			r = Node.name_idx[node].console_pkt_log(data['key'], int(data['count']))
-#		except:
-#			return "NAK"
-#		return "ACK"
+	#	async def on_need_log(self, sid, data):
+	#		logger.debug("WebNamespace need_log %s", data)
+	#	#	await self.emit('my_response', {'data': data['data']} ) #, room=sid, namespace=self.namespace)
+	#		node = data.get('id',None)
+	#		if  not node in Node.name_idx:
+	#			return "NAK"
+	#		try:
+	#			r = Node.name_idx[node].console_pkt_log(data['key'], int(data['count']))
+	#		except:
+	#			return "NAK"
+	#		return "ACK"
 
 
 	async def on_startstream(self, sid, message):
@@ -108,12 +105,12 @@ class WebNamespace(socketio.AsyncNamespace):
 			msg = '%s field missing in request' % e
 			logger.warning(msg)
 			raise
-#			return {'error': msg }
+		#			return {'error': msg }
 		except TypeError as e:
 			msg = '%s, probably incorrect value for start_key' % e
 			logger.warning(msg)
 			raise
-#			return {'error': msg }
+		#			return {'error': msg }
 
 		logger.debug("WebNamespace on_startstream <-- %s", res)
 		return res
@@ -140,6 +137,7 @@ class WebNamespace(socketio.AsyncNamespace):
 		logger.debug("WebNamespace on_cmd <-- %s", res)
 		return res
 
+
 #
 # WebApp
 
@@ -162,9 +160,9 @@ class WebApp(object):
 
 		self.libdir = os.path.dirname(os.path.abspath(__file__))
 		self.working_dir = conf['working_dir']
-		self.static_dir = self.libdir+'/html/static'
-		self.templates_dir = self.libdir+'/html/templates'
-		self.user_templates_dir = self.working_dir+'/html/templates'
+		self.static_dir = self.libdir + '/html/static'
+		self.templates_dir = self.libdir + '/html/templates'
+		self.user_templates_dir = self.working_dir + '/html/templates'
 		self.app.router.add_route('GET', '/', self.route_handler)
 		self.app.router.add_route('GET', '/favicon.ico', self.favicon_handler)
 		self.app.router.add_route('GET', '/ghwh', self.ghwh_handler)
@@ -182,21 +180,24 @@ class WebApp(object):
 		aiohttp_jinja2.setup(self.app, loader=jinja2.FileSystemLoader(self.templates_dir))
 
 		self.shutdown_timeout = self.conf['shutdown_timeout']
-	#	self.api_password = conf['api_password']
+		#	self.api_password = conf['api_password']
 		self.ssl_certificate = conf['ssl_certificate']
 		self.ssl_key = conf['ssl_key']
 		self.ssl_context = None
 		self.access_log_format = 'XXX %a %t "%r" %s %b "%{Referer}i" "%{User-Agent}i"'
 		self.access_log = access_logger
-		access_logger.setLevel(logging.WARN)	# N.B. set in config
+		access_logger.setLevel(logging.WARN)  # N.B. set in config
 
 		self.host = conf['host']
 		self.port = conf['port']
+
+
 	#	self._handler = None
 	#	self.server = None
 
 	def __getstate__(self):
 		return {'MyClass': 'WebApp'}
+
 
 	async def qstart(self):
 		logger.info("%s starting q handler", self.name)
@@ -204,12 +205,12 @@ class WebApp(object):
 
 
 	async def start(self):
-		logger.info("%s starting, server %s port %s", self.name, self.host,  self.port)
+		logger.info("%s starting, server %s port %s", self.name, self.host, self.port)
 		self.sio.register_namespace(WebNamespace(self))
-#		self.runner = web.AppRunner(self.app)
-#		await self.runner.setup()
-#		self.site = web.TCPSite(self.runner, 'localhost', self.port)
-#		await self.site.start()
+		#		self.runner = web.AppRunner(self.app)
+		#		await self.runner.setup()
+		#		self.site = web.TCPSite(self.runner, 'localhost', self.port)
+		#		await self.site.start()
 
 		logger.debug("%s: app started", self.name)
 
@@ -218,9 +219,9 @@ class WebApp(object):
 		my_ip_address = socket.gethostbyname(socket.gethostname())
 		desc = {'version': __version__}
 		self.zeroconf_info = ServiceInfo("_http._tcp.local.",
-					"SteamLink Store._http._tcp.local.",
-					socket.inet_aton(my_ip_address), self.port, 0, 0,
-					desc, "steamlink.local.")
+										 "SteamLink Store._http._tcp.local.",
+										 socket.inet_aton(my_ip_address), self.port, 0, 0,
+										 desc, "steamlink.local.")
 		self.zeroconf = Zeroconf()
 		self.zeroconf.register_service(self.zeroconf_info)
 
@@ -231,19 +232,22 @@ class WebApp(object):
 		self.handler = self.app.make_handler(loop=self.loop, **make_handler_kwargs)
 
 		self.server = await self.loop.create_server(
-						self.handler, self.host, self.port,
-						ssl=self.ssl_context,
-						backlog=self.backlog)
+			self.handler, self.host, self.port,
+			ssl=self.ssl_context,
+			backlog=self.backlog)
+
 
 	def stop(self):
 		logger.info("%s done running", self.name)
 		self.zeroconf.unregister_service(self.zeroconf_info)
 		self.server.close()
-#		somethong int this list may take 20 seconds to shutdown gracefully
+		#		somethong int this list may take 20 seconds to shutdown gracefully
 		self.loop.run_until_complete(self.server.wait_closed())
 		self.loop.run_until_complete(self.app.shutdown())
-#		self.loop.run_until_complete(self.handler.shutdown(self.shutdown_timeout))
-#		self.loop.run_until_complete(self.runner.cleanup())
+
+
+	#		self.loop.run_until_complete(self.handler.shutdown(self.shutdown_timeout))
+	#		self.loop.run_until_complete(self.runner.cleanup())
 
 
 	async def config_json(self, request):
@@ -265,7 +269,6 @@ class WebApp(object):
 		asyncio.ensure_future(self.con_upd_q.put([csitems, force]), loop=self.loop)
 
 
-
 	def queue_item_update(self, csitem, force):
 		if 'webupd' in DBGK: logger.debug("queue_item_update for %s item %s", csitem.csearch.search_id, csitem.item)
 		asyncio.ensure_future(self.con_upd_q.put([csitem, force]), loop=self.loop)
@@ -274,7 +277,7 @@ class WebApp(object):
 	async def console_update_loop(self):
 		logger.info("%s q handler", self.name)
 		while True:
-			upd_csitem, upd_force =  await self.con_upd_q.get()
+			upd_csitem, upd_force = await self.con_upd_q.get()
 			if 'webupd' in DBGK: logger.debug("console_update_loop %s force %s", upd_csitem, upd_force)
 			if upd_csitem is None:
 				break
@@ -287,11 +290,13 @@ class WebApp(object):
 				data = upd_csitem.console_update(upd_force)
 			tag = upd_csitem.csearch.csearchkey.stream_tag
 			room = upd_csitem.csearch.search_id
-			if 'webupd' in DBGK: logger.debug("emit_loop event: %s room:%s data: %s", upd_csitem.csearch.csearchkey.stream_tag,  upd_csitem.csearch.search_id, data)
+			if 'webupd' in DBGK: logger.debug("emit_loop event: %s room:%s data: %s",
+											  upd_csitem.csearch.csearchkey.stream_tag, upd_csitem.csearch.search_id,
+											  data)
 			await self.sio.emit(tag,
-					data = data,
-					namespace = self.namespace,
-					room = room)
+								data=data,
+								namespace=self.namespace,
+								room=room)
 			upd_csitem.update_sent()
 			self.con_upd_q.task_done()
 
@@ -300,11 +305,11 @@ class WebApp(object):
 
 	async def console_alert(self, lvl, smsg):
 		if len(smsg) > 110:
-			msg = smsg[:110]+"..."
+			msg = smsg[:110] + "..."
 		else:
 			msg = smsg
-		alert = {'lvl': lvl, 'msg': msg }
-		await self.sio.emit('alert', alert, namespace = self.namespace)
+		alert = {'lvl': lvl, 'msg': msg}
+		await self.sio.emit('alert', alert, namespace=self.namespace)
 
 
 	def send_console_alert(self, lvl, msg):
@@ -324,23 +329,23 @@ class WebApp(object):
 			# Store the IP address of the requester
 			request_ip = request.remote
 
-#			# If VALIDATE_SOURCEIP is set to false, do not validate source IP
-#			if self.conf.get('repo_validate_sourceip', False):
-#
-#				# If GHE_ADDRESS is specified, use it as the hook_blocks.
-#				if self.conf.get('repo_ghe_address', None):
-#					hook_blocks = self.conf.get('repo_ghe_address')
-#				# Otherwise get the hook address blocks from the API.
-#				else:
-#					hook_blocks = requests.get('https://api.github.com/meta').json()['hooks']
-#
-#				# Check if the POST request is from github.com or GHE
-#				for block in hook_blocks:
-#					if ipaddress.ip_address(request_ip) in ipaddress.ip_network(block):
-#						break  # the remote_addr is within the network range of github.
-#				else:
-#					if str(request_ip) != '127.0.0.1':
-#						return web.Response(text='invalid IP', status=403)
+			#			# If VALIDATE_SOURCEIP is set to false, do not validate source IP
+			#			if self.conf.get('repo_validate_sourceip', False):
+			#
+			#				# If GHE_ADDRESS is specified, use it as the hook_blocks.
+			#				if self.conf.get('repo_ghe_address', None):
+			#					hook_blocks = self.conf.get('repo_ghe_address')
+			#				# Otherwise get the hook address blocks from the API.
+			#				else:
+			#					hook_blocks = requests.get('https://api.github.com/meta').json()['hooks']
+			#
+			#				# Check if the POST request is from github.com or GHE
+			#				for block in hook_blocks:
+			#					if ipaddress.ip_address(request_ip) in ipaddress.ip_network(block):
+			#						break  # the remote_addr is within the network range of github.
+			#				else:
+			#					if str(request_ip) != '127.0.0.1':
+			#						return web.Response(text='invalid IP', status=403)
 
 			request_data = await request.text()
 			payload = json.loads(request_data)
@@ -368,7 +373,7 @@ class WebApp(object):
 					logger.debug("sig %s %s %s %s", type(key), key, type(signature), signature)
 					if type(key) != type(b''):
 						key = key.encode()
-					if type(request_data) !=  type(b''):
+					if type(request_data) != type(b''):
 						request_data = request_data.encode()
 					mac = hmac.new(key, msg=request_data, digestmod=hashlib.sha1)
 					if not hmac.compare_digest(mac.hexdigest(), signature):
@@ -383,19 +388,18 @@ class WebApp(object):
 			return web.Response(text='OK')
 
 
-
 	async def route_handler(self, request):
-		content_dirs = [self.templates_dir, self.user_templates_dir] 
+		content_dirs = [self.templates_dir, self.user_templates_dir]
 		nav = NavBar(content_dirs)
 
 		if request.rel_url.path == '/':
 			file_name = 'index'
 		else:
 			file_name = request.match_info['file_name']
-			# file_name = str(request.rel_url.path).rstrip('/')
+		# file_name = str(request.rel_url.path).rstrip('/')
 		logger.debug("web route_handler: filename: %s, request.rel_url %s", file_name, request.rel_url)
 		try:
-			dc = DisplayConfiguration(content_dirs,  '/' + file_name + '.yaml')
+			dc = DisplayConfiguration(content_dirs, '/' + file_name + '.yaml')
 		except FileNotFoundError as e:
 			return web.Response(text="No such file: %s" % file_name, status=404)
 		for qk in request.query:
@@ -421,10 +425,10 @@ class WebApp(object):
 				dc.data[partial][key] = i
 
 		if 'web' in DBGK: logger.debug("webapp handler %s", dc.data)
-		context = { 'context' : dc.row_wise(), 'navbar' : nav.yamls }
+		context = {'context': dc.row_wise(), 'navbar': nav.yamls}
 
-		if not (os.path.isfile(self.templates_dir + '/'+ file_name + '.html')):
+		if not (os.path.isfile(self.templates_dir + '/' + file_name + '.html')):
 			file_name = 'index'
 		response = aiohttp_jinja2.render_template(file_name + '.html', request, context)
-#		response.headers['Content-Language'] = 'en'
+		#		response.headers['Content-Language'] = 'en'
 		return response

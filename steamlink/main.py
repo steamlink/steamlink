@@ -2,157 +2,139 @@
 
 # Main program for a Steamlink network store
 
-import sys
-import os
-import pathlib
-import traceback
-import hbmqtt
-import hbmqtt.broker
-import syslog
-import random
 import asyncio
-import socketio
-import signal
-from collections import  OrderedDict
-
 import logging
 import logging.handlers
-logger = logging.getLogger()
+import os
+import pathlib
+import random
+import signal
+import sys
+import syslog
+import traceback
 
-DBG = 0
-DBGK = []
+import hbmqtt
+import hbmqtt.broker
+import socketio
 
-from .linkage import Attach as linkageAttach
+from collections import OrderedDict
 
 # SteamLink project imports
-from .mqtt import (
-	Mqtt,
-	Mqtt_Broker
-)
-
+from . import DBG, DBGK
+from .const import PROJECT_PACKAGE_NAME, __version__, DEFAULT_CONFIG_FILE
+from .mqtt import Mqtt, Mqtt_Broker
+from .linkage import Attach as linkageAttach
 from .linkage import LogQ
-from .linkage import Dict_backed_Table
-from .steamlink import SteamSetup, Steam, Mesh, Node, set_steam_root
+from .linkage import DictBackedTable
+from .steamlink import SteamSetup, Steam, set_steam_root
 from .steamlink import Attach as steamlinkAttach
-
 from .web import WebApp
 from .db import DB
-
-from .util import (
-	getargs,
-	loadconfig,
-	createconfig,
-	daemonize,
-	check_pid,
-	write_pid,
-)
-
+from .util import getargs, loadconfig, createconfig, daemonize, check_pid, write_pid
 from .testdata import TestData
 
-from .const import (
-	PROJECT_PACKAGE_NAME,
-	__version__,
-	DEFAULT_CONFIG_FILE,
-)
+logger = logging.getLogger()
 
 
 class GracefulExit(SystemExit):
 	code = 1
 
+
 class GracefulRestart(SystemExit):
 	code = 2
+
 
 def raise_graceful_restart():
 	logger.info("restarting")
 	raise GracefulRestart()
 
+
 def raise_graceful_exit():
 	logger.info("shutdown")
 	raise GracefulExit()
 
-home = str(pathlib.Path.home())	
 
-		
+home = str(pathlib.Path.home())
 
 #
 # Default config
 # specified config file (if any) will get merged in here
 DEFAULT_CONF = OrderedDict({
- 	'general': OrderedDict({
-		'mqtt_broker': 'mqtt_broker',
-		'ping_timeout': 30,
-		'working_dir': home + '/.steamlink',
+	'general':     OrderedDict({
+		'mqtt_broker':     'mqtt_broker',
+		'ping_timeout':    30,
+		'working_dir':     home + '/.steamlink',
 		'max_log_records': 1000
 	}),
-	'Steam': OrderedDict({
-		'id': 0,
-		'name': 'sample1',
+	'Steam':       OrderedDict({
+		'id':          0,
+		'name':        'sample1',
 		'description': 'SteamLink Sample',
-		'namespace': '/sl',
-		'autocreate': True,
+		'namespace':   '/sl',
+		'autocreate':  True,
 	}),
-	'tests': OrderedDict({
+	'tests':       OrderedDict({
 		'test1': OrderedDict({
-			'desc': 'Test1',
-		    'startwait': 2,
-		    'meshes': 3,
-		    'nodes': 12,
-		    'packets': 1000,
-		    'pkt_delay': 0.0,
+			'desc':      'Test1',
+			'startwait': 2,
+			'meshes':    3,
+			'nodes':     12,
+			'packets':   1000,
+			'pkt_delay': 0.0,
 		})
 	}),
-	'mqtt': OrderedDict({
-		'clientid': None,
-		'username': None,
-		'password': None,
-		'server': '127.0.0.1',
-		'port': 1883,
+	'mqtt':        OrderedDict({
+		'clientid':        None,
+		'username':        None,
+		'password':        None,
+		'server':          '127.0.0.1',
+		'port':            1883,
 		'ssl_certificate': None,
 
-		'prefix': 'SteamLink',
-		'data': 'data',
-		'control': 'control',
-		'public_control': 'SteamLink/pub/%s/control',
-		'public_data': 'SteamLink/pub/%s/data',
+		'prefix':          'SteamLink',
+		'data':            'data',
+		'control':         'control',
+		'public_control':  'SteamLink/pub/%s/control',
+		'public_data':     'SteamLink/pub/%s/data',
 	}),
 
-	'console': OrderedDict({
-		'host': '0.0.0.0',
-		'port': 5050,
-		'shutdown_timeout': 10,        # seconds to wait for web server shutdown
-		'namespace': '/sl',
-		'minupdinterval': 1.0,
-		'index': "",           # root page
-        'ssl_certificate': None,
-        'ssl_key': None,
-		'repo_name': 'steamlink',
-		'repo_owner': 'steamlink',
-		'repo_key': 'SteamLinkIsIoT',
-		'repo_ci_command': None,
+	'console':     OrderedDict({
+		'host':             '0.0.0.0',
+		'port':             5050,
+		'shutdown_timeout': 10,  # seconds to wait for web server shutdown
+		'namespace':        '/sl',
+		'minupdinterval':   1.0,
+		'index':            "",  # root page
+		'ssl_certificate':  None,
+		'ssl_key':          None,
+		'repo_name':        'steamlink',
+		'repo_owner':       'steamlink',
+		'repo_key':         'SteamLinkIsIoT',
+		'repo_ci_command':  None,
 	}),
-	'mqtt_broker':  OrderedDict({
-		'listeners': OrderedDict({
+	'mqtt_broker': OrderedDict({
+		'listeners':    OrderedDict({
 			'default': OrderedDict({
 				'type': 'tcp',
 				'bind': '127.0.0.1:1883',
 			}),
 			'ws-mqtt': OrderedDict({
-				'bind': '127.0.0.1:8080',
-				'type': 'ws',
+				'bind':            '127.0.0.1:8080',
+				'type':            'ws',
 				'max_connections': 10,
 			}),
 		}),
 		'sys_interval': 10,
-		'auth': OrderedDict({
+		'auth':         OrderedDict({
 			'allow-anonymous': True,
-			'#password-file': os.path.join(os.path.dirname(os.path.realpath(__file__)), 'passwd'),
-			'plugins': [
+			'#password-file':  os.path.join(os.path.dirname(os.path.realpath(__file__)), 'passwd'),
+			'plugins':         [
 				'#auth_file',
 				'auth_anonymous',
 			]
 		})
 	}),
-	'DB':  OrderedDict({
+	'DB':          OrderedDict({
 		'db_filename': home + '/.steamlink/steamlink.db',
 	})
 })
@@ -167,7 +149,7 @@ def steamlink_main(cl_args, conf):
 	""" start steamlink """
 
 	if conf['mqtt']['clientid'] is None:
-		conf['mqtt']['clientid'] = "clie"+"%04i" % int(random.random() * 10000)
+		conf['mqtt']['clientid'] = "clie" + "%04i" % int(random.random() * 10000)
 
 	conf_general = conf['general']
 	conf_working_dir = conf_general['working_dir']
@@ -210,16 +192,15 @@ def steamlink_main(cl_args, conf):
 		if conf_broker is None:
 			logger.error("mqtt broker section '%s' does not exist", broker_c)
 			sys.exit(1)
-	
+
 	conf_mqtt = conf['mqtt']
 
 	namespace = conf_steam['namespace']
 
-
 	# confugure subsystems
 	coros = []
 
-	LogQ._table = Dict_backed_Table(LogQ, keyfield="name", index = OrderedDict())
+	LogQ._table = DictBackedTable(LogQ, keyfield="name", index=OrderedDict())
 	logq = LogQ(conf, aioloop)
 	coros.append(logq.start())
 
@@ -239,7 +220,7 @@ def steamlink_main(cl_args, conf):
 		try:
 			aioloop.run_until_complete(mqtt_broker.start())
 		except hbmqtt.broker.BrokerException as e:
-#			logger.error("mqtt: broker start failed: %s", e)
+			#			logger.error("mqtt: broker start failed: %s", e)
 			sys.exit(1)
 
 	logger.debug("startup: create Mqtt")
@@ -254,12 +235,12 @@ def steamlink_main(cl_args, conf):
 	ll.setLevel(logging.WARN)
 	logger.debug("startup: create socketio")
 	sio = socketio.AsyncServer(
-		logger = ll,
-		async_mode = 'aiohttp',
-#		cors_allowed_origins =  "http://localhost:* http://127.0.0.1:*",
-#		cors_credentials = True,
-		ping_timeout = ping_timeout,
-		engineio_logger = ll,
+		logger=ll,
+		async_mode='aiohttp',
+		#		cors_allowed_origins =  "http://localhost:* http://127.0.0.1:*",
+		#		cors_credentials = True,
+		ping_timeout=ping_timeout,
+		engineio_logger=ll,
 	)
 
 	logger.debug("startup: open DB")
@@ -278,7 +259,7 @@ def steamlink_main(cl_args, conf):
 
 	logger.debug("startup: start webapp")
 	aioloop.run_until_complete(webapp.start())
-	
+
 	SteamSetup()
 	steam = Steam(conf_steam)
 	set_steam_root(steam)
@@ -306,7 +287,7 @@ def steamlink_main(cl_args, conf):
 	try:
 		aioloop.run_until_complete(asyncio.gather(
 			*coros
-			))
+		))
 		aioloop.run_forever()
 	except (GracefulRestart):
 		logger.info("restarting")
@@ -336,6 +317,8 @@ def steamlink_main(cl_args, conf):
 #
 
 daemon = False
+
+
 def steamlink_command():
 	global daemon, DBG, DBGK
 	cl_args = getargs()
@@ -353,12 +336,12 @@ def steamlink_command():
 		loglevel = logging.DEBUG if cl_args.debug > 0 else logging.INFO
 
 	FORMAT = '%(asctime)-15s: %(levelname)s %(module)s %(message)s'
-#	logging.basicConfig(format=FORMAT)
+	#	logging.basicConfig(format=FORMAT)
 	logger.setLevel(loglevel)
 	if cl_args.logfile is not None:
 		logging.console = False
 		handler = logging.handlers.RotatingFileHandler(
-              cl_args.logfile, maxBytes=10**7, backupCount=3)
+			cl_args.logfile, maxBytes=10 ** 7, backupCount=3)
 	else:
 		logging.console = True
 		handler = logging.StreamHandler()
@@ -384,7 +367,7 @@ def steamlink_command():
 	# create config  if -C
 	if cl_args.createconfig:
 		rc = createconfig(conff, DEFAULT_CONF)
-		return(rc)
+		return (rc)
 
 	# load config
 	conf = loadconfig(DEFAULT_CONF, conff)
@@ -392,9 +375,9 @@ def steamlink_command():
 	try:
 		restart = steamlink_main(cl_args, conf)
 		rc = 0
-#	except SystemExit as e:
-#		rc  = e
-#		pass
+	#	except SystemExit as e:
+	#		rc  = e
+	#		pass
 	except:
 		restart = False
 		rc = 127
@@ -412,6 +395,7 @@ def steamlink_command():
 		os.execve(sys.argv[0], sys.argv, os.environ)
 		print("os.execve returned")
 	return rc
+
 
 if __name__ == "main":
 	rc = steamlink_command()

@@ -6,8 +6,7 @@ import time
 from asyncio import Queue
 from collections import OrderedDict
 
-from .main import (DBG, DBGK)
-
+from . import (DBG, DBGK)
 
 logger = logging.getLogger()
 
@@ -38,7 +37,7 @@ def Attach(webapp, db):
 
 class CSearchKey:
 	def __init__(self, table_name, key_field, start_key, start_item_number,
-				 count, stream_tag="NoTag", end_key=None, restrict_by=[]):
+				 count, stream_tag="NoTag", end_key=None, restrict_by=None):
 
 		self.table_name = table_name
 		self.key_field = key_field
@@ -55,7 +54,10 @@ class CSearchKey:
 		self.at_end = False
 		self.total_item_count = 0
 
-		self.restrict_by = restrict_by
+		if restrict_by is None:
+			self.restrict_by = []
+		else:
+			self.restrict_by = restrict_by
 		self.search_id = self.__repr__()  # used to index CSearches
 
 
@@ -74,7 +76,7 @@ class CSearchKey:
 
 	def __repr__(self):
 		return "%s(%s:%s:%s)_%s_%s_%s" % \
-			   (self.table_name, self.key_field, self.start_key, self.end_key, \
+			   (self.table_name, self.key_field, self.start_key, self.end_key,
 				self.restrict_by, self.start_item_number, self.stream_tag)
 
 
@@ -137,7 +139,7 @@ class CSearch:
 		if sid in self.clients:
 			if 'csearch' in DBGK: logger.debug("CSearch '%s' drop_sid %s", self.search_id, sid)
 			del self.clients[sid]
-			self.webnamespace.leave_room(sid, self.search_id, \
+			self.webnamespace.leave_room(sid, self.search_id,
 										 self.webnamespace.namespace)
 
 
@@ -153,7 +155,7 @@ class CSearch:
 			but the delete will happen after
 		"""
 		# find csitem for item
-		if 'csearch' in DBGK: logger.debug("check_csearch (CSearch) %s force=%s op=%s item=%s", \
+		if 'csearch' in DBGK: logger.debug("check_csearch (CSearch) %s force=%s op=%s item=%s",
 										   self, force, op, item)
 		item_search_key = item.__dict__[self.csearchkey.key_field]
 		push = False
@@ -161,7 +163,7 @@ class CSearch:
 		if not go:
 			return
 
-		if not item_search_key in self.cs_items:
+		if item_search_key not in self.cs_items:
 			if op in ['ins']:
 				if self.csearchkey.at_end \
 						and item_search_key > self.csearchkey.end_key:
@@ -174,8 +176,7 @@ class CSearch:
 					push = True
 					self.csearchkey.start_key = item_search_key
 					self.add_item(item)
-		elif item_search_key >= self.csearchkey.start_key and \
-				item_search_key <= self.csearchkey.end_key:
+		elif self.csearchkey.start_key <= item_search_key <= self.csearchkey.end_key:
 			if op == 'upd':
 				pass
 			elif op == 'ins':
@@ -195,7 +196,7 @@ class CSearch:
 
 
 	def force_update(self, sid):
-		if not sid in self.clients:
+		if sid not in self.clients:
 			return
 		if 'csearch' in DBGK: logger.debug("force_update ")
 
@@ -291,7 +292,6 @@ class OCache(dict):
 
 	def __del__(self):
 		if 'ocache' in DBGK: logger.debug("OCache %s destroyed", self.tablename)
-		return super().__del__()
 
 
 	def __getitem__(self, key):
@@ -389,7 +389,7 @@ class Table:
 
 		self.drop_stream_tag_from_csearch(sid, csearchkey.stream_tag)
 		srch_id = csearchkey.search_id
-		if not srch_id in self.csearches:
+		if srch_id not in self.csearches:
 			if 'webupd' in DBGK: logger.debug("table add_csearch '%s' new: %s", srch_id, csearchkey)
 			self.csearches[srch_id] = CSearch(webnamespace, self, csearchkey)
 		else:
@@ -458,9 +458,9 @@ class Table:
 
 
 #
-# DB_backed_Table
+# DbBackedTable
 #
-class DB_backed_Table(Table):
+class DbBackedTable(Table):
 	""" database based Table """
 
 
@@ -543,7 +543,7 @@ class DB_backed_Table(Table):
 
 	def delete(self, item):
 		logger.debug("db backed deleting item %s", item)
-		#		if DBG >= 1: logger.debug("DB_backed_Table delete %s", item)
+		#		if DBG >= 1: logger.debug("DbBackedTable delete %s", item)
 		del self.cache[item.__dict__[self.keyfield]]
 		self.dbtable.db_delete(item.save())
 		super().delete(item)
@@ -558,9 +558,9 @@ class DB_backed_Table(Table):
 
 
 #
-# Dict_backed_Table
+# DictBackedTable
 #
-class Dict_backed_Table(Table):
+class DictBackedTable(Table):
 	""" dict based Table """
 
 
@@ -571,7 +571,7 @@ class Dict_backed_Table(Table):
 
 
 	def register(self, item):
-		logger.debug("Dict_backed_Table register %s %s", item.__dict__[self.keyfield], item)
+		logger.debug("DictBackedTable register %s %s", item.__dict__[self.keyfield], item)
 		self.index[item.__dict__[self.keyfield]] = item
 
 
@@ -592,7 +592,7 @@ class Dict_backed_Table(Table):
 
 		udict = {}
 		for t in tab:
-			logger.debug("Dict_backed_Table get_range %s %s", field, t)
+			logger.debug("DictBackedTable get_range %s %s", field, t)
 
 			udict[tab[t].__dict__[field]] = tab[t]
 		fullsdict = sorted(udict)
@@ -669,12 +669,12 @@ class Dict_backed_Table(Table):
 
 
 	def update(self, item, force=False):
-		if 'webupd' in DBGK: logger.debug("update (Dict_backed_Table)  %s force=%s", self, force)
+		if 'webupd' in DBGK: logger.debug("update (DictBackedTable)  %s force=%s", self, force)
 		super().update(item, force)
 
 
 	def insert(self, item):
-		if DBG > 2: logger.debug("Dict_backed_Table  insert %s", item.save())
+		if DBG > 2: logger.debug("DictBackedTable  insert %s", item.save())
 		pass
 
 
@@ -688,7 +688,7 @@ class Dict_backed_Table(Table):
 
 
 	def __str__(self):
-		return "Dict_backed_Table(%s)%s" % (self.itemclass.__name__, len(self.index))
+		return "DictBackedTable(%s)%s" % (self.itemclass.__name__, len(self.index))
 
 
 #
@@ -716,7 +716,6 @@ class BaseItem:
 #
 class Item(BaseItem):
 	_table = None
-
 
 	# three ways Items are instanciated:
 	# 1. Normal:   _load = None and key != None
@@ -791,10 +790,7 @@ class LogItem(Item):
 
 
 	def save(self, withvirtual=False):
-		r = {}
-		r["ts"] = self.ts
-		r["lvl"] = self.lvl
-		r["line"] = self.line
+		r = {"ts": self.ts, "lvl": self.lvl, "line": self.line}
 		if withvirtual:
 			r['Time'] = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(self.ts))
 			if len(self.line) > 70:
@@ -870,7 +866,7 @@ class LogQ(Item):
 
 
 	async def start(self):
-		LogItem._table = DB_backed_Table(LogItem, keyfield="ts", tablename="LogItem")
+		LogItem._table = DbBackedTable(LogItem, keyfield="ts", tablename="LogItem")
 		logger.info("%s logq start", self)
 		ansi_escape = re.compile(r'\x1B\[[0-?]*[ -/]*[@-~]')  # removes ansi escape sequence
 		while True:
@@ -891,7 +887,7 @@ class LogQ(Item):
 
 			logitem = LogItem(lvl, line)
 			if lvl in ['INFO', 'WARNING', 'ERROR', 'CRITICAL', 'ALERT', 'EMERGENCY']:
-				_WEBAPP.send_console_alert(lvl, line)
+				_WEBAPP.send_console_alert(logitem.lvl, logitem.line)
 			count = len(LogItem._table) - self.max_log_records
 			if count > 0 and not self.prune_in_progress:
 				self.prune_in_progress = True

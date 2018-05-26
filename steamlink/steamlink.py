@@ -12,24 +12,12 @@ import time
 from asyncio import Queue
 from queue import Empty
 
+from . import (DBG, DBGK)
+from .util import phex
+from .const import PROJECT_PACKAGE_NAME, __version__
+from .linkage import Item, Table, DbBackedTable, CSearchKey
 
 logger = logging.getLogger(__name__)
-
-from .main import (DBG, DBGK)
-from .util import phex
-
-from .const import (
-	PROJECT_PACKAGE_NAME,
-	__version__
-)
-
-from .linkage import (
-	Item,
-	Table,
-	DB_backed_Table,
-	CSearchKey,
-)
-
 
 MAX_RESEND_COUNT = 25
 SL_MAX_MESSAGE_LEN = 255
@@ -1361,7 +1349,7 @@ def run_cmd(webnamespace, sid, message):
 
 # tables = {}
 def SteamSetup():
-	Steam._table = DB_backed_Table(Steam, keyfield="steam_id", tablename="Steam")
-	Mesh._table = DB_backed_Table(Mesh, keyfield="mesh_id", tablename="Mesh")
-	Node._table = DB_backed_Table(Node, keyfield="slid", tablename="Node")
-	Packet._table = DB_backed_Table(Packet, keyfield="ts", tablename="Packet")
+	Steam._table = DbBackedTable(Steam, keyfield="steam_id", tablename="Steam")
+	Mesh._table = DbBackedTable(Mesh, keyfield="mesh_id", tablename="Mesh")
+	Node._table = DbBackedTable(Node, keyfield="slid", tablename="Node")
+	Packet._table = DbBackedTable(Packet, keyfield="ts", tablename="Packet")

@@ -8,8 +8,7 @@ from tinydb import TinyDB, Query, where
 from tinydb.middlewares import CachingMiddleware
 from tinydb.storages import JSONStorage
 
-from .main import (DBG, DBGK)
-
+from . import (DBG, DBGK)
 
 logger = logging.getLogger()
 
@@ -17,8 +16,6 @@ logger = logging.getLogger()
 #
 # DBIndex
 #
-
-
 class DBIndex(OrderedDict):
 	def __init__(self, table, csk):
 		self.table = table
@@ -65,7 +62,8 @@ class DBIndexFarm(dict):
 		super().__init__()
 
 
-	def mk_restrict_idx_name(self, csk):
+	@staticmethod
+	def mk_restrict_idx_name(csk):
 		name = ""
 		for restrict in csk.restrict_by:
 			name += "%s%s%s" % (restrict['field_name'], restrict['op'], restrict['value'])
