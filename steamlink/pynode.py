@@ -7,6 +7,8 @@ import time
 import sys
 
 import logging
+from .main import (DBG, DBGK)
+
 logger = logging.getLogger()
 
 from .mqtt import Mqtt
@@ -62,7 +64,7 @@ class PyNode:
 
 
 	def on_control_msg(self, client, userdata, msg):
-		if logging.DBG > 0: logger.info("on_control_msg: got %s", msg.payload)
+		if DBG > 0: logger.info("on_control_msg: got %s", msg.payload)
 		try:
 			pkt = BasePacket(slnode=self, pkt=msg.payload)
 		except SteamLinkError as e:
@@ -73,7 +75,7 @@ class PyNode:
 			return
 
 		if pkt.slid != self.slid:
-			if logging.DBG > 1: logger.warning("mqtt: pkt '%s', not for us", msg.payload)
+			if DBG > 1: logger.warning("mqtt: pkt '%s', not for us", msg.payload)
 			return
 
 
@@ -109,12 +111,12 @@ class PyNode:
 	
 
 	def handle_gs(self, payload):
-		if logging.DBG > 1: logger.debug("handle gs: %s", payload)
+		if DBG > 1: logger.debug("handle gs: %s", payload)
 		self.send_status_to_store()
 
 
 	def handle_sc(self, payload):
-		if logging.DBG > 1: logger.debug("handle sc: %s", payload)
+		if DBG > 1: logger.debug("handle sc: %s", payload)
 		# XXX: actually config  stuff
 		self.send_ack_to_store(0)
 
@@ -155,7 +157,7 @@ class PyNode:
 
 	def publish_pkt(self, sl_pkt=None, resend=False, sub="data"):
 		if resend:
-			if logging.DBG > 1: logger.debug("resending pkt: %s", sl_pkt)
+			if DBG > 1: logger.debug("resending pkt: %s", sl_pkt)
 			self.packets_resent += 1
 		else:
 			if self.wait_for_AN.is_waiting() and sl_pkt.sl_op != SL_OP.AN:
@@ -166,7 +168,7 @@ class PyNode:
 			logger.error("publish pkt to long(%s): %s", len(sl_pkt.pkt), sl_pkt)
 			return False
 		self.packets_sent += 1
-		if logging.DBG > 1: logger.debug("publish_pkt %s", sl_pkt )
+		if DBG > 1: logger.debug("publish_pkt %s", sl_pkt )
 		self.mqtt.publish(self.slid, sl_pkt.pkt, sub=sub)
 		self.last_packet_tx_ts = time.time()
 		return True

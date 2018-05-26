@@ -10,6 +10,7 @@ from .steamlink import (
 	SL_OP,
 )
 
+from .main import (DBG, DBGK)
 
 import logging
 logger = logging.getLogger(__name__)

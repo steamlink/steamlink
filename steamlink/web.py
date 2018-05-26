@@ -1,8 +1,5 @@
 import asyncio
 import socketio
-import io
-import re
-import ipaddress
 import hashlib
 import hmac
 import os
@@ -14,20 +11,13 @@ import yaml
 
 from zeroconf import ServiceInfo, Zeroconf
 from aiohttp import web
-from aiohttp.log import access_logger, web_logger
-
+from aiohttp.log import access_logger
+from .main import (DBG, DBGK)
 
 from .steamlink import (
-	Mesh,
-	Node,
-	Steam,
-	Packet,
 	add_csearch,
 	run_cmd,
 	drop_csearch
-)
-from .linkage import (
-	Item,
 )
 
 from .const import __version__
@@ -35,7 +25,6 @@ from .const import __version__
 import logging
 logger = logging.getLogger(__name__)
 
-from yarl import URL
 
 class DisplayConfiguration:
 
@@ -64,6 +53,7 @@ class DisplayConfiguration:
 				logger.error("DisplayConfiguration: No key found")
 		return rows
 
+
 class NavBar:
 
 	def __init__(self, dir_list):
@@ -76,9 +66,9 @@ class NavBar:
 				f.close()
 				self.yamls += yamls
 
-#
 # WebNameSpace
-#
+
+
 class WebNamespace(socketio.AsyncNamespace):
 	def __init__(self, webapp):
 		self.webapp = webapp
@@ -89,7 +79,7 @@ class WebNamespace(socketio.AsyncNamespace):
 
 
 	def on_connect(self, sid, environ):
-		logger.debug("WebNamespace connect %s",str(environ['REMOTE_ADDR']))
+		logger.debug("WebNamespace connect %s", str(environ['REMOTE_ADDR']))
 
 
 	def on_disconnect(self, sid):
@@ -118,12 +108,12 @@ class WebNamespace(socketio.AsyncNamespace):
 			msg = '%s field missing in request' % e
 			logger.warning(msg)
 			raise
-			return {'error': msg }
+#			return {'error': msg }
 		except TypeError as e:
 			msg = '%s, probably incorrect value for start_key' % e
 			logger.warning(msg)
 			raise
-			return {'error': msg }
+#			return {'error': msg }
 
 		logger.debug("WebNamespace on_startstream <-- %s", res)
 		return res
@@ -133,8 +123,8 @@ class WebNamespace(socketio.AsyncNamespace):
 
 		logger.debug("WebNamespace on_leave %s", message)
 
-		res = drop_csearch(self, sid, message)
-		return { 'success': True }
+		drop_csearch(self, sid, message)
+		return {'success': True}
 
 
 	# dict with: cmd, node_name, data
@@ -143,19 +133,20 @@ class WebNamespace(socketio.AsyncNamespace):
 		logger.debug("WebNamespace on_cmd --> %s", message)
 		try:
 			ret = run_cmd(self, sid, message)
-			res = { "Success": ret }
-		except  Exception as e:
-			res = { "Success": False, "Error": "cmd failed: %s" % e }
+			res = {"Success": ret}
+		except Exception as e:
+			res = {"Success": False, "Error": "cmd failed: %s" % e}
 
 		logger.debug("WebNamespace on_cmd <-- %s", res)
 		return res
 
 #
 # WebApp
-#
+
+
 class WebApp(object):
 
-	def __init__(self, namespace, sio, conf, loop = None):
+	def __init__(self, namespace, sio, conf, loop=None):
 		self.name = "WebApp"
 		self.conf = conf
 		self.minupdinterval = conf['minupdinterval']
@@ -180,11 +171,13 @@ class WebApp(object):
 		self.app.router.add_route('POST', '/ghwh', self.ghwh_handler)
 		self.app.router.add_route('GET', '/{file_name}', self.route_handler)
 
-
 		self.app.router.add_static('/static', self.static_dir)
 		self.app.on_cleanup.append(self.web_on_cleanup)
 		self.app.on_shutdown.append(self.web_on_shutdown)
 		self.backlog = 128
+		self.con_upd_res = None
+		self.zeroconf_info = None
+		self.zeroconf = None
 
 		aiohttp_jinja2.setup(self.app, loader=jinja2.FileSystemLoader(self.templates_dir))
 
@@ -221,7 +214,6 @@ class WebApp(object):
 		logger.debug("%s: app started", self.name)
 
 		scheme = 'https' if self.ssl_context else 'http'
-
 
 		my_ip_address = socket.gethostbyname(socket.gethostname())
 		desc = {'version': __version__}
@@ -269,13 +261,13 @@ class WebApp(object):
 
 
 	def queue_itemlist_update(self, csitems, force):
-		if 'webupd' in logging.DBGK: logger.debug("queue_itemlist_update for %s item %s", csitem.csearch.search_id, csitem.item)
+		if 'webupd' in DBGK: logger.debug("queue_itemlist_update for %s item %s", csitem.csearch.search_id, csitem.item)
 		asyncio.ensure_future(self.con_upd_q.put([csitems, force]), loop=self.loop)
 
 
 
 	def queue_item_update(self, csitem, force):
-		if 'webupd' in logging.DBGK: logger.debug("queue_item_update for %s item %s", csitem.csearch.search_id, csitem.item)
+		if 'webupd' in DBGK: logger.debug("queue_item_update for %s item %s", csitem.csearch.search_id, csitem.item)
 		asyncio.ensure_future(self.con_upd_q.put([csitem, force]), loop=self.loop)
 
 
@@ -283,7 +275,7 @@ class WebApp(object):
 		logger.info("%s q handler", self.name)
 		while True:
 			upd_csitem, upd_force =  await self.con_upd_q.get()
-			if 'webupd' in logging.DBGK: logger.debug("console_update_loop %s force %s", upd_csitem, upd_force)
+			if 'webupd' in DBGK: logger.debug("console_update_loop %s force %s", upd_csitem, upd_force)
 			if upd_csitem is None:
 				break
 			if type(upd_csitem) == type([]):
@@ -295,7 +287,7 @@ class WebApp(object):
 				data = upd_csitem.console_update(upd_force)
 			tag = upd_csitem.csearch.csearchkey.stream_tag
 			room = upd_csitem.csearch.search_id
-			if 'webupd' in logging.DBGK: logger.debug("emit_loop event: %s room:%s data: %s", upd_csitem.csearch.csearchkey.stream_tag,  upd_csitem.csearch.search_id, data)
+			if 'webupd' in DBGK: logger.debug("emit_loop event: %s room:%s data: %s", upd_csitem.csearch.csearchkey.stream_tag,  upd_csitem.csearch.search_id, data)
 			await self.sio.emit(tag,
 					data = data,
 					namespace = self.namespace,
@@ -407,16 +399,16 @@ class WebApp(object):
 		except FileNotFoundError as e:
 			return web.Response(text="No such file: %s" % file_name, status=404)
 		for qk in request.query:
-			if 'web' in logging.DBGK: logger.debug("web route_handler: Query' : %s =%s", qk, request.query[qk])
+			if 'web' in DBGK: logger.debug("web route_handler: Query' : %s =%s", qk, request.query[qk])
 			try:
 				partial, key = qk.split('.', 1)
 			except:
-				if 'web' in logging.DBGK: logger.debug("web route_handler: Query key with no '.' : %s", qk)
+				if 'web' in DBGK: logger.debug("web route_handler: Query key with no '.' : %s", qk)
 				continue
 			if not partial in dc.data:
-				if 'web' in logging.DBGK: logger.debug("web route_handler: partial not in yaml : %s", partial)
+				if 'web' in DBGK: logger.debug("web route_handler: partial not in yaml : %s", partial)
 				continue
-			if 'web' in logging.DBGK: logger.debug("web route_handler: dc.data[partial] : %s", dc.data[partial])
+			if 'web' in DBGK: logger.debug("web route_handler: dc.data[partial] : %s", dc.data[partial])
 			i = request.query[qk]
 			try:
 				i = int(i)
@@ -428,7 +420,7 @@ class WebApp(object):
 			else:
 				dc.data[partial][key] = i
 
-		if 'web' in logging.DBGK: logger.debug("webapp handler %s", dc.data)
+		if 'web' in DBGK: logger.debug("webapp handler %s", dc.data)
 		context = { 'context' : dc.row_wise(), 'navbar' : nav.yamls }
 
 		if not (os.path.isfile(self.templates_dir + '/'+ file_name + '.html')):

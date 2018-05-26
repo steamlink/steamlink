@@ -15,6 +15,7 @@ import os
 import logging
 logger = logging.getLogger(__name__)
 
+from .main import (DBG, DBGK)
 from .util import phex
 
 from .const import (
@@ -244,9 +245,9 @@ class WaitForAck:
 		""" N.B. returns original pkt if do_insert was set, for db insert """
 		pkt = None
 		if self.pkt is None:
-			if 'waitack' in logging.DBGK: logger.info("wait: redundant Ack")
+			if 'waitack' in DBGK: logger.info("wait: redundant Ack")
 		else:
-			if 'waitack' in logging.DBGK: logger.debug("wait on %s got Ack", self)
+			if 'waitack' in DBGK: logger.debug("wait on %s got Ack", self)
 			if self.do_insert:
 				pkt = self.pkt
 		self.clear_wait()
@@ -269,7 +270,7 @@ class WaitForAck:
 		self.pkt = pkt
 		self.count = 0
 		self.do_insert = do_insert
-		if 'waitack' in logging.DBGK: logger.debug("wait on %s for %s sec", self.pkt, self.waittime)
+		if 'waitack' in DBGK: logger.debug("wait on %s for %s sec", self.pkt, self.waittime)
 
 
 	def inc_resend_count(self):
@@ -378,7 +379,7 @@ class Steam(Item):
 				self.set_loglevel(loglevel)
 				logger.warning("setting loglevel to %s", loglevel)
 			if dbglvl is not None:
-				logging.DBG = int(dbglvl)
+				DBG = int(dbglvl)
 		elif cmd['cmd'] == 'shutdown':
 			from .main import GracefulExit, GracefulRestart
 			if cmd.get('restart',False):
@@ -393,7 +394,7 @@ class Steam(Item):
 		if self._public_topic_control is None:
 			return
 
-		if logging.DBG > 2: logger.debug("on_public_control_msg %s %s", msg.topic, msg.payload)
+		if DBG > 2: logger.debug("on_public_control_msg %s %s", msg.topic, msg.payload)
 		match = re.match(self._public_topic_control_re, msg.topic) 
 		if match is None:
 			logger.warning("topic did not match public control topic: %s %s", topic, self._public_topic_control)
@@ -427,7 +428,7 @@ class Steam(Item):
 			self.handle_store_command(cmd)
 			return
 
-		if logging.DBG > 2: logger.debug("on_data_msg  %s %s", msg.topic, msg.payload)
+		if DBG > 2: logger.debug("on_data_msg  %s %s", msg.topic, msg.payload)
 		try:
 			sl_pkt = Packet(pkt=msg.payload)
 		except SteamLinkError as e:
@@ -475,7 +476,7 @@ class Steam(Item):
 			self.cpubusy = ((n_process_time - process_time) / delta ) * 100.0
 			now = n_now
 			process_time = n_process_time
-#			if logging.DBG == 0:	# N.B. reduce noise when debuging, i.e. no heartbeat
+#			if DBG == 0:	# N.B. reduce noise when debuging, i.e. no heartbeat
 			self.update(True)
 
 
@@ -703,7 +704,7 @@ class Node(Item):
 #		self.log_pkt(sl_pkt)
 		self.packets_sent += 1
 		self.mesh.packets_sent += 1
-		if logging.DBG > 1: logger.debug("publish_pkt %s to node %s", sl_pkt, self.get_firsthop())
+		if DBG > 1: logger.debug("publish_pkt %s to node %s", sl_pkt, self.get_firsthop())
 		_MQTT.publish(self.get_firsthop(), sl_pkt.pkt, sub=sub)
 		self.last_packet_tx_ts = time.time()
 		self.update()
@@ -798,7 +799,7 @@ class Node(Item):
 		if sl_pkt.sl_op != SL_OP.DS:		# actual data
 			logger.warning("store_data NOT storing non-DS data: %s", sl_pkt.sl_op)
 			return
-		if logging.DBG >= 1: logger.debug("store_data inserting into db")
+		if DBG >= 1: logger.debug("store_data inserting into db")
 
 		sl_pkt.insert()
 		self.send_ack_to_node(0)
@@ -996,7 +997,7 @@ class BasePacket:
 			self.payload = payload.pack()	# payload is a nodecfg 
 		else:
 			self.payload = payload
-		if logging.DBG > 2: logger.debug("SteamLinkPacket payload = %s", payload);
+		if DBG > 2: logger.debug("SteamLinkPacket payload = %s", payload);
 		if self.payload is not None:
 			if type(self.payload) == type(b''):
 				self.bpayload = self.payload
@@ -1008,7 +1009,7 @@ class BasePacket:
 		self.pkt_num = slnode.set_pkt_number(self)
 		if self.is_data():	# N.B. store never sends data
 			sfmt = Packet.data_header_fmt % len(self.bpayload)
-			if logging.DBG > 0: logger.debug("pack: %s %s %s %s %s", SL_OP.code(self.sl_op), \
+			if DBG > 0: logger.debug("pack: %s %s %s %s %s", SL_OP.code(self.sl_op), \
 					self.slid, self.pkt_num, self.rssi, self.bpayload)
 			self.pkt = struct.pack(sfmt,
 					self.sl_op, self.slid, self.pkt_num, 256 - self.rssi, self.bpayload)
@@ -1021,7 +1022,7 @@ class BasePacket:
 					self.bpayload = self.pkt
 					sfmt = Packet.control_header_fmt % len(self.bpayload)
 					self.pkt = struct.pack(sfmt, SL_OP.BN, via, 0, self.bpayload)
-			if logging.DBG > 1:
+			if DBG > 1:
 				for l in phex(self.pkt, 4):
 					logger.debug("pkt c:  %s", l)
 
@@ -1029,7 +1030,7 @@ class BasePacket:
 
 	def deconstruct(self, pkt):
 		self.pkt = pkt
-		if logging.DBG > 1:
+		if DBG > 1:
 			for l in phex(pkt, 4):
 				logger.debug("pkt:  %s", l)
 
@@ -1042,7 +1043,7 @@ class BasePacket:
 
 				self.via.append(slid)
 				pkt = self.bpayload
-				if logging.DBG > 1: logger.debug("pkt un-ecap BS from P%s(%s)BS, len %s rssi %s", slid, self.pkt_num,  len(pkt), 256-self.rssi)
+				if DBG > 1: logger.debug("pkt un-ecap BS from P%s(%s)BS, len %s rssi %s", slid, self.pkt_num,  len(pkt), 256-self.rssi)
 			self.rssi = self.rssi - 256
 
 		if self.is_data(pkt[0]):
@@ -1303,7 +1304,7 @@ def add_csearch(webnamespace, sid, message):
 	for cs in table.csearches:
 		table.csearches[cs].force_update(sid)
 
-	if logging.DBG > 1: logger.debug("add_csearch sid %s csearchkey %s", sid, csearchkey)
+	if DBG > 1: logger.debug("add_csearch sid %s csearchkey %s", sid, csearchkey)
 	res = {
 			'start_key': csearchkey.start_key,
 			'end_key': csearchkey.end_key,

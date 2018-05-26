@@ -13,12 +13,14 @@ import random
 import asyncio
 import socketio
 import signal
-import yaml
-from collections import  Mapping, OrderedDict
+from collections import  OrderedDict
 
 import logging
 import logging.handlers
 logger = logging.getLogger()
+
+DBG = 0
+DBGK = []
 
 from .linkage import Attach as linkageAttach
 
@@ -190,7 +192,7 @@ def steamlink_main(cl_args, conf):
 
 	# N.B. no asyncio before daemon!
 	aioloop = asyncio.get_event_loop()
-	if logging.DBG >= 2:
+	if DBG >= 2:
 		aioloop.set_debug(enabled=True)
 
 	try:
@@ -335,7 +337,7 @@ def steamlink_main(cl_args, conf):
 
 daemon = False
 def steamlink_command():
-	global daemon
+	global daemon, DBG, DBGK
 	cl_args = getargs()
 
 	if cl_args.version:
@@ -366,10 +368,7 @@ def steamlink_command():
 	logger.addHandler(handler)
 
 	DBG = cl_args.debug
-	logging.DBG = DBG
-
 	DBGK = cl_args.debugkey
-	logging.DBGK = DBGK
 
 	if DBG >= 3:
 		logger.info("DBG: logging all warnings")
