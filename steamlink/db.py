@@ -1,16 +1,18 @@
-
 # python library Steamlink
-
-from collections import OrderedDict
-
-from tinydb import TinyDB, Query, where
-from tinydb.storages import JSONStorage
-from tinydb.middlewares import CachingMiddleware
-from .main import (DBG, DBGK)
 
 import bisect
 import logging
+from collections import OrderedDict
+
+from tinydb import TinyDB, Query, where
+from tinydb.middlewares import CachingMiddleware
+from tinydb.storages import JSONStorage
+
+from .main import (DBG, DBGK)
+
+
 logger = logging.getLogger()
+
 
 #
 # DBIndex
@@ -35,10 +37,11 @@ class DBIndex(OrderedDict):
 		return key in self
 
 
-	def db_update(self, item):		# N.B. handle change of key value
+	def db_update(self, item):  # N.B. handle change of key value
 		key = item[self.key_field]
 		if self.csk.check_restrictions(item):
 			super().__setitem__(key, item)
+
 
 	def db_insert(self, item):
 		key = item[self.key_field]
@@ -73,7 +76,7 @@ class DBIndexFarm(dict):
 		key_field = csk.key_field
 		restrict_name = key_field + self.mk_restrict_idx_name(csk)
 		if 'dbops' in DBGK: logger.debug("DBIndexFarm get name '%s'", restrict_name)
-		if not restrict_name in self:
+		if restrict_name not in self:
 			self[restrict_name] = DBIndex(self.table, csk)
 		return self[restrict_name]
 
@@ -81,6 +84,7 @@ class DBIndexFarm(dict):
 	def db_update(self, item):
 		for idx in self:
 			self[idx].db_update(item)
+
 
 	def db_insert(self, item):
 		for idx in self:
@@ -101,7 +105,7 @@ class DBTable:
 		if DBG > 2: logger.debug("DBTable %s", name)
 		self.table = table
 		self.name = name
-		self.key_field = key_field		# field that is unique for this table
+		self.key_field = key_field  # field that is unique for this table
 		self.restrict_idxs = DBIndexFarm(self.table)
 		self.query = Query()
 
@@ -123,7 +127,7 @@ class DBTable:
 		if 'dbops' in DBGK: logger.debug("REC update %s rec %s", self.name, rec)
 		self.restrict_idxs.db_update(rec)
 		key = rec[self.key_field]
-		did = self.table.update(rec, where(self.key_field) == key)
+		self.table.update(rec, where(self.key_field) == key)
 
 
 	def db_delete(self, rec):
@@ -135,7 +139,6 @@ class DBTable:
 		if el is None:
 			logger.error("delete in %s, no document with %s=%s", self.name, field, val)
 			raise ValueError
-			return
 
 		try:
 			self.table.remove(eids=[el.eid])
@@ -173,7 +176,7 @@ class DBTable:
 
 		if 'get_range' in DBGK: logger.debug("get_range csk2 %s", str(csk))
 		if False:
-#		if len(self.table) == 0:
+			#		if len(self.table) == 0:
 			if 'get_range' in DBGK: logger.debug("get_range table empty")
 			csk.count = 0
 			return {}
@@ -190,7 +193,7 @@ class DBTable:
 			if csk.start_item_number < 0:
 				sidx = max(0, len(idx) + csk.start_item_number)
 			else:
-				sidx = min(csk.start_item_number, len(idx)-1)
+				sidx = min(csk.start_item_number, len(idx) - 1)
 			startv = list(idx)[sidx]
 		else:
 			sidx = bisect.bisect_left(list(idx), startv)
@@ -199,7 +202,7 @@ class DBTable:
 				return {}
 
 		if endv in [None]:
-			eidx = min(sidx + count-1, len(idx)-1)
+			eidx = min(sidx + count - 1, len(idx) - 1)
 			endv = list(idx)[eidx]
 		else:
 			eidx = bisect.bisect_right(list(idx), endv, sidx, len(idx)) - 1
@@ -216,14 +219,13 @@ class DBTable:
 		csk.at_start = csk.start_key == list(idx)[0]
 		csk.at_end = csk.end_key == list(idx)[-1]
 
-		if 'get_range' in DBGK: logger.debug("get_range size %s", (eidx-sidx+1))
-		for i in range(sidx, eidx+1):
+		if 'get_range' in DBGK: logger.debug("get_range size %s", (eidx - sidx + 1))
+		for i in range(sidx, eidx + 1):
 			yield idx[list(idx)[i]]
 
 
 	def __len__(self):
 		return len(self.table)
-
 
 
 class DB:
@@ -233,6 +235,8 @@ class DB:
 			- consider creating a new table/db/fle very day or every x records
 
 	"""
+
+
 	def __init__(self, conf, loop):
 		if DBG > 2: logger.debug("DB %s", conf)
 		self.name = "DB"
@@ -245,9 +249,9 @@ class DB:
 	async def start(self):
 
 		logger.info("%s opening DB %s", self.name, self.conf['db_filename'])
-		self.db = TinyDB(self.conf['db_filename'], \
-				sort_keys=True, indent=4, separators=(',', ': '), \
-				storage=CachingMiddleware(JSONStorage))
+		self.db = TinyDB(self.conf['db_filename'],
+						 sort_keys=True, indent=4, separators=(',', ': '),
+						 storage=CachingMiddleware(JSONStorage))
 
 
 	def table(self, name, key_field):
@@ -278,5 +282,3 @@ class DB:
 
 	def flush(self):
 		self.db._storage.flush()
-
-

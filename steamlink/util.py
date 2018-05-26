@@ -1,4 +1,3 @@
-
 import sys
 import os
 import argparse
@@ -12,10 +11,11 @@ import logging
 from yaml import Loader, Dumper
 from yaml.representer import SafeRepresenter
 from collections import Mapping, OrderedDict
-from .main import (DBG, DBGK)
+
 
 _mapping_tag = yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG
 logger = logging.getLogger(__name__)
+
 
 def dict_representer(dumper, data):
 	return dumper.represent_dict(data.items())
@@ -36,6 +36,7 @@ Loader.add_constructor(_mapping_tag, dict_constructor)
 
 Dumper.add_representer(str, SafeRepresenter.represent_str)
 Dumper.add_representer(dict, SafeRepresenter.represent_dict)
+
 
 # Dumper.add_representer(unicode, SafeRepresenter.represent_unicode)
 
@@ -72,38 +73,38 @@ def phex(p, llen=0):
 def getargs():
 	parser = argparse.ArgumentParser()
 	parser.add_argument("-c", "--config",
-							help="config file default steamlink.yaml",
-							default=None)
+						help="config file default steamlink.yaml",
+						default=None)
 	parser.add_argument("-d", "--daemon",
-							help="excute as a daemon",
-							default=False, action='store_true')
+						help="excute as a daemon",
+						default=False, action='store_true')
 	parser.add_argument("-L", "--loglevel",
-							help="set loglevel, default is 'info'",
-							default=None)
+						help="set loglevel, default is 'info'",
+						default=None)
 	parser.add_argument("-l", "--logfile",
-							help="file to log to",
-							default=None)
+						help="file to log to",
+						default=None)
 	parser.add_argument("-C", "--createconfig",
-							help="write default config file and exit",
-							default=False, action='store_true')
+						help="write default config file and exit",
+						default=False, action='store_true')
 	parser.add_argument("-p", "--pid-file",
-							help="path to pid file when running as daemon",
-							default=None)
+						help="path to pid file when running as daemon",
+						default=None)
 	parser.add_argument("-T", "--testdata",
-							help="generate test data per section 'testdata'",
-							default=False)  #, action='store_true')
+						help="generate test data per section 'testdata'",
+						default=False)  # , action='store_true')
 	parser.add_argument("-v", "--verbose",
-							help="print some info",
-							default=False, action='store_true')
+						help="print some info",
+						default=False, action='store_true')
 	parser.add_argument("-X", "--debug",
-							help="increase debug level, bumps loglevel to 'debug'",
-							default=0, action="count")
+						help="increase debug level, bumps loglevel to 'debug'",
+						default=0, action="count")
 	parser.add_argument("-x", "--debugkey",
-							help="set of debug keywords, bumps loglevel to ''debug'. Available keywords are: csearch ocache web webupd",
-							default=[], action="append")
+						help="set of debug keywords, bumps loglevel to ''debug'. Available keywords are: csearch ocache web webupd",
+						default=[], action="append")
 	parser.add_argument("-V", "--version",
-							help="show version and exit",
-							default=False, action='store_true')
+						help="show version and exit",
+						default=False, action='store_true')
 	return parser.parse_args()
 
 

@@ -1,14 +1,16 @@
-
-
-import aiomqtt
 import asyncio
 import json
+import logging
 import sys
+
+import aiomqtt
 from hbmqtt.broker import Broker
+
 from .main import (DBG, DBGK)
 
-import logging
+
 logger = logging.getLogger(__name__)
+
 
 #
 # Mqtt
@@ -55,6 +57,7 @@ class Mqtt:
 			self.public_control_topic = None
 		self.running = True
 
+
 	def set_mq(self):
 
 		mq = aiomqtt.Client(client_id=self.clientid, loop=self.loop)
@@ -80,6 +83,7 @@ class Mqtt:
 	def get_public_control_topic(self):
 		return self.public_topic_control
 
+
 	def set_msg_callback(self, callback):
 		if self.as_node:
 			logger.debug("set_msg_callback on %s", self.control_topic)
@@ -87,6 +91,7 @@ class Mqtt:
 		else:
 			logger.debug("set_msg_callback on %s", self.data_topic)
 			self.mq.message_callback_add(self.data_topic, callback)
+
 
 	def set_public_control_callback(self, callback):
 		logger.debug("set_public_control_callback on %s", self.public_control_topic)
@@ -112,6 +117,7 @@ class Mqtt:
 		if self.connected.is_set():
 			self.mq.disconnect()
 			await self.disconnected.wait()
+
 
 	async def wait_connect(self):
 		logger.debug("%s waiting for connect", self.name)
