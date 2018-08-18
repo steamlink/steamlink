@@ -539,7 +539,7 @@ class Mesh(Item):
 class Node(Item):
 	keyfield = 'slid'
 	UPSTATES = ["ONLINE", "OK", "UP", "TRANSMITTING"]
-	OPS_need_ack = [SL_OP.DS, SL_OP.ON]
+	OPS_need_ack = [SL_OP.DS, SL_OP.RC]
 
 	""" a node in a mesh set """
 
@@ -852,7 +852,7 @@ class Node(Item):
 
 		sl_op = sl_pkt.sl_op
 
-		if sl_op == SL_OP.ON:  # autocreate did set nodecfg
+		if sl_op == SL_OP.RC:  # autocreate did set nodecfg
 			self.wait_for_AS.clear_wait()  # give up
 			logger.debug('post_data: slid %d ONLINE', int(self.slid))
 
@@ -992,7 +992,7 @@ class BasePacket:
 		self.slid = slnode.slid
 		self.sl_op = sl_op
 		self.rssi = rssi + 256
-		if self.sl_op == SL_OP.ON:
+		if self.sl_op == SL_OP.RC:
 			self.payload = payload.pack()  # payload is a nodecfg
 		else:
 			self.payload = payload
@@ -1063,7 +1063,7 @@ class BasePacket:
 				= struct.unpack(sfmt, pkt)
 		self.payload = None
 
-		if self.sl_op == SL_OP.ON:
+		if self.sl_op == SL_OP.RC:
 			try:
 				self.nodecfg = SL_NodeCfgStruct(pkt=self.bpayload)
 			except SteamLinkError as e:
