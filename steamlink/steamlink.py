@@ -436,7 +436,7 @@ class Steam(Item):
 
 		node = Node._table.find_one(sl_pkt.slid)
 		if node is None:  # Auto-create node
-			if self.autocreate and sl_pkt.sl_op == SL_OP.ON:
+			if self.autocreate and sl_pkt.sl_op == SL_OP.RC:
 				node = Node(sl_pkt.slid, sl_pkt.nodecfg)
 			else:
 				logger.warning("on_data_msg: no node for pkt %s", sl_pkt)
