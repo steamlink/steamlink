@@ -183,8 +183,7 @@ class SL_OP:
 
 	DS = 0x31		# data to store, ack with AN
 	BS = 0x33		# bridge to store
-	RC = 0x35		# report config, ack with SC
-			MessagePack with (struct) config: and boolean) cold: top level fields)
+	RC = 0x35		# report config, ack with SC MessagePack with (struct) config: and boolean) cold: top level fields)
 	AS = 0x37		# Ack from node -> store	MessagePack with: code: and pkg_num:
 	MS = 0x39		# message to store ack with AN, MessagePack with field mt (messagetype)
 	TR = 0x3B		# Received Test Data
