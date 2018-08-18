@@ -178,7 +178,7 @@ class SL_OP:
 	TD = 0x36		# transmit a test message via radio
 	SC = 0x38		# set config,  ack with AS MessagePack with config: top level field
 	BO = 0x3A		# boot op, no ack, MessagePack with boolean field: cold
-    MN = 0x3C 		# message to node, ack with AS, MessagePack with field mt (messagetype)
+	MN = 0x3C 		# message to node, ack with AS, MessagePack with field mt (messagetype)
 	AN = 0x3E		# Ack from store -> node	MessagePack with: code: and pkg_num:
 
 	DS = 0x31		# data to store, ack with AN
