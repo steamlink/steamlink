@@ -1,21 +1,22 @@
-
+import asyncio
+import json
+import logging
+import sys
 
 import aiomqtt
-import asyncio
-import random
-import json
-import sys
-import os
 from hbmqtt.broker import Broker
 
-import logging
+from . import (DBG, DBGK)
+
+
 logger = logging.getLogger(__name__)
+
 
 #
 # Mqtt
 #
 class Mqtt:
-	def __init__(self, conf, loop = None, as_node=False):
+	def __init__(self, conf, loop=None, as_node=False):
 		self.conf = conf
 		self.name = "mqtt"
 		if loop is None:
@@ -29,8 +30,8 @@ class Mqtt:
 		self.topic_data = conf['data']
 		self.public_topic_control = conf.get('public_control', None)
 		self.public_topic_data = conf.get('public_data', None)
-		self.server =   conf['server']
-		self.port =     conf['port']
+		self.server = conf['server']
+		self.port = conf['port']
 		self.clientid = conf['clientid']
 		self.username = conf['username']
 		self.password = conf['password']
@@ -49,18 +50,19 @@ class Mqtt:
 			self.subscription_list = [self.control_topic]
 		else:
 			self.subscription_list = [self.data_topic]
-		if not self.public_topic_control in ['', None]:
+		if self.public_topic_control not in ['', None]:
 			self.public_control_topic = self.public_topic_control % "+"
 			self.subscription_list.append(self.public_control_topic)
 		else:
-			self.public_control_topic=None
+			self.public_control_topic = None
 		self.running = True
+
 
 	def set_mq(self):
 
 		mq = aiomqtt.Client(client_id=self.clientid, loop=self.loop)
 		mq.loop_start()
-#		mq.enable_logger(logger)
+		if DBG > 1: mq.enable_logger(logger)
 		if self.ssl_certificate:
 			logger.debug("%s: using cert %s", self.name, self.ssl_certificate)
 			try:
@@ -81,6 +83,7 @@ class Mqtt:
 	def get_public_control_topic(self):
 		return self.public_topic_control
 
+
 	def set_msg_callback(self, callback):
 		if self.as_node:
 			logger.debug("set_msg_callback on %s", self.control_topic)
@@ -88,6 +91,7 @@ class Mqtt:
 		else:
 			logger.debug("set_msg_callback on %s", self.data_topic)
 			self.mq.message_callback_add(self.data_topic, callback)
+
 
 	def set_public_control_callback(self, callback):
 		logger.debug("set_public_control_callback on %s", self.public_control_topic)
@@ -113,6 +117,7 @@ class Mqtt:
 		if self.connected.is_set():
 			self.mq.disconnect()
 			await self.disconnected.wait()
+
 
 	async def wait_connect(self):
 		logger.debug("%s waiting for connect", self.name)
@@ -152,9 +157,9 @@ class Mqtt:
 	def mk_json_msg(self, msg):
 		try:
 			payload = msg.payload.decode('utf-8')
-			jmsg = {'topic': msg.topic, 'payload': payload }
+			jmsg = {'topic': msg.topic, 'payload': payload}
 		except:
-			jmsg = {'topic': msg.topic, 'raw': msg.payload }
+			jmsg = {'topic': msg.topic, 'raw': msg.payload}
 
 		logger.debug("steamlink msg %s", str(jmsg))
 		return jmsg
@@ -163,7 +168,7 @@ class Mqtt:
 	def publish(self, firsthop, payload, qos=0, retain=False, sub="control"):
 		s = self.control_topic_x if sub == "control" else self.data_topic_x
 		topic = s % firsthop
-		if 'mqtt' in logging.DBGK:  logger.info("%s publish %s %s", self.name, topic, payload)
+		if 'mqtt' in DBGK:  logger.info("%s publish %s %s", self.name, topic, payload)
 		self.mq.publish(topic, payload=payload, qos=qos, retain=retain)
 
 
@@ -175,7 +180,6 @@ class Mqtt:
 		self.mq.publish(topic, payload=data, qos=qos, retain=retain)
 
 
-
 class Mqtt_Broker(Broker):
 
 	def __init__(self, config=None, loop=None, plugin_namespace=None):
@@ -185,4 +189,3 @@ class Mqtt_Broker(Broker):
 
 	async def stop(self):
 		await Broker.shutdown(self)
-

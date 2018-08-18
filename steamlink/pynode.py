@@ -3,25 +3,25 @@
 # a Python based Node for SteamLink
 
 import asyncio
-import time
-import sys
-
 import logging
+import sys
+import time
+
+from .main import (DBG)
+
+
 logger = logging.getLogger()
 
 from .mqtt import Mqtt
 from .steamlink import (
 	SL_OP,
-	SL_NodeCfgStruct,
 	BasePacket,
-	WaitForAck, 
-	SteamLinkError, 
-	SL_MAX_MESSAGE_LEN, 
+	WaitForAck,
+	SteamLinkError,
+	SL_MAX_MESSAGE_LEN,
 	SL_ACK_WAIT,
 	MAX_RESEND_COUNT,
 )
-from .util import phex
-
 
 
 class PyNode:
@@ -62,7 +62,7 @@ class PyNode:
 
 
 	def on_control_msg(self, client, userdata, msg):
-		if logging.DBG > 0: logger.info("on_control_msg: got %s", msg.payload)
+		if DBG > 0: logger.info("on_control_msg: got %s", msg.payload)
 		try:
 			pkt = BasePacket(slnode=self, pkt=msg.payload)
 		except SteamLinkError as e:
@@ -73,25 +73,24 @@ class PyNode:
 			return
 
 		if pkt.slid != self.slid:
-			if logging.DBG > 1: logger.warning("mqtt: pkt '%s', not for us", msg.payload)
+			if DBG > 1: logger.warning("mqtt: pkt '%s', not for us", msg.payload)
 			return
 
-
-		if pkt.sl_op == SL_OP.AN:		# Ack
+		if pkt.sl_op == SL_OP.AN:  # Ack
 			if self.wait_handle is not None:
 				self.wait_handle.cancel()
 				self.wait_handle = None
 			if self.wait_for_AN is not None:
 				pkt = self.wait_for_AN.stop_wait()
 
-		elif pkt.sl_op == SL_OP.SC:	
+		elif pkt.sl_op == SL_OP.SC:
 			rc = self.handle_sc(pkt.payload)
-			
-		elif pkt.sl_op == SL_OP.DN:	
+
+		elif pkt.sl_op == SL_OP.DN:
 			asyncio.ensure_future(self.receive_q.put(pkt.payload), loop=self.loop)
 			self.send_ack_to_store(0)
 
-		elif pkt.sl_op == SL_OP.GS:	
+		elif pkt.sl_op == SL_OP.GS:
 			self.handle_gs(pkt.payload)
 		else:
 			logger.error("mqtt: for now, not handling %s", pkt)
@@ -106,15 +105,15 @@ class PyNode:
 		else:
 			pkt = self.wait_for_AN.restart_wait()
 			self.publish_pkt(pkt, resend=True)
-	
+
 
 	def handle_gs(self, payload):
-		if logging.DBG > 1: logger.debug("handle gs: %s", payload)
+		if DBG > 1: logger.debug("handle gs: %s", payload)
 		self.send_status_to_store()
 
 
 	def handle_sc(self, payload):
-		if logging.DBG > 1: logger.debug("handle sc: %s", payload)
+		if DBG > 1: logger.debug("handle sc: %s", payload)
 		# XXX: actually config  stuff
 		self.send_ack_to_store(0)
 
@@ -131,14 +130,14 @@ class PyNode:
 
 
 	def send_online_to_store(self):
-		sl_pkt = BasePacket(self,  SL_OP.ON, payload=self.nodecfg)
+		sl_pkt = BasePacket(self, SL_OP.ON, payload=self.nodecfg)
 		logger.info("send: %s", sl_pkt)
 		if self.publish_pkt(sl_pkt):
 			self.wait_for_AN.set_wait(sl_pkt)
 			self.wait_handle = self.loop.call_later(SL_ACK_WAIT, self.process_ack_timeout)
 			return True
 		else:
-			return False	
+			return False
 
 
 	def send_status_to_store(self):
@@ -155,7 +154,7 @@ class PyNode:
 
 	def publish_pkt(self, sl_pkt=None, resend=False, sub="data"):
 		if resend:
-			if logging.DBG > 1: logger.debug("resending pkt: %s", sl_pkt)
+			if DBG > 1: logger.debug("resending pkt: %s", sl_pkt)
 			self.packets_resent += 1
 		else:
 			if self.wait_for_AN.is_waiting() and sl_pkt.sl_op != SL_OP.AN:
@@ -166,7 +165,7 @@ class PyNode:
 			logger.error("publish pkt to long(%s): %s", len(sl_pkt.pkt), sl_pkt)
 			return False
 		self.packets_sent += 1
-		if logging.DBG > 1: logger.debug("publish_pkt %s", sl_pkt )
+		if DBG > 1: logger.debug("publish_pkt %s", sl_pkt)
 		self.mqtt.publish(self.slid, sl_pkt.pkt, sub=sub)
 		self.last_packet_tx_ts = time.time()
 		return True
@@ -186,5 +185,3 @@ class PyNode:
 	def set_status(self, new_status):
 		self.status = new_status[:20]
 		self.send_status_to_store()
-
-

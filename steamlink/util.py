@@ -1,27 +1,33 @@
-
 import sys
 import os
 import argparse
-import logging
-import yaml
-from collections import  Mapping, OrderedDict
 
+import yaml
+
+import logging
 
 # per oglops/yaml_OrderedDict.py
 # try to use LibYAML bindings if possible
 from yaml import Loader, Dumper
 from yaml.representer import SafeRepresenter
+from collections import Mapping, OrderedDict
+
 
 _mapping_tag = yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG
+logger = logging.getLogger(__name__)
+
 
 def dict_representer(dumper, data):
 	return dumper.represent_dict(data.items())
 
+
 def dict_constructor(loader, node):
 	return OrderedDict(loader.construct_pairs(node))
 
+
 def represent_none(self, data):
 	return self.represent_scalar(u'tag:yaml.org,2002:null', u'')
+
 
 Dumper.add_representer(OrderedDict, dict_representer)
 Dumper.add_representer(type(None), represent_none)
@@ -31,20 +37,21 @@ Loader.add_constructor(_mapping_tag, dict_constructor)
 Dumper.add_representer(str, SafeRepresenter.represent_str)
 Dumper.add_representer(dict, SafeRepresenter.represent_dict)
 
-#Dumper.add_representer(unicode, SafeRepresenter.represent_unicode)
 
-#
+# Dumper.add_representer(unicode, SafeRepresenter.represent_unicode)
+
+
 # Utility
-#
 
-def phex(p, l=0):
-	if type(p) == type(""):
+
+def phex(p, llen=0):
+	if isinstance(p, str):
 		pp = p.encode()
 	else:
 		pp = p
 	hh = ""
 	cc = ""
-	head = " " * l
+	head = " " * llen
 	lines = []
 	i = 0
 	for c in pp:
@@ -66,38 +73,38 @@ def phex(p, l=0):
 def getargs():
 	parser = argparse.ArgumentParser()
 	parser.add_argument("-c", "--config",
-							help="config file default steamlink.yaml",
-							default=None)
+						help="config file default steamlink.yaml",
+						default=None)
 	parser.add_argument("-d", "--daemon",
-							help="excute as a daemon",
-							default=False, action='store_true')
+						help="excute as a daemon",
+						default=False, action='store_true')
 	parser.add_argument("-L", "--loglevel",
-							help="set loglevel, default is 'info'",
-							default=None)
+						help="set loglevel, default is 'info'",
+						default=None)
 	parser.add_argument("-l", "--logfile",
-							help="file to log to",
-							default=None)
+						help="file to log to",
+						default=None)
 	parser.add_argument("-C", "--createconfig",
-							help="write default config file and exit",
-							default=False, action='store_true')
+						help="write default config file and exit",
+						default=False, action='store_true')
 	parser.add_argument("-p", "--pid-file",
-							help="path to pid file when running as daemon",
-							default=None)
+						help="path to pid file when running as daemon",
+						default=None)
 	parser.add_argument("-T", "--testdata",
-							help="generate test data per section 'testdata'",
-							default=False)  #, action='store_true')
+						help="generate test data per section 'testdata'",
+						default=False)  # , action='store_true')
 	parser.add_argument("-v", "--verbose",
-							help="print some info",
-							default=False, action='store_true')
+						help="print some info",
+						default=False, action='store_true')
 	parser.add_argument("-X", "--debug",
-							help="increase debug level, bumps loglevel to 'debug'",
-							default=0, action="count")
+						help="increase debug level, bumps loglevel to 'debug'",
+						default=0, action="count")
 	parser.add_argument("-x", "--debugkey",
-							help="set of debug keywords, bumps loglevel to ''debug'. Available keywords are: csearch ocache web webupd",
-							default=[], action="append")
+						help="set of debug keywords, bumps loglevel to ''debug'. Available keywords are: csearch ocache web webupd",
+						default=[], action="append")
 	parser.add_argument("-V", "--version",
-							help="show version and exit",
-							default=False, action='store_true')
+						help="show version and exit",
+						default=False, action='store_true')
 	return parser.parse_args()
 
 
@@ -117,7 +124,7 @@ def loadconfig(default_conf, conf_fname):
 			conf_f = "".join(fh.readlines())
 		update(conf, yaml.load(conf_f))
 	except FileNotFoundError as e:
-		print("note: using default config")
+		print("note: using default config, not file %s" % e)
 	except Exception as e:
 		print("error: config load: %s" % e)
 		sys.exit(1)
@@ -129,8 +136,8 @@ def createconfig(conf_fname, conf):
 		print("error: config file '%s' exists, will NOT overwrite!!" % conf_fname)
 		return 1
 	with open(conf_fname, 'w') as outfile:
-		yaml.dump(conf, outfile,  default_flow_style=False)
-	print("note: config written to %s" % (conf_fname))
+		yaml.dump(conf, outfile, default_flow_style=False)
+	print("note: config written to %s" % conf_fname)
 	return 0
 
 
@@ -208,6 +215,3 @@ def closefds_osx(min_fd: int, max_fd: int) -> None:
 				fcntl(_fd, F_SETFD, val | FD_CLOEXEC)
 		except IOError:
 			pass
-
-
-
