@@ -25,7 +25,8 @@ REQUIRES = [
 	'aiohttp-jinja2>=1.0.0',
 	'tinydb>=3.9.0',
 	'tinydb-smartcache>=1.0.2',
-	'zeroconf>=0.20.0'
+	'zeroconf>=0.20.0',
+	'msgpack>=0.5.6'
 ]
 
 setup(
